@@ -1,0 +1,6 @@
+{
+  "feature": "ED-1024",
+  "routes": [
+    { "name": "Archive (layar terbuka tanpa error)", "path": "/archives", "waitFor": ".archive-page .ant-table", "ref": "AC-16, AC-17" }
+  ]
+}

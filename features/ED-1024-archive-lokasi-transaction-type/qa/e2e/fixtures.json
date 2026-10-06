@@ -1,0 +1,12 @@
+{
+  "fixtures": [
+    {
+      "name": "user-qa-state",
+      "reason": "AC-16/AC-17 butuh QA_USER (profil default) sebagai user JOG (role 26, employee JOG saja) atau superadmin (role 1); AC-13 simulasi butuh role tanpa permission Archive. Dipilih lewat env E2E_STATE=jog|super|noperm (kosong = tidak ada perubahan). Dipulihkan persis di teardown (jurnal qa/e2e/.state-journal.json).",
+      "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/state.php\" up \"${E2E_STATE:-none}\"",
+      "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/state.php\" down",
+      "profiles": ["default"],
+      "timeout_s": 120
+    }
+  ]
+}
