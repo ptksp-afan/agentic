@@ -32,8 +32,14 @@ if [ ! -f "$AGENTIC_DIR/config/workspace.env" ]; then
   return 2 2>/dev/null || exit 2
 fi
 
-# Path gaya Git Bash (/d/dev/...) dari path Windows (D:/dev/...), untuk cd dan perintah unix.
-to_unix_path() { local p="${1//\\//}"; if [[ "$p" =~ ^([A-Za-z]):(.*)$ ]]; then echo "/${BASH_REMATCH[1],,}${BASH_REMATCH[2]}"; else echo "$p"; fi; }
+# Path gaya Git Bash (/d/dev/...) dari path Windows (D:/dev/... atau D:\dev\...). Path Linux/macOS
+# dikembalikan apa adanya. Kompatibel bash 3.2 (bawaan macOS): tanpa ${x,,}, mapfile, declare -A.
+to_unix_path() {
+  local p="${1//\\//}" d
+  if [[ "$p" =~ ^([A-Za-z]):(.*)$ ]]; then
+    d="$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')"; echo "/$d${BASH_REMATCH[2]}"
+  else echo "$p"; fi
+}
 
 # features/<KEY>-* -> path folder fitur. Menerima KEY (ED-1234) atau path folder.
 feature_dir() {
@@ -44,4 +50,21 @@ feature_dir() {
     echo "Folder fitur untuk '$arg' tidak ditemukan atau tidak unik di features/." >&2; return 1
   fi
   (cd "$hits" && pwd)
+}
+
+# Reload server BE sesudah kode PHP atau .env berubah. Satu pintu untuk RoadRunner dan php-fpm.
+#   BE_SERVER=rr  : worker RR memuat kode sekali -> artisan equal:rr-reload (dicoba 2x; kadang crash)
+#   BE_SERVER=fpm : php-fpm/Apache/artisan serve membaca berkas tiap request -> tidak perlu, kecuali
+#                   BE_RELOAD_CMD diisi (mis. opcache.validate_timestamps=0 -> reload php-fpm)
+be_reload() {
+  local be i; be="$(to_unix_path "$BE_DIR")"
+  case "${BE_SERVER:-}" in
+    rr)  for i in 1 2; do
+           (cd "$be" && "$PHP_BIN" artisan equal:rr-reload >/dev/null 2>&1) && { echo "BE: RoadRunner di-reload"; return 0; }
+         done
+         echo "BE: equal:rr-reload gagal 2x - reload manual, hasil uji bisa memakai kode lama" >&2; return 1 ;;
+    fpm) if [ -n "${BE_RELOAD_CMD:-}" ]; then (cd "$be" && eval "$BE_RELOAD_CMD") && echo "BE: $BE_RELOAD_CMD" || return 1
+         else echo "BE: php-fpm, tidak perlu reload"; fi ;;
+    *)   echo "BE_SERVER harus 'rr' atau 'fpm' (config/workspace.env)" >&2; return 2 ;;
+  esac
 }

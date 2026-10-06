@@ -43,7 +43,8 @@ the board.
    Story, assignee + labels, description = its ACs (ids + one line each) + spec path. Titles keep the
    spec prefixes: `[BE] …`, `[FE] <Module> - …`, `[QA] …`. Re-runs: match existing subtasks by title
    first; never create duplicates.
-3. Story + subtasks into the active sprint (above), then Story → In Progress.
+3. Story + subtasks into the active sprint (above), then Story → In Progress. **Epic Gate 1 (long run):**
+   sprint yes, In Progress **no** - the story runner moves it when it actually starts the item.
 4. Comment on the Story: spec path, counts (BR / AC / subtasks), decisions taken at Gate 1 (one line each).
 5. Write every key into the spec's subtask table and `run.md`.
 
@@ -58,6 +59,39 @@ Later spec changes (Gate 2 fixes that add ACs or subtasks) follow the same rules
    (`docs/specs/<Module>/NNN-*.md` `## Daftar tes UI`) + item count, what was only code-reviewed or not
    verifiable, and out-of-scope tickets raised.
 4. **No commit hashes or commit links in Jira** (developer's decision, 2026-09-29). Hashes go to `run.md`.
+
+## Item types and start statuses
+
+Epic children are `Story`, `Task` or `Bug` (`jira.itemIssueTypes`). Bugs start in status `BUG` (their
+"To Do"; "Start Progress" → In Progress). Bugs get no subtasks: the Bug itself carries the statuses.
+`BUG` is also where human QA sends work back; then it is a fix on committed code - resume its `run.md`.
+
+## Blocker (long run; `references/long-run.md`)
+
+The ED board has its own **Blocked** column (status `jira.status.blocked`).
+1. Transition the item → Blocked ("Stuck"); its subtasks that are In Progress → Blocked too.
+2. Add label `jira.longRun.labels.blocker` (lets the developer filter AI blockers from human ones).
+3. Comment (Indonesian, plain text, starts with `jira.longRun.blockerMarker` so it can be found again):
+   ```
+   [AI-BLOCKER] Butuh keputusan developer - long run <EPIC>, <tanggal>
+   Fase: <ba|dev|qa>. Kode: <belum ada | diparkir di branch park/<KEY> (BE, FE)>.
+   Spec: agentic/features/<KEY>-<slug>/spec.md
+   K-1. <pertanyaan>
+        a) ...  b) ...  - rekomendasi: a (<alasan singkat>)
+   K-2. ...
+   Cara melepas: balas komentar ini (mis. "K-1: a, K-2: b"), lalu pindahkan kartu ke To Do.
+   Long run berikutnya melanjutkan dari sini.
+   Menghambat: <ED-x, ED-y | tidak ada>
+   ```
+4. Dependents: `createJiraIssueLink` type `jira.longRun.blocksLinkType` (outward = the blocker, inward = the
+   dependent), and the dependent gets the same Blocked + label + a one-line comment "menunggu <KEY>".
+5. Unblock (the developer moved the card): remove the label when work resumes; leave the comment.
+
+## Ready for review (long run)
+
+Committed locally, QA PASS, not Done. Item stays In Progress, label `jira.longRun.labels.review`, comment:
+"Siap review developer: laporan QA <path>, tes UI manual <n> butir (<paths>), galeri <path>." (no
+hashes). Subtasks stay In Progress. `/v5-epic review` moves them to Done after approval.
 
 ## Bugs found outside the feature
 

@@ -1,0 +1,4 @@
+# Script bash/PHP/JS harus LF di semua OS (CRLF membuat bash di Linux/macOS gagal: $'\r').
+* text=auto eol=lf
+*.png binary
+*.jpg binary

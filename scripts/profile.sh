@@ -6,14 +6,14 @@
 #   scripts/profile.sh use <profil>
 #   scripts/profile.sh run <profil> -- <perintah ...>   # ganti, jalankan, SELALU kembali ke PROFILE_DEFAULT
 #
-# Config (config/workspace.env): PROFILES=a,b  PROFILE_DEFAULT=a  BE_DIR  PHP_BIN  API_URL  RR_RELOAD
+# Config (config/workspace.env): PROFILES=a,b  PROFILE_DEFAULT=a  BE_DIR  PHP_BIN  API_URL  BE_SERVER  BE_RELOAD_CMD
 #   PROFILE_<nama>_LIC_DIR   folder berisi EqualERP.lic dan ERPHelper.dat untuk profil itu
 #   PROFILE_<nama>_DB        nilai DB_DATABASE di .env BE_DIR untuk profil itu
 #   PROFILE_<nama>_INTEGRATION  (opsional) 0|1: harapan equal_integration pada probe lisensi
 # PROFILES kosong = fitur nonaktif: `status` exit 0 ("profiles disabled"), `use`/`run` exit 2 tanpa mengubah apa pun.
 #
 # Yang diubah di BE_DIR: app/Lib/EqualERP.lic, app/Lib/ERPHelper.dat dan baris DB_DATABASE di .env
-# (ketiganya tidak masuk git), lalu reload RR bila RR_RELOAD=1. Selama profil non-default aktif, SEMUA
+# (ketiganya tidak masuk git), lalu reload server BE (scripts/be-reload.sh). Selama profil non-default aktif, SEMUA
 # request ke server itu memakai lisensi dan DB profil tsb. Jalankan satu uji sekaligus.
 # Perintah di bawah `run` menerima env PROFILE_ACTIVE=<profil> (dipakai scripts/qa-http/run.php).
 
@@ -70,14 +70,7 @@ env_db() { grep -E '^DB_DATABASE=' "$BE/.env" | head -n 1 | cut -d= -f2- | tr -d
 probe() { "$PHP" "$SCRIPT_DIR/lib/profile-probe.php" "$BE"; }
 http_code() { curl -s -o /dev/null -m "$1" -w '%{http_code}' "$API/" || true; }
 
-reload_rr() {
-  [ "${RR_RELOAD:-}" = "1" ] || return 0
-  # Worker RR sesekali crash saat reload; ulangi sekali.
-  if ! (cd "$BE" && "$PHP" artisan equal:rr-reload); then
-    echo "rr-reload gagal, mencoba sekali lagi..." >&2
-    (cd "$BE" && "$PHP" artisan equal:rr-reload)
-  fi
-}
+reload_rr() { be_reload; }   # RoadRunner: equal:rr-reload (2x coba); php-fpm: BE_RELOAD_CMD atau tidak perlu
 
 # Baris pertama = nama profil aktif (menurut berkas lisensi; "lain" bila tidak cocok profil mana pun).
 # Exit 0 = aktif == PROFILE_DEFAULT, 4 = profil lain/tak dikenal aktif, 2 = config/probe error.
@@ -99,9 +92,14 @@ use_profile() {
   profile_ok "$name" || return 1
   dir="$(cfg "$name" LIC_DIR)"; db="$(cfg "$name" DB)"; want="$(cfg "$name" INTEGRATION)"
   grep -qE '^DB_DATABASE=' "$BE/.env" || { echo "Baris DB_DATABASE tidak ada di .env" >&2; return 1; }
+  # Config Laravel yang di-cache mengabaikan .env: pertukaran DB tidak akan terbaca (RR maupun php-fpm).
+  [ ! -f "$BE/bootstrap/cache/config.php" ] || { echo "config Laravel di-cache (bootstrap/cache/config.php): jalankan 'php artisan config:clear' di BE dulu - profil tidak diganti" >&2; return 2; }
 
   for f in $LIC_FILES; do cp "$dir/$f" "$BE/app/Lib/$f"; done
-  sed -i -E "s/^DB_DATABASE=[^\r]*/DB_DATABASE=$db/" "$BE/.env"
+  # Portabel GNU/BSD (sed -i berbeda di macOS): tulis lewat awk, pertahankan CRLF bila ada,
+  # lalu salin isinya balik supaya izin berkas .env tidak berubah.
+  awk -v db="$db" '/^DB_DATABASE=/ { cr = (/\r$/) ? "\r" : ""; print "DB_DATABASE=" db cr; next } { print }' \
+    "$BE/.env" > "$BE/.env.profile.tmp" && cat "$BE/.env.profile.tmp" > "$BE/.env" && rm -f "$BE/.env.profile.tmp"
 
   reload_rr
 

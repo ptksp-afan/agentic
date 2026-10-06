@@ -6,3 +6,8 @@ config/secrets.env
 work/
 # dependensi harness
 node_modules/
+# salinan & render sumber brief (bisa besar/rahasia); hanya brief/README.md (digest) yang di-commit
+features/*/brief/src/
+features/*/brief/render/
+epics/*-brief/src/
+epics/*-brief/render/

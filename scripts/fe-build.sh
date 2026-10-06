@@ -7,6 +7,7 @@
 # Tidak pernah build langsung ke build/, tidak pernah mematikan proses apa pun.
 set -uo pipefail
 source "$(dirname "$0")/lib/env.sh"
+for k in FE_DIR FE_STAGING_DIR FE_SERVE_PORT; do [ -n "${!k:-}" ] || { echo "config: $k kosong di config/workspace.env" >&2; exit 2; }; done
 fe="$(to_unix_path "$FE_DIR")"; stg="$(to_unix_path "$FE_STAGING_DIR")"; tgt="$fe/${FE_SERVE_DIR:-build}"
 mkdir -p "$AGENTIC_DIR/work"
 
@@ -14,13 +15,30 @@ listening() {
   netstat -ano 2>/dev/null | grep -qE "[:.]${FE_SERVE_PORT} .*LISTEN" && return 0
   [ "$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:${FE_SERVE_PORT}/")" != "000" ]
 }
-mtime() { [ -f "$1" ] && date -r "$1" '+%Y-%m-%d %H:%M:%S' || echo "-"; }
+mtime() { # GNU date -r <berkas>; macOS: stat -f
+  [ -f "$1" ] || { echo "-"; return; }
+  date -r "$1" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$1" 2>/dev/null || echo "?"
+}
+use_node() { # versi Node dari .nvmrc. nvm-windows = program; nvm di macOS/Linux = fungsi shell yang harus di-source
+  local want have; want="$(tr -d ' \r\n' < .nvmrc)"; have="$(node -v 2>/dev/null | tr -d 'v\r')"
+  [ "$have" = "${want#v}" ] && return 0
+  if ! command -v nvm >/dev/null 2>&1; then
+    # shellcheck disable=SC1091
+    [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ] && . "${NVM_DIR:-$HOME/.nvm}/nvm.sh"
+  fi
+  nvm use "$(cat .nvmrc)" >/dev/null || { echo "nvm use \$(cat .nvmrc) gagal - laporkan, jangan diakali" >&2; return 2; }
+}
+serve_hint() {
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) printf 'serve .\\%s\\ -p %s' "${FE_SERVE_DIR:-build}" "$FE_SERVE_PORT" ;;
+    *) printf 'serve ./%s -p %s' "${FE_SERVE_DIR:-build}" "$FE_SERVE_PORT" ;;
+  esac
+}
 
 case "${1:-}" in
   build)
     cd "$fe" || exit 2
-    want="$(tr -d ' \r\n' < .nvmrc)"; have="$(node -v 2>/dev/null | tr -d 'v\r')"
-    if [ "${have}" != "${want#v}" ]; then nvm use "$(cat .nvmrc)" >/dev/null || { echo "nvm use \$(cat .nvmrc) gagal - laporkan, jangan diakali" >&2; exit 2; }; fi
+    use_node || exit 2
     log="$AGENTIC_DIR/work/fe-build.log"
     BUILD_PATH="$FE_STAGING_DIR" yarn build > "$log" 2>&1; rc=$?
     tail -n 15 "$log"; echo "# exit=$rc log=$log staging=$stg"; exit $rc ;;
@@ -32,7 +50,7 @@ case "${1:-}" in
     if [ -d "$fe/public" ]; then
       for p in "$fe/public"/*; do b="$(basename "$p")"; [ "$b" = index.html ] && continue; cp -rn "$p" "$tgt"/ 2>/dev/null; done
     fi
-    echo "build/ diperbarui dari staging ($(mtime "$stg/index.html")). Developer bisa menyalakan lagi: serve .\${FE_SERVE_DIR:-build}\ -p ${FE_SERVE_PORT}" ;;
+    echo "build/ diperbarui dari staging ($(mtime "$stg/index.html")). Developer bisa menyalakan lagi: $(serve_hint)" ;;
   status)
     if listening; then echo "port ${FE_SERVE_PORT}: dipakai"; else echo "port ${FE_SERVE_PORT}: kosong"; fi
     echo "staging : $(mtime "$stg/index.html")  ($stg)"

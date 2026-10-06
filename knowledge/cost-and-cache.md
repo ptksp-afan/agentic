@@ -32,7 +32,8 @@ Penyebab tulis cache yang bisa dihindari:
 |---|---|---|
 | `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` (dan `CLAUDE_CODE_PROMPT_CACHE_TTL=1h`) | `.claude/settings.json` `env` | tulis cache subagent ~63,9 jt u → ~41 jt u untuk volume dua sesi di atas (-6% total); hit subagent ~99% |
 | Satu fitur per sesi; jeda panjang = sesi baru `/v5-feature <KEY>` dari `run.md` | skill `v5-feature`, `gates.md` | konteks utama ~440K → ~100-150K: -10-12% total |
-| Batas ukuran dokumen: spec ≤ 30 KB, `qa.md` ≤ 25 KB, `run.md` ≤ 8 KB, skenario dipecah > 40 KB (dulu spec 58-105 KB, laporan QA sampai 105 KB, skenario 160-270 KB) | agent `v5-analyst`, `v5-qa`, `run-log.md` | konteks subagent turun langsung; tiap KB dibaca ≥ 3 agent |
+| Batas ukuran dokumen: spec ≤ 30 KB, `qa-be.md`/`qa-fe.md` ≤ 20 KB, `run.md` ≤ 8 KB, skenario dipecah > 40 KB (dulu spec 58-105 KB, laporan QA sampai 105 KB, skenario 160-270 KB) | agent `v5-analyst`, `v5-qa`, `run-log.md` | konteks subagent turun langsung; tiap KB dibaca ≥ 3 agent |
+| Brief dibaca sekali oleh `v5-brief` (sonnet) jadi digest ≤ 12 KB; analyst, FE, QA membaca digest, bukan PDF/desain aslinya | `v5-brief` | PDF 30 halaman tidak dibaca ulang oleh 3-4 agent |
 | Baca per bagian (`scripts/section.sh`), kirim path bukan isi, laporan agent ≤ 15-25 baris | skill + agent | konteks orkestrator kecil |
 | Output panjang ke `work/*.log`, yang dibaca hanya ringkasan/tail | agent + script (`fe-build.sh`) | |
 | Model sesuai beban: sonnet untuk digest API, review konvensi, QA default | `references/agents.md` | |
@@ -45,6 +46,13 @@ Penyebab tulis cache yang bisa dihindari:
 
 Catatan: sesi baru dimulai dengan menulis cache (~40K), jadi hit rate per sesi bisa sedikit **turun**
 walaupun total biaya turun banyak. Pantau biaya total per fitur, bukan hit rate.
+
+## Long run (`/v5-epic`)
+
+BA semua item jalan paralel (maks `BA_PARALLEL`, default 2), masing-masing dengan konteks baru. Setiap item berjalan di story runner dengan konteks baru, jadi konteks tidak menumpuk antar item. Sesi
+utama hanya memegang antrian dan laporan ≤ 10 baris per item. Batas rem biaya: maks 2 ronde perbaikan
+QA per item, berhenti sesudah 3 blocker berturut-turut, dan `--max N`. Untuk percobaan pertama,
+jalankan `--max 2` lalu ukur biayanya per item sebelum menjalankan satu epic penuh.
 
 ## Hal lain yang memutus cache (dokumentasi Claude Code)
 

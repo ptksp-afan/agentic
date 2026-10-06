@@ -17,7 +17,7 @@ durasi, pesan; untuk FAIL/BLOCKED juga request terakhir dan potongan body maks 2
 `1` = ada FAIL, `2` = config/infra error (server mati, login QA gagal, berkas skenario salah).
 
 **Aturan RR:** RoadRunner memuat kode PHP sekali per worker. Sesudah mengubah PHP di `BE_DIR`, reload dulu
-(`RR_RELOAD=1` berarti: jalankan `"$PHP_BIN" artisan equal:rr-reload` di `BE_DIR`), kalau tidak runner menguji
+(`scripts/be-reload.sh`: RoadRunner di-reload bila `BE_SERVER=rr`; php-fpm tidak perlu kecuali `BE_RELOAD_CMD` diisi), kalau tidak runner menguji
 kode lama. Runner tidak me-reload sendiri.
 
 ## Config

@@ -10,7 +10,7 @@ berlaku umum untuk fitur v5 mana pun. Tiap baris: aturan → kejadian asalnya.
 | Tulis AC "layar terbuka tanpa error" untuk **setiap** layar yang disentuh: list, display setting, setiap select/FK yang dipanggil saat dibuka, detail/drawer. Lalu AC per aksi | F00: AC awal hanya menguji API, layar central error saat dibuka; 4 ronde Gate 2 |
 | Cek tabel/kolom benar-benar ada di **DB yang dituju** (tenant vs global). Yang belum ada → subtask Updater, bukan jalur kode khusus | F00: `customers`, `attachments`, `employees`, ... tidak ada di DB global |
 | Cek **lebar & tipe kolom** di semua tabel yang dilewati data (salin antar-tabel/antar-DB) | F02: nama > 30 karakter terpotong; perlu Updater pelebar + keputusan developer |
-| Perilaku yang bergantung lisensi/modul → AC untuk kedua keadaan, dan nyatakan profil uji yang dipakai | F00/F13: perilaku tanpa lisensi integrasi harus sama dengan sebelumnya |
+| Perilaku yang bergantung lisensi/modul → AC untuk kedua keadaan, dan nyatakan profil uji yang dipakai (`license-features.md`) | F00/F13: perilaku tanpa lisensi integrasi harus sama dengan sebelumnya |
 | v3 dan v5 hidup bersama di DB yang sama: catat kolom v3 yang **wajib tetap benar** saat v5 menulis | Keputusan #9/#11 (lihat `decisions.md`) |
 | Bug v3 yang ditemukan → *Keputusan untuk developer* ("port apa adanya atau perbaiki?"), jangan diputuskan diam-diam | F13/F02: beberapa bug lama jadi tiket terpisah atas pilihan developer |
 | Status HTTP tiap penolakan bisnis ditulis di AC (400/404/422 + kode pesan) | F13: "lampiran tidak ditemukan" dulu 500 |
@@ -20,7 +20,7 @@ berlaku umum untuk fitur v5 mana pun. Tiap baris: aturan → kejadian asalnya.
 
 | Aturan | Asal |
 |---|---|
-| Server RR memuat kode sekali per worker: **reload sesudah ubah PHP** (`artisan equal:rr-reload`), ulangi kalau crash `0xC0000005` | F00-F02: uji membaca kode lama |
+| Server RR memuat kode sekali per worker: **reload sesudah ubah PHP** (`scripts/be-reload.sh`; di php-fpm tidak perlu), ulangi kalau crash `0xC0000005` | F00-F02: uji membaca kode lama |
 | Re-run Updater **in-process** (bootstrap Laravel), jangan lewat `/api/check-server` (menulis ulang `.env`/supervisor) | re-baseline 2026-10-04 |
 | `validate()` membalas 302 tanpa header `Accept: application/json`; smoke call selalu kirim header itu | F13 (`v5-conventions`) |
 | Kontrak berubah → perbarui `contract.md` + catat di spec. FE dibangun dari kontrak; drift diam-diam merusak tanpa error | F01-F02 |
@@ -55,3 +55,5 @@ berlaku umum untuk fitur v5 mana pun. Tiap baris: aturan → kejadian asalnya.
 | Restart/hibernate Windows mematikan agent yang sedang jalan; lanjutkan dari `run.md`, cek perubahan setengah jadi dulu | 2026-09-30 |
 | FE v3 (Node 12) dan FE v5 (`.nvmrc`) tidak pernah jalan bersamaan: nvm-windows mengganti versi global | F00 |
 | Usulan perbaikan pipeline dikumpulkan dan di-commit terpisah sesudah fitur selesai | semua fitur |
+| Subagent yang memanggil agent lain di **background** bisa selesai sebelum anaknya selesai. Di long run, story runner memanggil anak-anaknya di foreground | uji kemampuan 2026-10-06 |
+| Bug baru di ED mulai di status `BUG` (bukan To Do); `BUG` juga tempat QA manusia mengembalikan pekerjaan | Jira ED, 2026-10-06 |

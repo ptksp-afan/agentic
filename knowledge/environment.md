@@ -1,6 +1,7 @@
 # Lingkungan lokal (mesin developer, Windows + Git Bash)
 
 Nilai yang bisa berbeda per mesin ada di `config/workspace.env`; berkas ini menjelaskan **kenapa**.
+Isinya fakta mesin Windows developer. Linux/macOS: lihat README § "Windows, Linux, macOS".
 Dibaca agent hanya saat butuh.
 
 | Hal | Fakta | Catatan |
@@ -8,7 +9,7 @@ Dibaca agent hanya saat butuh.
 | Shell | Git Bash untuk semua perintah (`grep`, `ls`, `$(cat .nvmrc)`) | PowerShell/cmd tidak dipakai agent |
 | PHP | `PHP_BIN` = php-nts 7.3.33, binary yang sama dengan worker RoadRunner | `php` di PATH = 7.3.11 ZTS, jangan dipakai untuk `php -l`, artisan, runner (developer, 2026-09-28) |
 | Server BE | RoadRunner per checkout; port di `<BE_DIR>/.rr.env` (`RR_HTTP_ADDRESS`). `ksp-erp-next` (v5-rr) = `:8002`, `ksp-erp-next-release` = `:8003`, `ksp-erp-next-multidb` = `:8004` | cek hidup: `curl -s -o /dev/null -w '%{http_code}' $API_URL/` → 302 |
-| Reload RR | `"$PHP_BIN" artisan equal:rr-reload` di `BE_DIR` | kadang crash `0xC0000005`: ulangi |
+| Reload BE | `scripts/be-reload.sh`: `BE_SERVER=rr` → `artisan equal:rr-reload`; `fpm` → tidak perlu (atau `BE_RELOAD_CMD`) | RR kadang crash `0xC0000005`: script mencoba 2x. Branch tanpa `app/RoadRunner/` (mis. `v5-opname-archive`) = `fpm` |
 | DB | MySQL di WSL `kspdb.wsl:3307`, **dipakai bersama semua checkout** | DB uji boleh dikotori (ada backup), tapi QA memulihkan yang diubah. Pilih `QA_DB` yang tidak dipakai pipeline multidb |
 | `route:list` | gagal di checkout ini (constructor controller membaca config central) | pakai one-liner router di `v5-be-conventions` `verification.md` |
 | Node FE | versi hanya di `<FE_DIR>/.nvmrc`; `nvm use $(cat .nvmrc)`, **jangan** tulis angka versi | nvm-windows mengganti versi global: jangan paralel dengan proyek Node lain |

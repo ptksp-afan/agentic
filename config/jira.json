@@ -7,13 +7,26 @@
   "labels": ["v5"],
   "storyIssueType": "Story",
   "subtaskIssueType": "Subtask",
+  "bugIssueType": "Bug",
+  "itemIssueTypes": ["Story", "Task", "Bug"],
   "sprintField": "customfield_10020",
+  "rankField": "customfield_10019",
   "status": {
     "todo": "To Do",
+    "bugNew": "BUG",
     "inProgress": "In Progress",
     "blocked": "Blocked",
     "done": "Done"
   },
   "forbiddenTargetStatuses": ["In Testing", "QA PASSED", "BUG"],
+  "longRun": {
+    "labels": {
+      "blocker": "ai-blocker",
+      "review": "ai-review",
+      "found": "ai-found"
+    },
+    "blockerMarker": "[AI-BLOCKER]",
+    "blocksLinkType": "Blocks"
+  },
   "commitHashesInJira": false
 }

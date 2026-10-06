@@ -9,7 +9,7 @@ key: ED-1234
 epic: ED-1200
 title: <spec title>
 slug: <slug>
-phase: dev            # ba | gate1 | dev | review | qa | gate2 | commit | done
+phase: be             # ba | gate1 | be | qa-be | fe | qa-fe | gate2 | commit | done | blocked
 qa_round: 0
 be_branch: v5-rr
 fe_branch: next-canvasing

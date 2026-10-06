@@ -53,6 +53,8 @@ function chromePath() {
     env['PROGRAMFILES(X86)'] && path.join(env['PROGRAMFILES(X86)'], 'Google', 'Chrome', 'Application', 'chrome.exe'),
     env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
     '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/opt/google/chrome/chrome',
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ];
   return candidates.find((p) => p && fs.existsSync(p)) || null;

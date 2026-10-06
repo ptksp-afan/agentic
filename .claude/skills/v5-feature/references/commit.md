@@ -29,3 +29,11 @@ Co-Authored-By: Claude <model name> <noreply@anthropic.com>
 - Pipeline changes (skills/agents/knowledge) never ride along with a feature commit: separate
   `[DOC] Pipeline - penyesuaian dari <KEY>` commit, after the user agreed to the proposals.
 - Record hashes in `run.md` `## Log`. Not in Jira.
+
+## Long run
+
+- Commit happens automatically after QA PASS (`long-run.md`), same rules and message format. Classes
+  other than `NEW` mean something touched the developer's own dirty files: do not commit, make it a blocker.
+- `park/<KEY>` branches (from `scripts/park.sh`) are local scratch refs. Delete them
+  (`git branch -D park/<KEY>`) only after the item's real commit exists or the developer approved it in
+  `/v5-epic review`. Never push them.

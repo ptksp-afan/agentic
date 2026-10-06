@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Prasyarat sebelum (atau saat melanjutkan) satu fitur. Exit 1 kalau ada FAIL; WARN tidak menghentikan.
-#   scripts/preflight.sh
+#   scripts/preflight.sh               cek biasa
+#   scripts/preflight.sh --long-run    + cek untuk long run (hibernate, branch park/*)
 set -uo pipefail
 source "$(dirname "$0")/lib/env.sh"
-fail=0
+fail=0; long=0; [ "${1:-}" = "--long-run" ] && long=1
 ok()   { printf 'OK    %s\n' "$*"; }
 warn() { printf 'WARN  %s\n' "$*"; }
 bad()  { printf 'FAIL  %s\n' "$*"; fail=1; }
@@ -27,6 +28,21 @@ case "$code" in
 esac
 
 be="$(to_unix_path "$BE_DIR")"; fe="$(to_unix_path "$FE_DIR")"
+
+# Mode server BE harus cocok dengan kenyataan: RR yang tidak di-reload menguji kode lama.
+api_port="$(printf '%s' "$API_URL" | sed -E 's#^[a-z]+://[^/:]+:?([0-9]*).*#\1#')"
+rr_port="$(grep -h '^RR_HTTP_ADDRESS' "$be/.rr.env" 2>/dev/null | sed -E 's/.*:([0-9]+).*/\1/' | head -1)"
+has_rr=0; [ -f "$be/app/RoadRunner/AppState.php" ] && has_rr=1
+case "${BE_SERVER:-}" in
+  rr)  if [ $has_rr = 0 ]; then bad "BE_SERVER=rr tapi branch $BE_BRANCH tidak punya app/RoadRunner/ -> pakai BE_SERVER=fpm"
+       elif [ -n "$rr_port" ] && [ -n "$api_port" ] && [ "$rr_port" != "$api_port" ]; then warn "API_URL port $api_port, RR_HTTP_ADDRESS di .rr.env port $rr_port: yakin servernya RR milik BE_DIR?"
+       else ok "BE_SERVER=rr (reload: artisan equal:rr-reload)"; fi ;;
+  fpm) if [ -n "$rr_port" ] && [ "$rr_port" = "$api_port" ]; then bad "API_URL menunjuk RoadRunner (.rr.env port $rr_port) tapi BE_SERVER=fpm: kode baru tidak akan termuat"
+       else ok "BE_SERVER=fpm${BE_RELOAD_CMD:+ (reload: $BE_RELOAD_CMD)}"; fi ;;
+  *)   bad "BE_SERVER harus 'rr' atau 'fpm'" ;;
+esac
+[ -f "$be/bootstrap/cache/config.php" ] && warn "config Laravel di-cache (bootstrap/cache/config.php): perubahan .env/profil tidak terbaca sampai config:clear"
+
 for f in "$be/.claude/skills/v5-be-conventions/SKILL.md" "$be/.claude/agents/v5-be-dev.md" "$be/.claude/agents/v5-be-reviewer.md" \
          "$fe/CLAUDE.md" "$fe/.claude/skills/equal-conventions/references/auto-mode.md" "$fe/.claude/agents/convention-reviewer.md" \
          "$fe/.claude/agents/api-contract-analyst.md" "$fe/.claude/skills/ui-logic/SKILL.md"; do
@@ -43,4 +59,30 @@ loc="$AGENTIC_DIR/.claude/settings.local.json"
 if [ -f "$loc" ] && grep -q "additionalDirectories" "$loc"; then ok "settings.local.json: additionalDirectories ada"
 else warn "settings.local.json tanpa additionalDirectories: agent/skill repo BE/FE tidak termuat by-name (fallback baca berkas)"; fi
 [ -d "$(dirname "$(to_unix_path "$FE_STAGING_DIR")")" ] || bad "induk FE_STAGING_DIR tidak ada"
+
+if [ $long = 1 ]; then
+  # Sleep/hibernate otomatis menghentikan long run di tengah jalan (mesin tanpa input berjam-jam).
+  # Hanya dicek dan dilaporkan; setelan daya tidak pernah diubah oleh script.
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      for s in HIBERNATEIDLE:hibernate-timeout-ac STANDBYIDLE:standby-timeout-ac; do
+        q="${s%%:*}"; fix="${s#*:}"
+        v="$(MSYS_NO_PATHCONV=1 powercfg /q SCHEME_CURRENT SUB_SLEEP "$q" 2>/dev/null | grep 'AC' | grep -o '0x[0-9a-fA-F]*' | head -1)"
+        if [ -n "$v" ] && [ $((v)) -gt 0 ]; then warn "Windows $q (AC) setelah $(( v / 60 )) menit: long run bisa terhenti -> powercfg /change $fix 0"
+        else ok "Windows $q (AC): mati"; fi
+      done ;;
+    Darwin)
+      v="$(pmset -g 2>/dev/null | awk '$1=="sleep"{print $2; exit}')"
+      if [ -n "$v" ] && [ "$v" != 0 ]; then warn "macOS sleep setelah $v menit: jalankan long run dengan 'caffeinate -i' atau set sleep 0 di Energy settings"
+      else ok "macOS sleep: mati"; fi ;;
+    Linux)
+      if command -v systemctl >/dev/null 2>&1 && systemctl is-enabled sleep.target >/dev/null 2>&1; then
+        warn "Linux: sleep.target aktif; pastikan mesin tidak suspend (mis. systemd-inhibit selama long run)"
+      else ok "Linux: sleep.target tidak aktif"; fi ;;
+  esac
+  for pair in "be:BE_DIR" "fe:FE_DIR"; do
+    IFS=: read -r n d <<< "$pair"; parks="$(git -C "$(to_unix_path "${!d}")" branch --list 'park/*' --format='%(refname:short)' | tr '\n' ' ')"
+    [ -n "$parks" ] && warn "$n: kode item yang diparkir: $parks" || true
+  done
+fi
 exit $fail

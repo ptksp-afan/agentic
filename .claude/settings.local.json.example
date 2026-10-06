@@ -3,6 +3,9 @@
     "additionalDirectories": [
       "D:/dev/ksp-erp-next",
       "D:/dev/ksp-react-v5"
+    ],
+    "allow": [
+      "mcp__8d097c62-21ec-40fb-8476-9c7c0c3b4421"
     ]
   }
 }

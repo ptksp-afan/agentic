@@ -70,3 +70,18 @@ Setelah branch v5 masuk ke multidb, BE punya dua skill konvensi: `v5-be-conventi
    keputusan multi-DB, RR khusus lintas DB), dengan baris "muat `v5-be-conventions` lebih dulu".
 2. Agent `v5-backend-dev` dan `multidb-*` memuat keduanya.
 Ini perubahan di branch multidb sendiri, bukan konflik merge; boleh ditunda sampai epic ED-944 selesai.
+
+## 5. Yang baru (tidak ada di pipeline multidb)
+
+| Bagian | Isi |
+|---|---|
+| Long run | skill `v5-epic`: BA semua item (paralel) + cek silang → Gate 1 gabungan → story runner per item tanpa gate → review gabungan; epic kosong + brief → rencana item dulu (`references/plan.md`), `references/long-run.md`, `scripts/park.sh` / `unpark.sh`, label Jira `ai-blocker` / `ai-review` / `ai-found`, kolom Blocked |
+| Bug | `v5-analyst` mode bug (spec pendek: reproduksi, akar masalah, perbaikan, AC regresi), status awal `BUG` |
+| Brief | agent `v5-brief` (teks + PDF/gambar/Office/export Claude Design/link artifact/lampiran Jira → digest `brief/README.md`), `scripts/brief-render.sh` (HTML desain → PNG desktop+mobile), `knowledge/design-sources.md` |
+| Bergiliran | BE → QA BE → FE → QA FE, satu agent berat sekali waktu (beban PC); BA epic paralel terbatas `BA_PARALLEL` |
+| BE RoadRunner & php-fpm | `BE_SERVER=rr|fpm`, `BE_RELOAD_CMD`, `scripts/be-reload.sh`; preflight mencocokkan mode dengan `.rr.env` dan `app/RoadRunner/`; profil menolak config yang di-cache |
+| Module berlisensi | `knowledge/license-features.md` (Archive ← Salesman Activity) |
+| Review BE | agent `v5-be-reviewer` |
+| Lintas OS | Windows (Git Bash), Linux, macOS: tanpa fitur bash 4/GNU, `.gitattributes` LF, nvm di-source di mac/linux, cek sleep per OS |
+| Script | `preflight.sh` (`--long-run`: sleep/hibernate per OS, branch park), `new-feature.sh` (baseline + hash), `changed.sh` (NEW / PRE / PRE+ / COMMITTED), `section.sh`, `status.sh`, `fe-build.sh` |
+| Biaya | TTL cache 1 jam (sesi utama + subagent), batas ukuran dokumen, satu fitur per sesi |

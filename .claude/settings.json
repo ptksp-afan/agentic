@@ -12,7 +12,13 @@
       "Bash(git branch *)",
       "Bash(git -C *)",
       "Bash(scripts/*)",
-      "Bash(bash scripts/*)"
+      "Bash(bash scripts/*)",
+      "Bash(nvm use *)",
+      "Bash(yarn test *)",
+      "Bash(yarn build*)",
+      "Bash(npx eslint *)",
+      "Bash(node *)",
+      "Bash(curl *)"
     ],
     "ask": [
       "Bash(git push)",

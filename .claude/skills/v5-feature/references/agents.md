@@ -4,6 +4,7 @@
 
 | Step | Agent | Lives in | Model | Why |
 |---|---|---|---|---|
+| Brief intake | `v5-brief` | this workspace | sonnet | reads PDFs/designs once; everyone else reads its digest |
 | BA | `v5-analyst` | this workspace | opus | everything downstream trusts the spec |
 | BE dev | `v5-be-dev` | BE repo | opus | transactional code, layering judgement |
 | FE dev (discuss/plan/slice/logic) | `general-purpose` + FE skills | - | inherit | one agent per batch: conventions loaded once |
@@ -39,7 +40,12 @@ After the repo header for `FE_DIR`:
 - Where auto-mode.md names a BE path or a build folder, use **this run's** values: BE code is in `BE_DIR`
   (`<path>`); build only with `<AGENTIC_DIR>/scripts/fe-build.sh build` (staging folder, never `build/`).
 - Batch id `<KEY>`; FE subtask keys `<list>`.
-- This call: `<"/ui-plan for modules X, Y, then /ui-slice task by task" | "/ui-logic task by task">`.
+- If the feature has a brief with designs: read `<AGENTIC_DIR>/knowledge/design-sources.md` and use
+  `<feature dir>/brief/README.md` + `brief/render/*.png` for screens, fields and flows only. Look and feel
+  follows EQUAL FE v5 (component catalog, module blueprint), never the design; record each
+  "Beda dari desain" in the task's `## Catatan`.
+- This call: `/ui-plan` for modules X, Y, then per task `/ui-slice` and `/ui-logic`. One heavy command at a
+  time (build, test suite): never start one while another runs.
 - Return the per-task report from auto-mode.md.
 
 ## API digest prompt (`api-contract-analyst`)
@@ -51,11 +57,13 @@ raw contract, so nothing is copied into `docs/api-contracts/`); in each digest's
 
 ## Reuse vs fresh
 
-- Fix rounds and `/ui-logic` after slicing go to the **same** agent via SendMessage while its last report
-  is < ~1 hour old (its prompt cache is still warm, and it already holds the conventions).
+- Fix rounds go to the **same** dev agent via SendMessage while its last report is < ~1 hour old (its
+  prompt cache is still warm, and it already holds the conventions).
 - Older than that, or the agent is gone: spawn fresh; it reads the files. Record ids + time in `run.md`.
-- QA rounds are always fresh agents (independence; smaller context). Round 2+ gets the previous `qa.md`
-  and is told to re-check failures first, then run the full regression scripts.
+- QA is two stages (`scope: be` after BE, `scope: fe` after FE), each a fresh agent (independence;
+  smaller context). Round 2+ gets the previous `qa-be.md`/`qa-fe.md` and re-checks failures first, then
+  runs the full regression scripts.
+- Never two dev/QA agents at the same time (machine load). Only BA analysts may overlap (`BA_PARALLEL`).
 
 ## Long commands inside agents
 
