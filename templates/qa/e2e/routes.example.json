@@ -1,0 +1,21 @@
+{
+  "_doc": "Salin ke features/<KEY>-<slug>/qa/e2e/routes.json lalu sesuaikan. Tiap route dibuka sekali per profil run (--profile), dicek tanpa console/page error, respons >= 400, request gagal. Hapus _doc dan route contoh.",
+  "feature": "ED-1234 contoh",
+  "routes": [
+    {
+      "name": "Daftar Customer",
+      "path": "/setups/customers/customers",
+      "waitFor": ".ant-table",
+      "ref": "AC-1"
+    },
+    {
+      "name": "Layar admin ditolak untuk user terbatas",
+      "path": "/setups/companies/company",
+      "profiles": ["user2"],
+      "expectRedirect": "/unathorized",
+      "forbidApi": "company/companies",
+      "ref": "AC-5"
+    }
+  ],
+  "allow": []
+}

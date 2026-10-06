@@ -1,0 +1,23 @@
+{
+  "env": {
+    "CLAUDE_CODE_PROMPT_CACHE_TTL": "1h",
+    "CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL": "1h"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git -C *)",
+      "Bash(scripts/*)",
+      "Bash(bash scripts/*)"
+    ],
+    "ask": [
+      "Bash(git push)",
+      "Bash(git push *)",
+      "Bash(git -C * push*)"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "site": "equal.atlassian.net",
+  "cloudId": "e8ff7787-2a74-4e64-8eed-21d71571168f",
+  "project": "ED",
+  "boardId": 1,
+  "assigneeAccountId": "70121:de93bc3e-2016-4296-aa2a-47a060ff9128",
+  "labels": ["v5"],
+  "storyIssueType": "Story",
+  "subtaskIssueType": "Subtask",
+  "sprintField": "customfield_10020",
+  "status": {
+    "todo": "To Do",
+    "inProgress": "In Progress",
+    "blocked": "Blocked",
+    "done": "Done"
+  },
+  "forbiddenTargetStatuses": ["In Testing", "QA PASSED", "BUG"],
+  "commitHashesInJira": false
+}

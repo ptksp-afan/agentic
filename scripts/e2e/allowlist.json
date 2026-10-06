@@ -1,0 +1,4 @@
+{
+  "_doc": "Allow-list GLOBAL: error pre-existing yang sudah diketahui dan terdokumentasi, berlaku untuk semua fitur. Format dan aturan: lib/allowlist.js (id, kind, match, reason, ref/tiket wajib). Allow-list khusus fitur ditaruh di <feature-dir>/qa/e2e/allowlist.json. Hapus entri begitu error-nya diperbaiki.",
+  "entries": []
+}

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "D:/dev/ksp-erp-next",
+      "D:/dev/ksp-react-v5"
+    ]
+  }
+}

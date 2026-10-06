@@ -1,0 +1,8 @@
+# per mesin / rahasia
+config/workspace.env
+config/secrets.env
+.claude/settings.local.json
+# keluaran run (log build, hasil runner, galeri e2e)
+work/
+# dependensi harness
+node_modules/
