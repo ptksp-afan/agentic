@@ -155,7 +155,7 @@ Workflow ini jalan di ketiganya. Yang dibutuhkan di setiap mesin:
 |---|---|---|---|
 | Shell untuk script | **Git Bash** (bukan PowerShell/cmd) | bash | bash 3.2 bawaan sudah cukup |
 | Git ≥ 2.23, curl, Node + nvm (FE), PHP 7.3 (BE) | nvm-windows; `PHP_BIN` = php-nts | nvm (`~/.nvm`) | nvm (`~/.nvm`) |
-| Chrome untuk e2e | Chrome terpasang | `google-chrome` / `/opt/google/chrome` | `/Applications/Google Chrome.app` |
+| Chrome untuk e2e | Chrome terpasang | `/opt/google/chrome` (server tanpa desktop: .deb resmi Google, amd64/arm64) | `/Applications/Google Chrome.app` |
 | Server BE | RoadRunner/php-fpm per checkout, port di `.rr.env` | sama | sama |
 
 - Semua path mesin ada di `config/workspace.env`. Di Windows boleh `D:/dev/...` (script mengubahnya ke
@@ -163,7 +163,8 @@ Workflow ini jalan di ketiganya. Yang dibutuhkan di setiap mesin:
 - `.gitattributes` memaksa LF, karena script dengan CRLF gagal di bash Linux/macOS.
 - Script tidak memakai fitur khusus GNU/bash 4 (`sed -i`, `date -r`, `mapfile`, `${x,,}`), dan sudah diuji
   di Git Bash Windows. Di Linux/macOS **belum dijalankan**: jalankan `scripts/preflight.sh` dan
-  `scripts/e2e/run.sh --doctor` sekali saat setup.
+  `scripts/e2e/run.sh --doctor` sekali saat setup. Lokasi Chrome lain: `CHROME_PATH` di `config/workspace.env`.
+- Script disimpan dengan mode executable di git, supaya `scripts/x.sh` bisa dipanggil langsung di Linux/macOS.
 - `knowledge/environment.md` berisi fakta mesin Windows developer; mesin lain cukup menyesuaikan config.
 
 ## Status

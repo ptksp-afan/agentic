@@ -3,7 +3,8 @@
 /**
  * Harness smoke browser FE v5 (workflow agentic). Cara pakai: README.md. Biasanya lewat `run.sh`, bukan langsung.
  *
- * - Browser: Chrome sistem (`channel: 'chrome'`), headless. Tidak ada unduhan browser Playwright.
+ * - Browser: Chrome sistem (`channel: 'chrome'`, atau `CHROME_PATH` dari workspace.env), headless. Tidak ada unduhan
+ *   browser Playwright.
  * - FE: build staging (FE_STAGING_DIR) dilayani lib/static-server.js di 127.0.0.1:<E2E_PORT, default 4100>.
  * - BE: API_URL. Profil: E2E_PROFILES (koma), didefinisikan config (lib/profiles.js).
  * - Test fitur ada di <E2E_FEATURE_DIR>/qa/e2e/*.spec.js, test generik di tests/ (smoke dari routes.json fitur,
@@ -25,6 +26,8 @@ const { defineConfig } = require('@playwright/test');
 
 const config = require('./lib/config');
 const { selectedProfiles } = require('./lib/profiles');
+
+const chromePath = config.get('CHROME_PATH');
 
 // Folder output ditetapkan sekali di proses utama lalu diwariskan lewat env, supaya semua worker menulis ke folder yang sama.
 if (!process.env.E2E_OUT_DIR) {
@@ -62,7 +65,7 @@ module.exports = defineConfig({
   globalSetup: require.resolve('./lib/global-setup.js'),
   use: {
     baseURL: config.appBase(),
-    channel: 'chrome',
+    ...(chromePath ? {} : { channel: 'chrome' }),
     headless: true,
     viewport: { width: 1440, height: 900 },
     timezoneId: 'Asia/Jakarta',
@@ -75,6 +78,7 @@ module.exports = defineConfig({
     navigationTimeout: 45000,
     // env sesi (token) dan kunci rahasia hanya untuk worker, tidak ikut diwariskan ke proses Chrome
     launchOptions: {
+      ...(chromePath ? { executablePath: chromePath } : {}),
       env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('E2E_SESSION_') && !/(PASS|SECRET|TOKEN)/i.test(key))),
     },
   },

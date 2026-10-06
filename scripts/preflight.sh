@@ -60,6 +60,21 @@ if [ -f "$loc" ] && grep -q "additionalDirectories" "$loc"; then ok "settings.lo
 else warn "settings.local.json tanpa additionalDirectories: agent/skill repo BE/FE tidak termuat by-name (fallback baca berkas)"; fi
 [ -d "$(dirname "$(to_unix_path "$FE_STAGING_DIR")")" ] || bad "induk FE_STAGING_DIR tidak ada"
 
+# Chrome untuk QA FE e2e dan render desain (Playwright channel 'chrome', atau CHROME_PATH). Daftar = lib/doctor.js.
+chrome=""
+if [ -n "${CHROME_PATH:-}" ]; then [ -f "$(to_unix_path "$CHROME_PATH")" ] && chrome="$CHROME_PATH"   # diisi = wajib benar
+else
+  for c in "${PROGRAMFILES:+$PROGRAMFILES/Google/Chrome/Application/chrome.exe}" \
+           "${LOCALAPPDATA:+$LOCALAPPDATA/Google/Chrome/Application/chrome.exe}" /usr/bin/google-chrome \
+           /usr/bin/google-chrome-stable /opt/google/chrome/chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; do
+    [ -n "$c" ] && [ -f "$(to_unix_path "$c")" ] && { chrome="$c"; break; }
+  done
+fi
+if [ -n "$chrome" ]; then ok "Chrome: $chrome"
+elif [ -n "${CHROME_PATH:-}" ]; then bad "CHROME_PATH tidak ada: $CHROME_PATH"
+elif [ $long = 1 ]; then bad "Chrome tidak ditemukan: QA FE e2e butuh Chrome (pasang, atau isi CHROME_PATH di config/workspace.env)"
+else warn "Chrome tidak ditemukan: QA FE e2e dan render desain akan gagal (pasang, atau isi CHROME_PATH)"; fi
+
 if [ $long = 1 ]; then
   # Sleep/hibernate otomatis menghentikan long run di tengah jalan (mesin tanpa input berjam-jam).
   # Hanya dicek dan dilaporkan; setelan daya tidak pernah diubah oleh script.

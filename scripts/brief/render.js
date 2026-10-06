@@ -20,7 +20,8 @@ const VIEWPORTS = [
     process.exit(2);
   }
   fs.mkdirSync(outDir, { recursive: true });
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const chromePath = process.env.CHROME_PATH; // dari workspace.env lewat brief-render.sh; kosong = channel 'chrome'
+  const browser = await chromium.launch(chromePath ? { executablePath: chromePath, headless: true } : { channel: 'chrome', headless: true });
   let failed = 0;
   try {
     for (const file of files) {
