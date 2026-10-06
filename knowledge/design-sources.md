@@ -47,6 +47,12 @@ Brief boleh gabungan teks singkat dan rujukan berkas/tautan, di `/v5-feature` ma
 ```
 Ditambah deskripsi, lampiran, dan tautan di Jira item itu sendiri.
 
+Brief **bukan** argumen shell satu baris. Semua teks sesudah perintah (atau sesudah `--brief`) sampai flag
+berikutnya adalah brief: boleh banyak baris (Shift+Enter) atau ditempel, tanda kutip opsional. Taruh
+`--brief` paling akhir supaya tidak ambigu. Brief panjang lebih enak ditulis di berkas, mis.
+`docs/briefs/Archive/Opname/BRIEF.md` di samping export desain, lalu cukup `--brief <path berkas atau
+folder itu>`. Folder = `BRIEF.md`/`README.md` di dalamnya sebagai teks brief, sisanya sebagai sumber.
+
 | Sumber | Cara dibaca (`v5-brief`) |
 |---|---|
 | Teks di perintah / deskripsi Jira | apa adanya; path dan URL di dalamnya diikuti |

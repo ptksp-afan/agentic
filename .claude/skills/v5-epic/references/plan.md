@@ -4,6 +4,9 @@ Used when the queue has no runnable items but a `--brief` is given, or with `--p
 brief requirements that no existing item covers). The output replaces the Jira queue for this run; the
 items become real Stories at Gate 1.
 
+0. Reuse: if `epics/<EPIC>-plan.md` and the brief digest exist from an earlier run (e.g. `--dry-run`) and
+   the brief sources are unchanged (same paths, same file sizes/times listed in the digest), show that plan
+   again instead of re-planning. Re-plan only when the brief changed or the developer asks.
 1. `v5-brief` for the epic → `epics/<EPIC>-brief/README.md` (screens, requirements, conflicts).
 2. `v5-analyst` in **epic-plan** mode → `epics/<EPIC>-plan.md`: proposed items with temporary ids
    `NEW-<EPIC>-01..` (epic key without the dash, e.g. `NEW-ED1022-01`), type, title, slug, scope,

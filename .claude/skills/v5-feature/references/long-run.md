@@ -6,7 +6,7 @@ applies, except what this file changes. You cannot ask the user: every point whe
 either has a rule below or becomes a **blocker**.
 
 **Precondition:** `spec.md` has `status: approved`. If not, change nothing and return
-`RESULT: skipped` ("spec belum disetujui di Gate 1"). Start at `run.md` `phase` (normally `dev`); on the
+`RESULT: skipped` ("spec belum disetujui di Gate 1"). Start at `run.md` `phase` (normally `be`; `fe` for FE-only items); on the
 first start move the item (Bug: from `BUG`) and its subtasks to In Progress, assigning it to
 `jira.assigneeAccountId` if unassigned.
 

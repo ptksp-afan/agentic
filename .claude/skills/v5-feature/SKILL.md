@@ -20,6 +20,9 @@ The item can be a Story, Task or Bug (Bug: `v5-analyst` bug mode, no subtasks). 
 
 `<brief>` = free text that may reference local files (PDF, images, Office, Claude Design exports as
 HTML/folder/zip) and links (claude.ai artifacts, web). Supported forms: `knowledge/design-sources.md`.
+It is not a shell argument: everything after the key (or after `new`) up to the next flag of this
+command (`--epic`, `--long-run`) is the brief - one line or many, quotes optional, pasted text included.
+A brief that is only a path to a `.md`/`.txt` file (or a folder holding one) means "the brief is this".
 
 You are the orchestrator, in the main session: the only one who asks the user, spawns agents and calls
 Jira. Everything heavy is delegated. **Pass paths between agents, never content.**

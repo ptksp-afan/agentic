@@ -22,6 +22,9 @@ rule that Claude Design visuals are **not** EQUAL v5 visuals.
 
 ## Steps
 
+0. If the brief text is only a path to a `.md`/`.txt` file, that file's content **is** the brief text
+   (quote it under *Brief asli*). If it is a folder, use its `BRIEF.md`/`README.md` (if any) as the
+   brief text and everything else in it as sources.
 1. **Find the sources** in the text, description and attachments: Windows paths (`D:\...`, `D:/...`), Unix
    paths, quoted paths with spaces, URLs, Jira keys. Number them `S1..`.
 2. **Copy locally** into `brief/src/` (never move or edit originals). Zip → extract to `brief/src/<name>/`.
@@ -44,9 +47,9 @@ has_design: true
 <the developer's text, verbatim>
 
 ## Sumber
-| # | Sumber | Jenis | Salinan | Status |
-|---|---|---|---|---|
-| S1 | D:\docs\transit.pdf | pdf, 14 hal | src/transit.pdf | dibaca (hal. 1-14) |
+| # | Sumber | Jenis | Ukuran / diubah | Salinan | Status |
+|---|---|---|---|---|---|
+| S1 | D:\docs\transit.pdf | pdf, 14 hal | 2.1 MB / 2026-10-05 14:02 | src/transit.pdf | dibaca (hal. 1-14) |
 
 ## Kebutuhan
 R-1. <requirement> [S1 hal.4]

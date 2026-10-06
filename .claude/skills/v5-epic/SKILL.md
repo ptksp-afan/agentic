@@ -15,8 +15,13 @@ user-invocable: true
 /v5-epic status ED-1200                                     the epic log; no work
 ```
 
+`--brief` is not a shell argument: everything after it up to the next flag of this command (`--plan`,
+`--max`, `--only`, `--dry-run`) is the brief - one line or many, quotes optional, pasted text included.
+A brief that is only a path to a `.md`/`.txt` file (or a folder holding one plus design exports) means
+"the brief is this file/folder". Writing `--brief` last avoids any ambiguity.
+
 You are the **epic loop** in the main session. You never analyse or build an item yourself. State lives
-in `epics/<EPIC>.md` (format at the end); keep it current. Epic phases: `ba → gate1 → run → done`.
+in `epics/<EPIC>.md` (format at the end); keep it current. Epic phases: `plan → ba → gate1 → run → done` (`plan` only for an empty epic or `--plan`).
 On every start: `scripts/preflight.sh --long-run`, read the epic log if it exists, resume at its `phase`.
 
 ## 0 - Queue (developer present)
@@ -24,7 +29,8 @@ On every start: `scripts/preflight.sh --long-run`, read the epic log if it exist
 2. Load the Jira tools in one ToolSearch (as in `v5-feature`).
 3. Build the queue (`references/queue.md`). Each item gets an action: `ba` (no approved spec yet),
    `run` (spec approved), `resume`, `unblock`, or `skip` + reason. **Empty epic + `--brief`, or `--plan`:**
-   plan the items from the brief first (`references/plan.md`); the plan is the queue.
+   plan the items from the brief first (`references/plan.md`); the plan is the queue. Empty epic without
+   a brief → stop and ask for one (nothing to plan from).
 4. Show it; `--dry-run` stops here. Ask once: **Mulai BA** / **Ubah isi** / **Batal**.
 
 ## 1 - BA for every `ba` item (developer may leave; Gate 1 waits)
@@ -57,7 +63,7 @@ analysts' reports. Then:
    - Tunda → excluded from this run; epic log `ditunda (Gate 1)`; Jira untouched.
 3. For each approved item: answers into its spec, `status: approved`, Jira sync per
    `v5-feature/references/jira.md` § Gate 1 **without** moving it to In Progress (that happens when its
-   runner starts). Order the run by Jira rank, moved only where `depends_on` requires.
+   runner starts), and its `run.md` `phase: be` (`fe` when it has no BE part). Order the run by Jira rank, moved only where `depends_on` requires.
 4. Epic log `phase: run`. Tell the developer the run starts now and needs nobody until the review.
 
 ## 3 - Long run (unattended), one item at a time
@@ -69,7 +75,7 @@ Shared working trees and BE server: never two items in parallel. For each approv
    ```
    You are the story runner for <KEY> (<type>) of epic <EPIC>, long-run mode. Invoke the Skill
    `v5-feature` with args `<KEY> --long-run --epic <EPIC>` and follow it, including
-   references/long-run.md, until this one item ends. Its spec is approved; start at phase dev.
+   references/long-run.md, until this one item ends. Its spec is approved; start at its run.md phase (be, or fe for FE-only).
    Items blocked earlier in this run: <KEY - scope, one line each, or "none">.
    Return exactly the block described in long-run.md § Return.
    ```
@@ -90,7 +96,7 @@ to the epic later are picked up by the next `/v5-epic <EPIC>` (new items get BA 
 4. AskUserQuestion, up to 4 items per call: **Setujui** / **Minta perbaikan** (notes) / **Tunda**.
    - Setujui → Jira § Done (subtasks, item, hand-off comment), remove the review label, `run.md`
      `phase: done`, delete leftover `park/<KEY>` branches.
-   - Minta perbaikan → notes into `run.md`, `phase: dev`, remove the label, comment; the next run
+   - Minta perbaikan → notes into `run.md`, `phase: be` or `fe` (where the fix belongs), remove the label, comment; the next run
      resumes it with a fix commit on top.
 
 ## Epic log - `epics/<EPIC>.md`
@@ -99,7 +105,7 @@ to the epic later are picked up by the next `/v5-epic <EPIC>` (new items get BA 
 ---
 epic: ED-1200
 title: <epic summary>
-phase: ba | gate1 | run | done
+phase: plan | ba | gate1 | run | done
 status: running | stopped | done
 started: 2026-10-06 20:00
 current: ED-1234

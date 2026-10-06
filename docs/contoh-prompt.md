@@ -60,6 +60,19 @@ Aturan yang tidak terlihat di desain: <data apa yang diarsipkan dan kapan, siapa
 mengembalikan, masa simpan, permission>.
 ```
 
+Teks ini boleh diketik banyak baris langsung di perintah (Shift+Enter). Cara yang lebih enak: simpan
+sebagai `/var/www/opname-archive/ksp-react/docs/briefs/Archive/Opname/BRIEF.md` di samping export
+desain, lalu cukup rujuk path-nya (contoh di bawah). Dengan begitu, `--dry-run` dan run sesungguhnya
+memakai brief yang sama tanpa mengetik ulang.
+
+Bentuk pendek dengan berkas brief:
+```
+/v5-feature new /var/www/opname-archive/ksp-react/docs/briefs/Archive/Opname/BRIEF.md --epic ED-1022
+/v5-epic ED-1022 --dry-run --brief /var/www/opname-archive/ksp-react/docs/briefs/Archive/Opname/
+```
+Kalau yang dirujuk folder, `BRIEF.md` di dalamnya dibaca sebagai teks brief, dan sisanya (export
+Claude Design) sebagai sumber.
+
 ## Reguler run (satu Story)
 
 ```
