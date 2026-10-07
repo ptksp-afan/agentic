@@ -1,0 +1,11 @@
+{
+  "fixtures": [
+    {
+      "name": "opname-data",
+      "reason": "AC-3/4/7/8/13/14/17/22 butuh folder uji berawalan 0QA26- (dengan/tanpa subfolder, sudah diopname hari ini) dan user QA berlokasi Semarang saja; dibuat langsung di DB dan dibuang persis di teardown (7 tabel archive*, role_permissions, employee_locations diverifikasi = baseline: jumlah baris + CHECKSUM). Mode norole (env QA26_MODE) mencabut Opname Document dari role user QA untuk AC-3.",
+      "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" up",
+      "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" down",
+      "timeout_s": 240
+    }
+  ]
+}
