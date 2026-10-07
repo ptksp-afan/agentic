@@ -1,0 +1,7 @@
+{
+  "feature": "ED-1028",
+  "routes": [
+    { "name": "Archive A (QA_USER) - list terbuka tanpa error (halaman induk drawer Opname History)", "path": "/archives", "profiles": ["default"], "waitFor": ".archive-page .ant-table", "ref": "AC-24" },
+    { "name": "Archive B (QA_USER2) - list terbuka tanpa error", "path": "/archives", "profiles": ["user2"], "waitFor": ".archive-page .ant-table", "ref": "AC-21" }
+  ]
+}
