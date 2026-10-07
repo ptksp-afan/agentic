@@ -1,0 +1,11 @@
+{
+  "fixtures": [
+    {
+      "name": "verification-data",
+      "reason": "AC-13..19 butuh folder uji berawalan 0QA27- dengan angka verified/total yang diketahui tangan (termasuk dokumen -1/0, Handed Over, Taken, folder tanpa View, folder kosong, dokumen root) dan 4 sesi opname terkonfirmasi + 1 draft; dibuat langsung di DB dan dibuang persis di teardown (7 tabel archive* + column_display_settings diverifikasi = baseline: jumlah baris + CHECKSUM). AC-14 menyimpan display setting (global per modul): barisnya di-snapshot lalu dipulihkan persis.",
+      "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" up",
+      "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" down",
+      "timeout_s": 240
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "feature": "ED-1027",
+  "routes": [
+    { "name": "Archive A (QA_USER) - list + kolom Document Verified + ringkasan terbuka tanpa error", "path": "/archives", "profiles": ["default"], "waitFor": ".archive-page .ant-table", "ref": "AC-13" },
+    { "name": "Archive B (QA_USER2) - list + kolom Document Verified + ringkasan terbuka tanpa error", "path": "/archives", "profiles": ["user2"], "waitFor": ".archive-page .ant-table", "ref": "AC-13" }
+  ]
+}
