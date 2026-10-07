@@ -1,0 +1,7 @@
+{
+  "feature": "ED-1025",
+  "routes": [
+    { "name": "Archive A (QA_USER) - layar terbuka tanpa error", "path": "/archives", "profiles": ["default"], "waitFor": ".archive-page .ant-table", "ref": "AC-3" },
+    { "name": "Archive B (QA_USER2) - layar terbuka tanpa error", "path": "/archives", "profiles": ["user2"], "waitFor": ".archive-page .ant-table", "ref": "AC-3, AC-18-21" }
+  ]
+}
