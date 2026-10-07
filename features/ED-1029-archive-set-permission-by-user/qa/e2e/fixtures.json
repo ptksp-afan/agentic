@@ -1,0 +1,11 @@
+{
+  "fixtures": [
+    {
+      "name": "user-permission-data",
+      "reason": "AC-1..3 dan AC-14..19 butuh folder uji berawalan 0QA29- (P On dengan C1 On/C2 Off, Q On tanpa Update untuk A, R Off dengan R1 On, L di luar lokasi A), hak A dan hak awal user target B, serta dua keadaan user: A (QA_USER) dibatasi ke lokasi MGL saja (supaya L tidak masuk scope-nya) dan E (QA_USER2) sementara berole 18 tanpa Update Folder (AC-1/AC-3). Semua dibuat langsung di DB dan dipulihkan PERSIS di teardown: folder dibuang, user_roles/employees/employee_locations A dan E baris persis, 4 tabel archive* count + CHECKSUM = baseline (jurnal qa/e2e/.fixture-journal.json).",
+      "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" up",
+      "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" down",
+      "timeout_s": 240
+    }
+  ]
+}

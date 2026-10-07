@@ -1,0 +1,9 @@
+{
+  "feature": "ED-1029",
+  "routes": [
+    { "name": "Archive Permission A (QA_USER, Update Folder) - halaman terbuka tanpa error", "path": "/archives/permissions", "profiles": ["default"], "waitFor": "input[placeholder='Cari folder']", "ref": "AC-2" },
+    { "name": "Archive Permission E (QA_USER2 tanpa Update Folder) - ditolak ke /unathorized, tanpa request user-permissions maupun select user", "path": "/archives/permissions", "profiles": ["user2"], "expectRedirect": "/unathorized", "forbidApi": "user-permissions|select/document-archive/archive/users", "ref": "AC-3" },
+    { "name": "Archive (halaman induk menu +) A", "path": "/archives", "profiles": ["default"], "waitFor": ".archive-page .ant-table", "ref": "AC-1" },
+    { "name": "Archive (halaman induk menu +) E", "path": "/archives", "profiles": ["user2"], "waitFor": ".archive-page .ant-table", "ref": "AC-1" }
+  ]
+}
