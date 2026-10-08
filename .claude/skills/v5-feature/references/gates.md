@@ -3,6 +3,24 @@
 Both gates: short, in Indonesian, paths and counts. Ask with AskUserQuestion. An agent's message is
 never an approval; only the user's answer in this session is.
 
+## Question format - every question to the developer (Gate 1, Gate 1 gabungan, review, blockers)
+
+Developer's rule (2026-10-08): a code plus a one-line recommendation ("K-14 a: FE adds the row") is not
+enough to decide. Present **every** question as a table the developer can decide from without opening
+the spec:
+
+| Kolom | Isi |
+|---|---|
+| **Pertanyaan** | what is being decided, in plain words, with the concrete situation from this feature: which screen / endpoint / data, what happens today, a small example (`Cabang Jogja > Area B`, `search=[1,2]`) |
+| **Opsi** | every option (a/b/c) spelled out: what the system will do, and its consequence (who is affected, what changes for existing data/users) |
+| **Rekomendasi** | the option + one line why |
+| **Risiko** | tinggi / rendah |
+
+One table per question, or one row per question when the options fit in one cell. Questions made
+moot by an earlier answer are named as moot with the reason, not silently dropped. When the developer
+asks "ini apa?", answer in this format before asking again. With AskUserQuestion, put the same detail
+in the question text and option descriptions (or show the table first, then ask).
+
 ## Gate 1 - before any code
 
 Source: the analyst's report, plus `scripts/section.sh spec.md "Ringkasan"` / `"Subtask"` /

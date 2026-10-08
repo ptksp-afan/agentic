@@ -54,7 +54,9 @@ On every start: `scripts/preflight.sh --long-run`, read the epic log if it exist
 ## 2 - Gate 1, combined (developer present)
 Present per `v5-feature/references/gates.md` § Gate 1 gabungan, from `epics/<EPIC>-gate1.md` and the
 analysts' reports. Then:
-1. **Decisions** (every *Keputusan* of every item): AskUserQuestion **Terima semua rekomendasi** /
+1. **Decisions** (every *Keputusan* of every item), each shown in the table format of
+   `v5-feature/references/gates.md` § Question format (question + situation, options + consequence,
+   recommendation + why, risk) - never only codes: AskUserQuestion **Terima semua rekomendasi** /
    **Jawab satu per satu** (batches of 4 questions, options a/b/c with the recommendation first);
    exceptions can be typed via "Other" as `ED-1234 K-2: b`.
 2. **Items**: **Setujui semua** / **Pilih per item** (batches of 4: Setujui / Revisi / Tunda).

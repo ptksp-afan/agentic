@@ -75,8 +75,12 @@ Sections, in this order:
    `manual (Gate 2)` (visual judgement only).
 7. **Subtask** - table: title · layer · ACs · module(s). Titles `[BE] …`, `[FE] <Module> - …`,
    `[QA] Skenario …`. One per v5 module or per independent BE capability, not per field; usually 4-10.
-8. **Keputusan untuk developer** - numbered `K-1..`, each with options a/b/..., your recommendation and
-   `risiko: rendah|tinggi` (rendah = easily changed later, no data/money/permission impact): anything the
+8. **Keputusan untuk developer** - numbered `K-1..`, each with: the question in plain words plus the
+   concrete situation (screen/endpoint/data, what happens today, a small example), options a/b/... each
+   spelled out with its consequence, your recommendation + one-line why, and
+   `risiko: rendah|tinggi` (rendah = easily changed later, no data/money/permission impact). Write it so
+   the orchestrator can show it as a table (`references/gates.md` § Question format) and the developer
+   can decide without reading the rest of the spec. Ask about: anything the
    sources do not settle, every place where v3 looks like a bug ("port as-is or fix?"), every trade-off
    you would otherwise decide silently. Not a question: anything `knowledge/decisions.md`, the
    conventions or the blueprint module already settle - cite them instead. Ask everything now: once Gate 1
