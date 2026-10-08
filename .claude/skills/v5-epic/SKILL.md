@@ -59,6 +59,8 @@ analysts' reports. Then:
    recommendation + why, risk) - never only codes: AskUserQuestion **Terima semua rekomendasi** /
    **Jawab satu per satu** (batches of 4 questions, options a/b/c with the recommendation first);
    exceptions can be typed via "Other" as `ED-1234 K-2: b`.
+   Always include the **Data uji & lingkungan** questions (`gates.md` § Gate 1 gabungan item 6): the
+   developer leaves during the run, so nothing that could stop it midway may be left for later.
 2. **Items**: **Setujui semua** / **Pilih per item** (batches of 4: Setujui / Revisi / Tunda).
    - Revisi → notes to that analyst (SendMessage, or fresh), re-run epic-check if scope changed,
      present only the revised items again.

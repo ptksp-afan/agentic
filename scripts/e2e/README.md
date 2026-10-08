@@ -91,8 +91,10 @@ test('[default] ED-1234 ...', async ({ app, page, monitor, session }) => { ... }
 ```
 
 `setup` jalan sebelum sesi browser dibuka, `teardown` sesudah log-out (urutan terbalik); lewat `bash -c` dari `agentic/`
-(`cwd`, `timeout_s` opsional), env = semua kunci config + `FEATURE_DIR` + `AGENTIC_DIR`. Setup gagal = fixture yang naik
-dibuang lagi dan run berhenti; teardown gagal = run gagal. `E2E_FIXTURES=0` melewati semuanya.
+(`cwd`, `timeout_s` opsional), env = semua kunci config + `FEATURE_DIR` + `AGENTIC_DIR`. Setup gagal (prasyarat atau apa
+pun) = teardown fixture itu **tidak** dijalankan, fixture sebelumnya yang lulus dibuang lagi, run berhenti; teardown gagal =
+run gagal. Teardown hanya membuang/memulihkan baris yang dicatat setup-nya (jurnal/prefiks), tidak pernah seluruh tabel.
+`E2E_FIXTURES=0` melewati semuanya.
 
 ### Allow-list
 

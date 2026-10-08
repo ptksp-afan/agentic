@@ -15,9 +15,10 @@
  *   } ] }
  *
  * Perintah dijalankan lewat `bash -c` (E2E_SHELL mengganti) dengan env: semua kunci config (PHP_BIN, BE_DIR, ...),
- * AGENTIC_DIR, FEATURE_DIR, E2E_PROFILES. Exit != 0 = gagal. Setup gagal -> fixture yang sudah naik dibuang lagi,
- * run berhenti. Teardown gagal dicatat keras dan menggagalkan run (data sisa harus dibereskan). Keluaran disamarkan.
- * Mati total dengan E2E_FIXTURES=0.
+ * AGENTIC_DIR, FEATURE_DIR, E2E_PROFILES. Exit != 0 = gagal. Setup gagal (prasyarat atau apa pun) -> teardown fixture
+ * ITU TIDAK PERNAH dijalankan (teardown hanya untuk setup yang lulus: teardown pada setup gagal pernah menghapus data
+ * developer), fixture sebelumnya yang sudah lulus dibuang lagi, run berhenti. Teardown gagal dicatat keras dan
+ * menggagalkan run (data sisa harus dibereskan). Keluaran disamarkan. Mati total dengan E2E_FIXTURES=0.
  */
 
 const fs = require('fs');
@@ -65,19 +66,20 @@ function run(fx, command) {
 }
 
 /**
- * Jalankan setup. Mengembalikan daftar fixture yang SUDAH dijalankan (untuk down()). Bila satu gagal, yang sudah
- * naik (termasuk yang gagal) dibuang lagi lalu melempar.
+ * Jalankan setup. Mengembalikan daftar fixture yang setup-nya LULUS (hanya itu yang boleh di-down()). Bila satu gagal,
+ * teardown-nya TIDAK dijalankan; fixture sebelumnya yang sudah lulus dibuang lagi, lalu melempar (run berhenti).
  */
 function up(profiles) {
   const applied = [];
   for (const fx of selected(profiles)) {
     const r = run(fx, fx.setup);
     log(`fixture ${fx.name} setup: ${r.ok ? 'OK' : `GAGAL exit ${r.status}`} ${r.line}`);
-    applied.push(fx);
     if (!r.ok) {
+      log(`fixture ${fx.name}: teardown TIDAK dijalankan karena setup-nya gagal; periksa manual sisa data fixture ini bila setup sempat menulis`);
       down(applied);
-      throw new Error(`fixture ${fx.name} gagal (exit ${r.status}):\n${r.out.slice(0, 1500)}`);
+      throw new Error(`fixture ${fx.name} gagal (exit ${r.status}); teardown-nya tidak dijalankan:\n${r.out.slice(0, 1500)}`);
     }
+    applied.push(fx);
   }
   return applied;
 }

@@ -4,11 +4,18 @@
  *
  *   "$PHP_BIN" fixture.php up        buat folder/dokumen uji berawalan "0QA26-", sesi opname terkonfirmasi untuk BETA,
  *                                    atur user QA (lokasi Semarang saja; mode norole: cabut Opname Document dari rolenya)
- *   "$PHP_BIN" fixture.php down      buang SEMUA data uji + baris archive_opname*, pulihkan user/role, lalu verifikasi
- *                                    jumlah baris + CHECKSUM 7 tabel = baseline (exit 1 bila beda)
+ *   "$PHP_BIN" fixture.php down      buang HANYA data milik fixture (lihat "Jurnal"), pulihkan user/role, lalu pastikan tidak ada
+ *                                    sisa milik fixture + user/role = snapshot (exit 1 bila tidak); count + CHECKSUM 7 tabel vs
+ *                                    baseline hanya INFO (DB bersama)
  *   "$PHP_BIN" fixture.php ids       cetak peta nama -> id_archive (JSON, tanpa rahasia)
- *   "$PHP_BIN" fixture.php inspect   cetak keadaan DB: is_verified per dokumen uji + sesi opname (JSON)
- *   "$PHP_BIN" fixture.php backdate  mundurkan created_at draft terbaru (status 1) satu hari (uji ARCHIVE415)
+ *   "$PHP_BIN" fixture.php inspect   cetak keadaan DB: is_verified per dokumen uji + sesi opname milik fixture (JSON)
+ *   "$PHP_BIN" fixture.php backdate  mundurkan created_at draft milik fixture terbaru (status 1) satu hari (uji ARCHIVE415)
+ *
+ * Jurnal (.fixture-journal.json, ditulis up SEBELUM baris pertama): id sesi opname yang sudah ada sebelum up, snapshot kolom
+ * verifikasi archives yang tak-bawaan, id archive dan id sesi yang disisipkan fixture, snapshot user/role QA. Milik fixture =
+ * archives berawalan PREFIX / tercatat di jurnal; sesi yang disisipkan fixture, atau dibuat lewat aplikasi selama run pada
+ * folder fixture atau di root oleh QA_USER/QA_USER2. Kolom verifikasi archives lain yang disentuh sesi itu dikembalikan ke
+ * nilai jurnal. Data developer di tabel yang sama tidak pernah dihapus/direset; down tanpa jurnal tidak melakukan apa pun.
  *
  * Mode: env QA26_MODE = main (default) | norole. norole = baris role_permissions (role user QA, permission 1133) dicabut
  * sebelum login e2e dan dikembalikan persis (id baris sama) di down.
@@ -37,6 +44,8 @@ const PREFIX = '0QA26-';
 const ARCH_TABLES = ['archives', 'archive_documents', 'archive_locations', 'archive_permissions'];
 const OP_TABLES = ['archive_opnames', 'archive_opname_folders', 'archive_opname_documents'];
 const PERMISSION_ID = 1133;
+const JOURNAL_V = 2;
+const VERIF_COLS = ['is_verified', 'verified_at', 'verified_by', 'id_archive_opname'];
 
 function say($line)
 {
@@ -113,29 +122,176 @@ function userRestore($c, array $snap)
     }
 }
 
-/** Buang data uji archive + semua baris opname; kolom verifikasi baris archive yang tersentuh sesi dikembalikan ke default. */
-function purge($c)
+// ------------------------------------------------------------------ jurnal + pembersihan terbatas pada data milik fixture
+
+function journalRead($file)
 {
-    $sessions = $c->table('archive_opnames')->pluck('id_archive_opname')->all();
+    return is_file($file) ? json_decode(file_get_contents($file), true) : null;
+}
+
+function journalWrite($file, array $j)
+{
+    if (file_put_contents($file, json_encode($j)) === false) {
+        fail('jurnal tidak bisa ditulis: ' . basename($file));
+    }
+}
+
+/** Catat id ke jurnal ($key) SEBELUM barisnya ditulis ke DB, supaya run yang mati di tengah tetap bisa dibereskan. */
+function journalAdd($file, $key, array $values)
+{
+    $j = journalRead($file);
+    $j[$key] = array_values(array_unique(array_merge($j[$key] ?? [], $values)));
+    journalWrite($file, $j);
+}
+
+/** User login spec: sesi root yang mereka buat lewat aplikasi selama run = milik fixture. */
+function qaUsernames()
+{
+    return array_values(array_filter([Config::get('QA_USER'), Config::get('QA_USER2')]));
+}
+
+/** archives berawalan PREFIX (biner: peka huruf). */
+function prefixArchiveIds($c)
+{
+    return $c->table('archives')->whereRaw('`name` LIKE BINARY ?', [PREFIX . '%'])->pluck('id_archive')->all();
+}
+
+/** archives milik fixture = tercatat di jurnal + berawalan PREFIX. */
+function fixtureArchiveIds($c, array $j)
+{
+    return array_values(array_unique(array_merge($j['archives'] ?? [], prefixArchiveIds($c))));
+}
+
+/**
+ * Sesi opname milik fixture (keadaan DB sekarang): disisipkan fixture (jurnal 'sessions'), atau belum ada saat up (bukan
+ * 'pre_sessions') dan dibuat pada folder fixture atau di root oleh user QA. Sesi lain (data developer) tidak pernah ikut.
+ */
+function fixtureSessionIds($c, array $j, array $archiveIds)
+{
+    $mine = $j['sessions'] ?? [];
+    $users = $j['qa_users'] ?? [];
+    $rows = $c->table('archive_opnames')->where(function ($q) use ($mine, $archiveIds, $users) {
+        $q->whereRaw('1 = 0');
+        if ($mine) {
+            $q->orWhereIn('id_archive_opname', $mine);
+        }
+        if ($archiveIds) {
+            $q->orWhereIn('id_archive', $archiveIds);
+        }
+        if ($users) {
+            $q->orWhere(function ($q) use ($users) {
+                $q->whereNull('id_archive')->whereIn('created_by', $users);
+            });
+        }
+    })->pluck('id_archive_opname')->all();
+    $pre = array_flip($j['pre_sessions'] ?? []);
+    $own = array_flip($mine);
+
+    return array_values(array_filter($rows, function ($id) use ($pre, $own) {
+        return isset($own[$id]) || !isset($pre[$id]);
+    }));
+}
+
+/** Snapshot kolom verifikasi archives yang tidak bernilai bawaan, diambil sebelum fixture menulis apa pun. */
+function verificationSnapshot($c)
+{
+    $out = [];
+    $rows = $c->table('archives')->where(function ($q) {
+        $q->where('is_verified', '!=', 0)->orWhereNull('is_verified')->orWhereNotNull('verified_at')
+            ->orWhereNotNull('verified_by')->orWhereNotNull('id_archive_opname');
+    })->get(array_merge(['id_archive'], VERIF_COLS));
+    foreach ($rows as $r) {
+        $out[$r->id_archive] = [$r->is_verified, $r->verified_at, $r->verified_by, $r->id_archive_opname];
+    }
+
+    return $out;
+}
+
+/**
+ * archives BUKAN milik fixture yang terakhir disentuh sesi fixture (id_archive_opname) dikembalikan ke nilai sebelum up
+ * (jurnal 'pre_verif'; tidak tercatat = bernilai bawaan saat up). Baris milik fixture dilewati (dibuang pemanggil).
+ */
+function restoreVerification($c, array $j, array $sessions, array $archiveIds)
+{
+    $own = array_flip($archiveIds);
+    $pre = $j['pre_verif'] ?? [];
+    $n = 0;
     foreach (array_chunk($sessions, 200) as $chunk) {
-        $c->table('archives')->whereIn('id_archive_opname', $chunk)->update([
-            'is_verified' => 0, 'verified_at' => null, 'verified_by' => null, 'id_archive_opname' => null,
-        ]);
-    }
-    foreach (OP_TABLES as $t) {
-        $c->table($t)->delete();
+        foreach ($c->table('archives')->whereIn('id_archive_opname', $chunk)->pluck('id_archive')->all() as $id) {
+            if (isset($own[$id])) {
+                continue;
+            }
+            $c->table('archives')->where('id_archive', $id)->whereIn('id_archive_opname', $chunk)
+                ->update(array_combine(VERIF_COLS, $pre[$id] ?? [0, null, null, null]));
+            $n++;
+        }
     }
 
-    $ids = $c->table('archives')->where('name', 'like', PREFIX . '%')->pluck('id_archive')->all();
-    foreach (array_chunk($ids, 500) as $chunk) {
-        $c->table('archive_permissions')->whereIn('id_archive', $chunk)->delete();
-        $c->table('archive_documents')->whereIn('id_archive', $chunk)->delete();
-        $c->table('archive_locations')->whereIn('id_archive', $chunk)->delete();
-        $c->table('archives')->whereIn('id_archive', $chunk)->delete();
-    }
-    $c->table('archive_documents')->where('transaction_no', 'like', PREFIX . '%')->delete();
+    return $n;
+}
 
-    return count($ids);
+function deleteSessions($c, array $sessions)
+{
+    foreach (array_chunk($sessions, 200) as $chunk) {
+        foreach (['archive_opname_documents', 'archive_opname_folders', 'archive_opnames'] as $t) {
+            $c->table($t)->whereIn('id_archive_opname', $chunk)->delete();
+        }
+    }
+}
+
+/**
+ * Buang HANYA data milik fixture: sesi opname fixture + baris folder/dokumennya (kolom verifikasi archives lain yang disentuh
+ * sesi itu dipulihkan dari jurnal), lalu archives fixture + baris anaknya. Tidak pernah seluruh tabel.
+ */
+function purge($c, array $j)
+{
+    $archiveIds = fixtureArchiveIds($c, $j);
+    $sessions = fixtureSessionIds($c, $j, $archiveIds);
+    $out = ['archives' => 0, 'sessions' => $sessions, 'restored' => 0];
+    $c->transaction(function () use ($c, $j, $archiveIds, $sessions, &$out) {
+        $out['restored'] = restoreVerification($c, $j, $sessions, $archiveIds);
+        deleteSessions($c, $sessions);
+        foreach (array_chunk($archiveIds, 500) as $chunk) {
+            $c->table('archive_permissions')->whereIn('id_archive', $chunk)->delete();
+            $c->table('archive_documents')->whereIn('id_archive', $chunk)->delete();
+            $c->table('archive_locations')->whereIn('id_archive', $chunk)->delete();
+            $out['archives'] += $c->table('archives')->whereIn('id_archive', $chunk)->delete();
+        }
+        $c->table('archive_documents')->whereRaw('`transaction_no` LIKE BINARY ?', [PREFIX . '%'])->delete();
+    });
+
+    return $out;
+}
+
+/** Sisa data milik fixture sesudah purge (kosong = bersih). $sessions = sesi fixture yang dibuang purge. */
+function leftovers($c, array $j, array $sessions)
+{
+    $lines = [];
+    $n = $c->table('archives')->where(function ($q) use ($j) {
+        $q->whereRaw('`name` LIKE BINARY ?', [PREFIX . '%']);
+        if (!empty($j['archives'])) {
+            $q->orWhereIn('id_archive', $j['archives']);
+        }
+    })->count();
+    if ($n) {
+        $lines[] = "SISA $n baris archives milik fixture";
+    }
+    $all = array_values(array_unique(array_merge($sessions, $j['sessions'] ?? [])));
+    foreach (array_merge(OP_TABLES, ['archives']) as $t) {
+        $m = 0;
+        foreach (array_chunk($all, 200) as $chunk) {
+            $m += $c->table($t)->whereIn('id_archive_opname', $chunk)->count();
+        }
+        if ($m) {
+            $lines[] = "SISA $m baris $t menunjuk sesi opname fixture";
+        }
+    }
+    $left = fixtureSessionIds($c, $j, $j['archives'] ?? []);
+    if ($left) {
+        $lines[] = 'SISA ' . count($left) . ' sesi opname milik fixture';
+    }
+
+    return $lines;
 }
 
 function compare($before, $after, &$lines)
@@ -152,34 +308,36 @@ function compare($before, $after, &$lines)
 }
 
 if ($cmd === 'up') {
-    if (is_file($journal)) { // run sebelumnya mati: pulihkan dulu
-        $old = json_decode(file_get_contents($journal), true);
-        purge($c);
+    $old = journalRead($journal);
+    if ($old !== null) { // run sebelumnya mati: bereskan dulu, hanya data yang tercatat jurnal itu
+        if (($old['v'] ?? 0) !== JOURNAL_V) {
+            fail('jurnal format lama ' . basename($journal) . ': tidak dibereskan otomatis; periksa data ' . PREFIX . ' dan user QA manual lalu hapus jurnalnya');
+        }
+        $r = purge($c, $old);
         userRestore($c, $old['user']);
-        $lines = [];
-        if (!compare($old['state'], state($c), $lines)) {
-            fail('sisa jurnal run lama tidak bisa dipulihkan ke baseline: ' . implode('; ', $lines));
+        $lines = leftovers($c, $old, $r['sessions']);
+        if (userSnapshot($c) !== $old['user']) {
+            $lines[] = 'BEDA user/role QA';
+        }
+        if ($lines) {
+            fail('sisa run lama tidak bisa dibereskan: ' . implode('; ', $lines));
         }
         @unlink($journal);
+        say('sisa run lama dibereskan: ' . $r['archives'] . ' archives, ' . count($r['sessions']) . ' sesi fixture');
     }
-    if ($c->table('archives')->where('name', 'like', PREFIX . '%')->count() > 0) {
-        purge($c);
+    $orphans = count(prefixArchiveIds($c));
+    if ($orphans > 0) {
+        fail("$orphans baris archives berawalan " . PREFIX . ' tanpa jurnal: tidak dihapus otomatis; bereskan manual');
     }
-    foreach (OP_TABLES as $t) {
-        if ($c->table($t)->count() > 0) {
-            fail("tabel $t tidak kosong sebelum fixture (prasyarat: tabel opname kosong)");
-        }
-    }
-    $nondefault = $c->table('archives')->where(function ($q) {
-        $q->where('is_verified', '!=', 0)->orWhereNotNull('verified_at')->orWhereNotNull('verified_by')->orWhereNotNull('id_archive_opname');
-    })->count();
-    if ($nondefault > 0) {
-        fail("archives punya $nondefault baris kolom verifikasi tak-default sebelum fixture");
-    }
+    // tidak ada prasyarat "tabel opname kosong" / "kolom verifikasi bawaan": fixture hidup berdampingan dengan data developer
 
     $before = state($c);
     $user = userSnapshot($c);
-    file_put_contents($journal, json_encode(['state' => $before, 'user' => $user]));
+    journalWrite($journal, [
+        'v' => JOURNAL_V, 'state' => $before, 'user' => $user, 'qa_users' => qaUsernames(),
+        'pre_sessions' => $c->table('archive_opnames')->pluck('id_archive_opname')->all(),
+        'pre_verif' => verificationSnapshot($c), 'archives' => [], 'sessions' => [],
+    ]);
 
     $mode = getenv('QA26_MODE') ?: 'main';
     $locs = $c->table('locations')->where('location_code', 'SMR')->pluck('id_location', 'location_code')->all();
@@ -272,9 +430,11 @@ if ($cmd === 'up') {
         ]);
         $add(PREFIX . 'NOVIEW', 1, null, 6, 1);
     });
+    journalAdd($journal, 'archives', array_values($ids));
 
     // BETA + BETA-T1 sudah diopname hari ini 09:15 (sesi terkonfirmasi, dibuat langsung di DB); BD1 dan T1D1 verified
     $sid = $gen();
+    journalAdd($journal, 'sessions', [$sid]);
     $todayAt = $now->copy()->setTime(9, 15, 0)->format('Y-m-d H:i:s');
     $c->transaction(function () use ($c, $ids, $sid, $todayAt, $nowStr, $gen, $by) {
         $c->table('archive_opnames')->insert([
@@ -311,30 +471,39 @@ if ($cmd === 'up') {
 }
 
 if ($cmd === 'down') {
-    $n = purge($c);
-    $lines = [];
-    $ok = true;
-    if (is_file($journal)) {
-        $old = json_decode(file_get_contents($journal), true);
-        userRestore($c, $old['user']);
-        if (userSnapshot($c) !== $old['user']) {
-            $ok = false;
-            $lines[] = 'BEDA user/role QA: tidak sama dengan snapshot awal';
-        }
-        $ok = compare($old['state'], state($c), $lines) && $ok;
-        if ($ok) {
-            @unlink($journal);
-        }
-    } else {
-        $ok = false;
-        $lines[] = 'tidak ada jurnal baseline (down tanpa up?)';
+    $old = journalRead($journal);
+    if ($old === null) { // tanpa jurnal tidak ada bukti baris mana milik fixture: jangan sentuh apa pun
+        $orphans = count(prefixArchiveIds($c));
+        say('fixture down: tidak ada jurnal (down tanpa up yang lulus?) -> TIDAK ADA yang dihapus atau dipulihkan'
+            . ($orphans ? "; PERIKSA: $orphans baris archives berawalan " . PREFIX . ' tanpa jurnal (bereskan manual)' : ''));
+        exit($orphans ? 1 : 0);
     }
-    @unlink($idsFile);
+    if (($old['v'] ?? 0) !== JOURNAL_V) {
+        say('fixture down: jurnal format lama -> TIDAK ADA yang dihapus; bereskan manual');
+        exit(1);
+    }
+    $r = purge($c, $old);
+    userRestore($c, $old['user']);
+    $lines = leftovers($c, $old, $r['sessions']);
+    if (userSnapshot($c) !== $old['user']) {
+        $lines[] = 'BEDA user/role QA: tidak sama dengan snapshot awal';
+    }
+    $info = [];
+    compare($old['state'], state($c), $info);
+    foreach ($info as $l) {
+        say('INFO (bukan kegagalan: DB bersama bisa berubah oleh aktivitas lain) ' . $l);
+    }
     foreach ($lines as $l) {
         say($l);
     }
-    say("fixture down: $n folder/dokumen berawalan " . PREFIX . ' dibuang; ' . ($ok ? 'keadaan 7 tabel + user/role = baseline (count + CHECKSUM)' : 'KEADAAN TIDAK SAMA DENGAN BASELINE'));
-    exit($ok ? 0 : 1);
+    if (!$lines) {
+        @unlink($journal);
+    }
+    @unlink($idsFile);
+    say('fixture down: ' . $r['archives'] . ' archives fixture + ' . count($r['sessions']) . ' sesi opname fixture dibuang, '
+        . $r['restored'] . ' baris archives lain dipulihkan kolom verifikasinya; '
+        . ($lines ? 'MASIH ADA SISA MILIK FIXTURE' : 'tidak ada sisa milik fixture, user/role QA = snapshot'));
+    exit($lines ? 1 : 0);
 }
 
 if ($cmd === 'ids') {
@@ -345,7 +514,7 @@ if ($cmd === 'ids') {
 
 if ($cmd === 'inspect') {
     $docs = [];
-    $q = $c->table('archives')->where('name', 'like', PREFIX . '%')->where('type', 2)->orderBy('name')->get();
+    $q = $c->table('archives')->whereRaw('`name` LIKE BINARY ?', [PREFIX . '%'])->where('type', 2)->orderBy('name')->get();
     foreach ($q as $r) {
         $docs[$r->name] = [
             'is_verified' => (int) $r->is_verified, 'verified' => $r->verified_at !== null,
@@ -355,7 +524,9 @@ if ($cmd === 'inspect') {
         ];
     }
     $sessions = [];
-    foreach ($c->table('archive_opnames')->orderBy('created_at')->orderBy('id_archive_opname')->get() as $s) {
+    $j = journalRead($journal);
+    $own = $j ? fixtureSessionIds($c, $j, fixtureArchiveIds($c, $j)) : []; // hanya sesi milik fixture
+    foreach ($own ? $c->table('archive_opnames')->whereIn('id_archive_opname', $own)->orderBy('created_at')->orderBy('id_archive_opname')->get() : [] as $s) {
         $sessions[] = [
             'folder' => $s->id_archive ? $c->table('archives')->where('id_archive', $s->id_archive)->value('name') : null,
             'status' => (int) $s->status, 'scope_name' => $s->scope_name, 'total' => (int) $s->total_documents,
@@ -370,9 +541,12 @@ if ($cmd === 'inspect') {
 }
 
 if ($cmd === 'backdate') {
-    $id = $c->table('archive_opnames')->where('status', 1)->orderBy('created_at', 'desc')->orderBy('id_archive_opname', 'desc')->value('id_archive_opname');
+    $j = journalRead($journal);
+    $own = $j ? fixtureSessionIds($c, $j, fixtureArchiveIds($c, $j)) : []; // hanya draft milik fixture
+    $id = $own ? $c->table('archive_opnames')->whereIn('id_archive_opname', $own)->where('status', 1)
+        ->orderBy('created_at', 'desc')->orderBy('id_archive_opname', 'desc')->value('id_archive_opname') : null;
     if (!$id) {
-        fail('tidak ada draft untuk dimundurkan');
+        fail('tidak ada draft milik fixture untuk dimundurkan');
     }
     $c->update('UPDATE archive_opnames SET created_at = created_at - INTERVAL 1 DAY WHERE id_archive_opname = ?', [$id]);
     say('draft dimundurkan 1 hari');

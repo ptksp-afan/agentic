@@ -49,6 +49,12 @@ Source: `epics/<EPIC>-gate1.md` (epic-check) + each analyst's report. Present, i
 4. All questions grouped per item, `K-n` with options, recommendation and `risiko`.
 5. Brief sources not readable (per item and epic), with what export/file is needed. The developer may
    supply them now; the affected items then get a short brief + BA re-run before approval.
+6. **Data uji & lingkungan** (always, once per run; developer's rule 2026-10-08: the developer leaves
+   during the long run, so everything that could stop it midway is asked here). In the question format:
+   may QA delete or reset rows it did not create in the test DB (which tables; e.g. a fixture that
+   purges `archive_opnames`), is there developer data in the test DB to keep, and any other environment
+   assumption an item's QA relies on (empty tables, a second login, a license profile). Record the
+   answers in `epics/<EPIC>-gate1.md` § Data uji and pass them to every story runner.
 
 Then the two AskUserQuestion steps from `v5-epic` SKILL.md (decisions, then items). Keep each batch at
 4 questions; the developer may answer many at once through "Other" (`ED-1234 K-2: b, ED-1235 K-1: a`).

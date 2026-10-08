@@ -33,7 +33,11 @@ Tools (read their README once, when you first use them; starting points in `temp
 | `scripts/fe-build.sh build` | FE staging build (never into the developer's `build/`) |
 
 The test DBs may be modified, but leave them as you found them: scenarios create their own data and
-restore exactly what they change. Log out every session you open. `force_login` binds are allowed.
+restore exactly what they change. Delete only rows your scenarios/fixtures created (prefix or journal);
+purging or resetting rows you did not create is allowed only as far as the epic Gate 1 answer allows
+(`epics/<EPIC>-gate1.md` § Data uji, passed in your prompt) - then list exactly what was deleted.
+Otherwise skip that check (MANUAL, with the reason). A fixture teardown never runs after a failed setup.
+Log out every session you open. `force_login` binds are allowed.
 If results look like old code, run `scripts/be-reload.sh` once and say so in the report.
 
 **One heavy command at a time** (build, test suite, e2e, profile switch): never start one while another

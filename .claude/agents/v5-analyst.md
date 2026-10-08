@@ -118,7 +118,10 @@ data*, *Endpoint v5*, *Perubahan FE per module*, *Subtask*, *Keputusan* (`script
 `epics/<EPIC>-gate1.md` (≤ 10 KB): overlaps (same endpoint, table, permission, message code or FE module
 designed by two items - say which item should own it), conflicting assumptions between items, missing or
 wrong `depends_on`, a proposed run order (Jira rank, moved only for dependencies), and questions that
-span items (`EPIC K-n`). Do not edit the specs; the orchestrator applies what the developer agrees to.
+span items (`EPIC K-n`). Also list, for Gate 1 § Data uji, every table an item's QA or e2e fixture
+would purge or reset beyond its own rows, and every environment assumption a QA relies on (empty
+tables, second login, license profile) - so the developer decides them before the unattended run.
+Do not edit the specs; the orchestrator applies what the developer agrees to.
 
 ## Output 2 - `contract.md` (when endpoints are new or changed)
 
