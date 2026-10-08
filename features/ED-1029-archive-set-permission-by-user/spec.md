@@ -2,7 +2,7 @@
 key: ED-1029
 epic: ED-1022
 title: Archive - Set Permission by User
-status: approved
+status: draft
 batch: ED-1029
 fe_modules: [Archive]
 new_fe_modules: []            # halaman baru di dalam module Archive yang sudah ada, bukan module baru

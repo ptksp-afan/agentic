@@ -3,7 +3,7 @@ key: ED-1024
 epic: ED-1022
 title: Archive - Visibilitas folder per lokasi kerja & daftar transaction type terpusat
 slug: archive-lokasi-transaction-type
-phase: gate2
+phase: done
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -14,9 +14,9 @@ agents:
   qa_be: {id: aafa26c064f460d6f, at: 2026-10-06 20:47}
 ---
 ## Status ringkas
-Long run ED-1022: selesai sampai auto-commit lokal (BE b0efd0722; FE tanpa perubahan). QA BE PASS r2, QA FE PASS r1.
-Menunggu `/v5-epic review ED-1022` (label ai-review; Jira In Progress, belum Done). Tes manual: AC-13 tukar lisensi.
-Bug luar item: ED-1069 (baru), ED-967 (sudah ada, PrivateRoute).
+Selesai: disetujui developer di review batch ED-1022 (2026-10-08 09:25). Jira ED-1024 + 5 subtask Done, label ai-review dilepas, komentar hand-off QA. Commit: BE b0efd0722, agentic 38c2509.
+Keputusan review: getUserLocation() apa adanya; route archives/add-document dibiarkan (FE memakai documents/put-in).
+
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -55,4 +55,5 @@ Bug luar item: ED-1069 (baru), ED-967 (sudah ada, PrivateRoute).
 - 2026-10-06 20:41 be fix r1: D-1 diperbaiki (PutInFolderRequest -> 422); runner dev 25 PASS / 0 FAIL; QA BE ronde 2 dimulai
 - 2026-10-06 20:47 qa-be r2: PASS (15 PASS / 1 MANUAL, regresi 26/26, 0x 500); O-1 (BR-2 lokasi nonaktif) + O-4 catatan -> review batch
 - 2026-10-06 21:12 qa-fe r1: PASS (AC-16/17 e2e PASS, AC-13 MANUAL, regresi BE 26/26); galeri work/e2e/ED-1024-archive-lokasi-transaction-type-20261006-2108*/-2109*
-- 2026-10-06 21:14 commit: BE b0efd0722 (19 berkas NEW), FE tidak ada perubahan; Jira ED-1024 label ai-review + komentar siap review
+- 2026-10-06 21:14 commit: BE b0efd0722 (19 berkas NEW), FE tidak ada perubahan, agentic 38c2509; Jira ED-1024 label ai-review + komentar siap review
+- 2026-10-08 09:25 review batch: Setujui → Jira Done (subtask + item), label ai-review dilepas, komentar hand-off; phase: done

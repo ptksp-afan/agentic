@@ -2,7 +2,7 @@
 key: ED-1025
 epic: ED-1022
 title: Archive - Folder Permission per folder (tab Permission & akses ditolak)
-status: approved
+status: draft
 batch: ED-1025
 fe_modules: [Archive]
 new_fe_modules: []

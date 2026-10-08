@@ -2,7 +2,7 @@
 key: ED-1028
 epic: ED-1022
 title: Archive - Opname History (semua sesi)
-status: approved
+status: draft
 batch: ED-1028
 fe_modules: [Archive]
 new_fe_modules: []

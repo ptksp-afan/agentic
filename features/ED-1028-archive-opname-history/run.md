@@ -3,7 +3,7 @@ key: ED-1028
 epic: ED-1022
 title: Archive - Opname History (semua sesi)
 slug: archive-opname-history
-phase: gate2
+phase: ba
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -18,10 +18,9 @@ agents:
   be_dev: {id: a201b58741336d8af, at: 2026-10-07 13:11}
 ---
 ## Status ringkas
-Long run: siap review. QA BE r1 PASS (14/14 AC BE, 22 skenario; D-1 rendah diperbaiki, terverifikasi di QA FE), QA FE r1 PASS (10 PASS / 1 MANUAL AC-25; e2e 13/13 default+user2). Commit lokal BE dc052a4bc, FE b7e08edcb (tanpa push).
-Menunggu `/v5-epic review ED-1022`: developer menilai Perlu dikonfirmasi di bawah (dev BE, review BE/FE, digest 13-17, QA) + 43 butir Daftar tes UI (ksp-react docs/specs/Archive/010 24, 011 19) + O-1 qa-fe (kolom kanan tabel modal 05/drawer folder lewat gulir horizontal tanpa scrollbar terlihat).
-Galeri: work/e2e/ED-1028-archive-opname-history-20261007-151138/.
-Jira: ED-1028 In Progress + label ai-review + komentar siap review; 6 subtask In Progress. Bug luar item: tidak ada.
+**Minta perbaikan (review batch ED-1022, 2026-10-08 09:25).** Feedback developer untuk item ini: `epics/ED-1022-review-feedback.md` § ED-1028. Developer minta **BA revisi + Gate 1 dulu**, lalu menunggu instruksinya sebelum dikerjakan (bukan langsung be/fe). Commit lama tetap; perbaikan nanti jadi commit baru di atasnya.
+Jira: In Progress, label ai-review dilepas, komentar minta perbaikan. Spec `status: draft` sampai Gate 1 revisi.
+
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -75,9 +74,7 @@ Jira: ED-1028 In Progress + label ai-review + komentar siap review; 6 subtask In
 - (BE dev) CustomizeBuilder::scopeSortAll 500 bila elemen sort array / atribut relasi (semua list v5); LIKE/= teks non-latin1 ke kolom latin1 -> 500 "Illegal mix of collations" (mungkin juga searchAll list Archive)
 
 ## Log
-- 2026-10-06 16:09 start: baseline BE 42f3e07cb (0 berkas kotor), FE 6afd19054 (0 berkas kotor)
-- 2026-10-06 16:51 ba: selesai, 15 BR / 25 AC / 6 subtask / 7 K (spec.md, contract.md)
-- 2026-10-06 19:50 gate1: disetujui (gabungan); Jira ED-1028 + 6 subtask dibuat, sprint 46
+- 2026-10-06 start/ba/gate1: baseline awal BE 42f3e07cb / FE 6afd19054; BA 15 BR / 25 AC / 6 subtask / 7 K; Gate 1 gabungan disetujui, Jira ED-1028 + 6 subtask sprint 46
 - 2026-10-07 11:35 long-run: mulai fase be; preflight OK; rebaseline BE 49be126c7 / FE 48bbad16e (0 kotor) karena HEAD bergeser oleh commit ED-1024..ED-1027; ED-1028 + 6 subtask -> In Progress
 - 2026-10-07 11:56 be: v5-be-dev (a4fd8b29333302243, opus, fallback general-purpose) 3/3 subtask selesai; 9 M + 1 baru di BE; php -l 10/10, route OK; smoke qa-http 2 skenario PASS (87 cek) di folder sekali-pakai, data QA28SMK + display setting dihapus, folder dihapus; kontrak + spec Catatan implementasi diperbarui; 3 Perlu dikonfirmasi; 0 ditolak
 - 2026-10-07 12:02 be-review: v5-be-reviewer (aeb3772b34b2e56f5, sonnet, fallback general-purpose) Harus diperbaiki 0, Perlu dikonfirmasi 3; -> QA BE r1
@@ -87,4 +84,5 @@ Jira: ED-1028 In Progress + label ai-review + komentar siap review; 6 subtask In
 - 2026-10-07 13:57 fe: FE dev (a4bb335dda3139420, general-purpose) ui-plan/slice/logic -> task 010-011 (ED-1052/1058) logic-done; 16 M + 7 baru (+ _api.md orkestrator); eslint 0, prettier OK, build staging OK x4, test Archive runInBand 216/216, full suite 1524/1537 (4 suite baseline + 5 timeout beban, lulus runInBand); 0 BLOCKED; 0 ditolak; -> convention-reviewer
 - 2026-10-07 14:00 fe-review: convention-reviewer (a56ecf1287ea05ab2, sonnet, fallback) Harus diperbaiki 0, Perlu dikonfirmasi 1 (Col flex di ArchiveOpnameCounts), 3 catatan ringan; -> QA FE r1
 - 2026-10-07 15:21 qa-fe r1: v5-qa (a6c5c9e36adee588b, sonnet) PASS 10 AC FE / MANUAL 1 (AC-25 tampilan vs desain); build staging OK, test Archive 216/216, full suite 15 gagal = 4 baseline + 6 suite timeout beban (lulus runInBand 444/444); e2e 13/13 (default, user2); regresi BE ED-1028 22/22 + D-1 fixed (12 bentuk 422, 7 valid 200), ED-1024 26/26, ED-1025 30/31, ED-1026 34/37 (AC-1 usang; AC-12/AC-15 digantikan), ED-1027 20/0/1 SKIP; e2e usang ED-1025 dicatat; DB dipulihkan; 0 ditolak izin/classifier
-- 2026-10-07 15:21 commit: BE dc052a4bc (10 berkas NEW), FE b7e08edcb (25 berkas NEW); Jira ED-1028 label ai-review + komentar siap review; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
+- 2026-10-07 15:21 commit: BE dc052a4bc (10 berkas NEW), FE b7e08edcb (25 berkas NEW), agentic 934f11f; Jira ED-1028 label ai-review + komentar siap review; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
+- 2026-10-08 09:25 review batch: Minta perbaikan → phase: ba (BA revisi menunggu instruksi developer); feedback di epics/ED-1022-review-feedback.md § ED-1028; label ai-review dilepas

@@ -2,7 +2,7 @@
 key: ED-1027
 epic: ED-1022
 title: Archive - Status verifikasi dokumen (kolom Document Verified, tab Verification, detail per transaction type)
-status: approved
+status: draft
 batch: ED-1027
 fe_modules: [Archive]
 new_fe_modules: []

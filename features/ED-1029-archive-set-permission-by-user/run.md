@@ -3,7 +3,7 @@ key: ED-1029
 epic: ED-1022
 title: Archive - Set Permission by User
 slug: archive-set-permission-by-user
-phase: gate2
+phase: ba
 qa_round: 2
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -18,10 +18,9 @@ agents:
   be_reviewer: {id: ab58ba4d602c34067, at: 2026-10-07 15:34}
 ---
 ## Status ringkas
-Long run ED-1022: selesai, commit lokal (BE 44bea5136, FE 916dd5770), menunggu review batch `/v5-epic review ED-1022`.
-QA BE r2 PASS 10/10 AC BE; QA FE r2 PASS 9 AC + 1 MANUAL (AC-20); e2e 16/16; tes UI manual 23 butir (task 012).
-Jira: ED-1029 In Progress + label ai-review + komentar siap review; 4 subtask In Progress (Done hanya sesudah review).
-Untuk review: D-1 BE -> ED-1071; guard lokal AC-3 (ED-967); 2 Perlu dikonfirmasi BE review; jawaban digest 18-21; Usulan pipeline.
+**Minta perbaikan (review batch ED-1022, 2026-10-08 09:25).** Feedback developer untuk item ini: `epics/ED-1022-review-feedback.md` § ED-1029. Developer minta **BA revisi + Gate 1 dulu**, lalu menunggu instruksinya sebelum dikerjakan (bukan langsung be/fe). Commit lama tetap; perbaikan nanti jadi commit baru di atasnya.
+Jira: In Progress, label ai-review dilepas, komentar minta perbaikan. Spec `status: draft` sampai Gate 1 revisi.
+
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -60,4 +59,5 @@ Untuk review: D-1 BE -> ED-1071; guard lokal AC-3 (ED-967); 2 Perlu dikonfirmasi
 - 2026-10-07 18:50 triase: D-1 diperbaiki di ED-1047 dengan guard lokal halaman (opsi c; memenuhi AC-3 yang disetujui tanpa mengubah route lain; global tetap ED-967); F-1 butir AC-20 ditambahkan ke Daftar tes UI; komentar di ED-1047; FE dev lama > 1 jam -> agen FE baru
 - 2026-10-07 18:58 fe-fix D-1/F-1: FE dev (a69dda4c655949c47, general-purpose, agen baru) guard lokal di ArchivePermissionPage (usePermission UpdateFolder; dimuat = app.user tidak null; tanpa hak -> navigate replace /unathorized, halaman null, 0 request select/user-permissions); task 012 Daftar tes UI butir 10 diperbarui + butir 23 AC-20 manual; eslint 0, prettier OK, jest Archive runInBand 262/262 (halaman 13/13), build staging OK; PrivateRoute/routes.js tidak disentuh; 0 BLOCKED; 0 ditolak; -> QA FE r2
 - 2026-10-07 19:43 qa-fe r2: v5-qa (ad839e2fce1f61fd2, sonnet) PASS: AC FE 9 PASS / 1 MANUAL (AC-20); D-1/F-1 tertutup (E -> /unathorized, 0 request; A tanpa kilasan, 2x hard reload); build OK, jest Archive 262/262, full 12 gagal = 4 baseline + 8 timeout (hijau runInBand); e2e 16/16; regresi BE ED-1024 26, ED-1025 30+1 usang, ED-1026 34+3 usang, ED-1027 20+1 SKIP, ED-1028 22, ED-1029 22+1 SKIP; galeri work/e2e/ED-1029-archive-set-permission-by-user-20261007-190206/; DB identik; 0 ditolak
-- 2026-10-07 19:43 commit: BE 44bea5136 (8 berkas NEW), FE 916dd5770 (15 berkas NEW); Jira ED-1029 label ai-review + komentar siap review; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
+- 2026-10-07 19:43 commit: BE 44bea5136 (8 berkas NEW), FE 916dd5770 (15 berkas NEW), agentic 1e12524; Jira ED-1029 label ai-review + komentar siap review; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
+- 2026-10-08 09:25 review batch: Minta perbaikan → phase: ba (BA revisi menunggu instruksi developer); feedback di epics/ED-1022-review-feedback.md § ED-1029; label ai-review dilepas

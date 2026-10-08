@@ -3,7 +3,7 @@ key: ED-1027
 epic: ED-1022
 title: Archive - Status verifikasi dokumen (kolom Document Verified, tab Verification, detail per transaction type)
 slug: archive-status-verifikasi
-phase: gate2
+phase: ba
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -18,11 +18,9 @@ agents:
   qa_fe: {id: a4c0dcba81b358111, at: 2026-10-07 10:12}
 ---
 ## Status ringkas
-Long run: siap review. QA BE r1 PASS (12/12 AC BE, skenario 20 PASS/1 SKIP), QA FE r1 PASS (8 PASS / 1 MANUAL AC-21; e2e 13/13 default+user2). Commit lokal BE 49be126c7, FE 48bbad16e (tanpa push).
-Menunggu `/v5-epic review ED-1022`: developer menilai Perlu dikonfirmasi di bawah (dev BE, review BE/FE, keputusan FE, terjemahan id-ID) + 41 butir Daftar tes UI (ksp-react docs/specs/Archive/007-009) + O-1 qa-fe (kolom kanan tabel modal/drawer perlu gulir horizontal).
-Galeri: work/e2e/ED-1027-archive-status-verifikasi-20261007-100527/.
-Jira: ED-1027 In Progress + label ai-review + komentar siap review; 7 subtask In Progress. Bug luar item: tidak ada.
-Instruksi developer 09:03 (lewat loop epic): ED-1027 berhenti sesudah QA FE r1, tanpa ronde perbaikan; QA FE r1 PASS -> lanjut normal.
+**Minta perbaikan (review batch ED-1022, 2026-10-08 09:25).** Feedback developer untuk item ini: `epics/ED-1022-review-feedback.md` § ED-1027. Developer minta **BA revisi + Gate 1 dulu**, lalu menunggu instruksinya sebelum dikerjakan (bukan langsung be/fe). Commit lama tetap; perbaikan nanti jadi commit baru di atasnya.
+Jira: In Progress, label ai-review dilepas, komentar minta perbaikan. Spec `status: draft` sampai Gate 1 revisi.
+
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -71,4 +69,5 @@ Instruksi developer 09:03 (lewat loop epic): ED-1027 berhenti sesudah QA FE r1, 
 - 2026-10-07 08:58 fe-review: convention-reviewer (ada5b8d1c63ba3e52, sonnet, fallback) Harus diperbaiki 0, Perlu dikonfirmasi 1 (Col flex lokal), 4 catatan ringan; -> QA FE r1
 - 2026-10-07 09:03 instruksi developer (loop epic): berhenti sesudah QA FE r1, tanpa ronde perbaikan; PASS -> lanjut normal
 - 2026-10-07 10:12 qa-fe r1: v5-qa (a4c0dcba81b358111, sonnet) PASS 8 AC FE / MANUAL 1 (AC-21 tampilan vs desain); build staging OK, test Archive 190/190, full suite 26 gagal = 4 baseline + 22 timeout beban (Archive+Raptor runInBand 411/411); e2e 13/13 (default, user2); regresi BE ED-1027 20/0/1 SKIP, ED-1024 26/26, ED-1025 30/31, ED-1026 36/37 (AC-1 usang); O-1 kolom kanan tabel modal/drawer lewat gulir horizontal; DB dipulihkan; 0 perintah ditolak
-- 2026-10-07 10:15 commit: BE 49be126c7 (7 berkas NEW), FE 48bbad16e (22 berkas NEW); Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
+- 2026-10-07 10:15 commit: BE 49be126c7 (7 berkas NEW), FE 48bbad16e (22 berkas NEW), agentic d9a2e04; Jira ED-1027 label ai-review + komentar siap review; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
+- 2026-10-08 09:25 review batch: Minta perbaikan → phase: ba (BA revisi menunggu instruksi developer); feedback di epics/ED-1022-review-feedback.md § ED-1027; label ai-review dilepas

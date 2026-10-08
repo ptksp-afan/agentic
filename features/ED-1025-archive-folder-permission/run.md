@@ -3,7 +3,7 @@ key: ED-1025
 epic: ED-1022
 title: Archive - Folder Permission per folder (tab Permission & akses ditolak)
 slug: archive-folder-permission
-phase: gate2
+phase: ba
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -15,9 +15,9 @@ agents:
   qa_fe: {id: aa711278b641b0805, at: 2026-10-07 02:57}
 ---
 ## Status ringkas
-Long run ED-1022: selesai sampai auto-commit lokal (BE 9fec7c427, FE 89b3b98a6). QA BE PASS r3, QA FE PASS r1 (qa-be.md, qa-fe.md).
-Menunggu `/v5-epic review ED-1022`: developer menilai daftar Perlu dikonfirmasi di bawah + 34 butir Daftar tes UI (docs/specs/Archive/001, 002) + AC-23 manual.
-Jira: ED-1025 In Progress + label ai-review + komentar siap review; 8 subtask In Progress. Bug luar item: ED-1070, ED-1071, ED-1072.
+**Minta perbaikan (review batch ED-1022, 2026-10-08 09:25).** Feedback developer untuk item ini: `epics/ED-1022-review-feedback.md` § ED-1025. Developer minta **BA revisi + Gate 1 dulu**, lalu menunggu instruksinya sebelum dikerjakan (bukan langsung be/fe). Commit lama tetap; perbaikan nanti jadi commit baru di atasnya.
+Jira: In Progress, label ai-review dilepas, komentar minta perbaikan. Spec `status: draft` sampai Gate 1 revisi.
+
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -66,4 +66,5 @@ Jira: ED-1025 In Progress + label ai-review + komentar siap review; 8 subtask In
 - 2026-10-07 02:09 fe-review: convention-reviewer (a720fbfbe9463fce3, sonnet) Harus diperbaiki 0, Perlu dikonfirmasi 2 (locale id-ID "Back to Archive" tak diterjemahkan; ArchiveForm kini meneruskan disabled)
 - 2026-10-07 02:57 qa-fe r1: PASS (AC-3,17-21 PASS, AC-23 MANUAL; e2e 7/7 A+B; unit Archive 62/62; full suite 4 suite gagal = baseline HEAD; regresi BE ED-1025 31/31, ED-1024 26/26); galeri work/e2e/ED-1025-archive-folder-permission-20261007-025357/; qa-fe.md: 1 username QA_USER diredaksi orkestrator
 - 2026-10-07 02:58 found: ED-1072 Bug (ai-found) di bawah ED-1022 - klik ⋯ baris dokumen ikut memicu klik sel (QA FE C-5, pra-ada)
-- 2026-10-07 02:59 commit: BE 9fec7c427 (21 berkas NEW), FE 89b3b98a6 (22 berkas NEW); Jira ED-1025 label ai-review + komentar siap review; phase: gate2 (menunggu review batch)
+- 2026-10-07 02:59 commit: BE 9fec7c427 (21 berkas NEW), FE 89b3b98a6 (22 berkas NEW), agentic 7c11743; Jira ED-1025 label ai-review + komentar siap review; phase: gate2 (menunggu review batch)
+- 2026-10-08 09:25 review batch: Minta perbaikan → phase: ba (BA revisi menunggu instruksi developer); feedback di epics/ED-1022-review-feedback.md § ED-1025; label ai-review dilepas

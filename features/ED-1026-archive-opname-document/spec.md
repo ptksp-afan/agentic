@@ -2,7 +2,7 @@
 key: ED-1026
 epic: ED-1022
 title: Archive - Opname Document per folder (pilih folder, scan, konfirmasi)
-status: approved
+status: draft
 batch: ED-1026
 fe_modules: [Archive]
 new_fe_modules: []
