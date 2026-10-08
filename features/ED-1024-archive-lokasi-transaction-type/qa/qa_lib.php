@@ -466,16 +466,22 @@ if (!function_exists('q1_dbname')) {
         return __DIR__ . '/.perm-journal.json';
     }
 
+    /** (rev ED-1025, EPIC K-4 a) id permission modul Archive di permission_salesman.sql: 1081-1090 + 1139 (Opname Document) + 1140 (Folder Permissions). */
+    function q1_archive_perm_ids()
+    {
+        return array_merge(range(1081, 1090), [1139, 1140]);
+    }
+
     function q1_perm_restore($t, array $rows)
     {
         q1_w($t, function ($c) use ($rows) {
-            $c->table('permissions')->whereBetween('id_permission', [1081, 1090])->delete();
+            $c->table('permissions')->whereIn('id_permission', q1_archive_perm_ids())->delete();
             $c->table('permissions')->insert($rows);
         });
     }
 
     /**
-     * Simulasi tenant tanpa seed permission Archive: baris permissions 1081-1090 dihapus sementara
+     * Simulasi tenant tanpa seed permission Archive: baris permissions modul Archive (q1_archive_perm_ids()) dihapus sementara
      * (persis seperti bila permission_salesman.sql tidak dimuat), dipulihkan persis di finally.
      */
     function q1_without_archive_permissions($t, callable $fn)
@@ -488,19 +494,19 @@ if (!function_exists('q1_dbname')) {
             @unlink(q1_perm_journal());
         }
 
-        $rows = q1_rows($t->db()->table('permissions')->whereBetween('id_permission', [1081, 1090])->orderBy('id_permission')->get());
-        $t->eq(count($rows), 10, 'prasyarat: 10 baris permissions modul Archive ada');
+        $rows = q1_rows($t->db()->table('permissions')->whereIn('id_permission', q1_archive_perm_ids())->orderBy('id_permission')->get());
+        $t->eq(count($rows), 12, 'prasyarat: 12 baris permissions modul Archive ada (1081-1090, 1139, 1140)');
         file_put_contents(q1_perm_journal(), json_encode($rows));
 
         try {
             q1_w($t, function ($c) {
-                $c->table('permissions')->whereBetween('id_permission', [1081, 1090])->delete();
+                $c->table('permissions')->whereIn('id_permission', q1_archive_perm_ids())->delete();
             });
 
             return $fn();
         } finally {
             q1_perm_restore($t, $rows);
-            $after = q1_rows($t->db()->table('permissions')->whereBetween('id_permission', [1081, 1090])->orderBy('id_permission')->get());
+            $after = q1_rows($t->db()->table('permissions')->whereIn('id_permission', q1_archive_perm_ids())->orderBy('id_permission')->get());
             if (json_encode($after) !== json_encode($rows)) {
                 $t->fail('pemulihan permissions Archive tidak persis (jurnal dipertahankan)');
             }

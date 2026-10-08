@@ -82,11 +82,12 @@ return [
 
     [
         'id'    => 'AC-10',
-        'title' => 'Dokumen Billing nyata (is_active=-1) di-put-in lewat name ke PUSAT - MAGELANG: filter type 222 menemukannya dengan label Penagihan/Billing; filter 6 tidak',
+        'title' => 'Dokumen Billing nyata (is_active=-1) di-put-in lewat name ke folder semua lokasi (fixture QA01-PUTDEST): filter type 222 menemukannya dengan label Penagihan/Billing; filter 6 tidak',
         'run'   => function ($t) {
             $s = $t->session();
             q1_purge($t);
-            $pusat = q1_id_by_name($t, 'PUSAT - MAGELANG', null);
+            // (rev ED-1025, QA) tujuan = fixture semua lokasi; 'PUSAT - MAGELANG' milik pengembang kini {MGL} saja -> put-in dokumen lokasi lain 400 (LocationRule)
+            $pusat = q1_add($t, ['name' => 'QA01-PUTDEST', 'type' => 1, 'all' => 1]);
 
             // satu dokumen Billing nyata yang belum masuk folder (is_active = -1) dan Billing-nya ada
             $cand = $t->db()->selectOne(
@@ -112,7 +113,7 @@ return [
                 $t->status($r, 200, 'put-in lewat name');
                 $t->code($r, 'ARCHIVE204', 'put-in');
                 $row = q1_row($t, $cand->id_archive);
-                $t->eq($row['id_archive_parent'], $pusat, 'DB: id_archive_parent = PUSAT - MAGELANG');
+                $t->eq($row['id_archive_parent'], $pusat, 'DB: id_archive_parent = QA01-PUTDEST');
                 $t->eq($row['is_active'], 1, 'DB: is_active = 1');
                 $hist = json_decode($row['history'], true);
                 $t->true(in_array(end($hist)['action'] ?? null, ['place', 'move'], true), 'DB: entri history terakhir = place/move (dokumen -1 yang sudah punya induk = move)');

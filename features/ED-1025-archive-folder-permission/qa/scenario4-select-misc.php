@@ -240,7 +240,10 @@ return [
                     $forbid(q2_open($t, $s, $P), 'role 6: GET archives?id_archive=P', 'List Archive');
                     $forbid(q2_show($t, $s, $P), 'role 6: GET archives/{P}', 'List Archive');
                     $forbid(q2_hist($t, $s, $P), 'role 6: GET history/{P}', 'List Archive');
-                    $forbid(q2_put($t, $s, $P, $putBody), 'role 6: PUT archives/{P} dengan folder_permissions', 'Update Folder');
+                    // (rev K-15 b) route PUT = permission_v5:Update Folder|Folder Permissions: tanpa keduanya parameter memuat dua nama
+                    $forbid(q2_put($t, $s, $P, $putBody), 'role 6: PUT archives/{P} dengan folder_permissions', 'Update Folder, Folder Permissions');
+                    $forbid($t->call($s, 'PUT', 'api/v5/document-archive/archives/' . $P, ['is_folder_permission' => 0]), 'role 6: PUT kelompok izin saja', 'Update Folder, Folder Permissions');
+                    $forbid($t->call($s, 'PUT', 'api/v5/document-archive/archives/' . $P, []), 'role 6: PUT tubuh kosong (403 modul mendahului 422)', 'Update Folder, Folder Permissions');
                     $forbid(q2_delete($t, $s, $P), 'role 6: DELETE', 'Delete Folder');
                 });
 
@@ -248,8 +251,8 @@ return [
                 q2_with_user($t, ['role' => 29], function ($set) use ($t, $s, $P, $Dr, $putBody, $forbid) {
                     $r = q2_open($t, $s, $P);
                     $t->status($r, 200, 'role 29: buka P (modul List + View folder)');
-                    q2_access_is($t, $r[1]['result']['access'], q2_all_true(), 'role 29: access (hak folder; modul dinilai terpisah di FE)');
-                    $forbid(q2_put($t, $s, $P, $putBody), 'role 29: PUT dengan folder_permissions', 'Update Folder');
+                    q2_access_is($t, $r[1]['result']['access'], q2_all_true(), 'role 29: access (hak folder; modul dinilai terpisah di FE); (rev) manage_permission false: role 29 tanpa Folder Permissions', false);
+                    $forbid(q2_put($t, $s, $P, $putBody), 'role 29: PUT dengan folder_permissions', 'Update Folder, Folder Permissions');
                     $forbid(q2_rename($t, $s, $P, 'x'), 'role 29: rename', 'Update Folder');
                     $forbid(q2_delete($t, $s, $P), 'role 29: DELETE', 'Delete Folder');
                     $forbid(q2_create($t, $s, ['name' => q2_name('SUB'), 'id_archive_parent' => $P, 'is_all_location' => 1]), 'role 29: create-folder', 'Add Folder');

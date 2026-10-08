@@ -1,7 +1,8 @@
 <?php
 /**
- * ED-1025 - AC-1 (skema + Updater 2x), AC-2 (tanpa folder aktif = perilaku lama), AC-4 (show), AC-7/AC-8 (tolak buka folder,
- * parent dominan), AC-10 (superadmin 1 dan 2), AC-11 (pembuat folder), AC-15 (search tetap, show/history 403).
+ * ED-1025 - AC-1 (skema + Updater 2x), AC-2 (tanpa folder aktif = perilaku lama; (rev) tanpa bergantung pada folder pengembang),
+ * AC-4 (show; (rev) manage_permission = Folder Permissions), AC-7/AC-8 (tolak buka folder, induk dominan untuk View).
+ * AC-10/11/15: scenario1b-superadmin-creator-search.php.
  *
  * User uji = QA_USER (role 3 = bukan bypass). Data uji berawalan QA02-, dibuang di finally. Lihat qa_lib.php.
  */
@@ -25,7 +26,23 @@ return [
                 return $r->Field;
             }, $c->select('SHOW COLUMNS FROM archives'));
             $t->eq(array_search('is_folder_permission', $order), array_search('is_all_location', $order) + 1, 'kolom tepat sesudah is_all_location');
-            $t->eq($c->table('archives')->where('name', 'not like', 'QA%')->whereRaw('coalesce(is_folder_permission, -1) <> 0')->count(), 0, 'semua folder/dokumen lama = 0 (nonaktif)');
+            // (rev) bergantung pada data pengembang di DB bersama (folder Izin On milik mereka sah) -> hanya nilai yang sah: 0/1, tidak NULL
+            $t->eq($c->table('archives')->whereRaw('is_folder_permission is null or is_folder_permission not in (0, 1)')->count(), 0, 'semua baris archives bernilai 0/1 (tanpa NULL / nilai lain)');
+            // default kolom benar-benar berlaku: INSERT tanpa kolom itu menghasilkan 0 (fixture berawalan QA02-, dibuang)
+            q2_purge($t);
+            try {
+                $idDefault = q2_new_id($t);
+                q2_w($t, function ($w) use ($idDefault) {
+                    $now = date('Y-m-d H:i:s');
+                    $w->table('archives')->insert([
+                        'id_archive' => $idDefault, 'name' => q2_name('DEF'), 'type' => 1, 'status' => 1, 'is_all_location' => 1,
+                        'is_active' => 1, 'created_at' => $now, 'created_by' => 'QA02', 'updated_at' => $now, 'updated_by' => 'QA02',
+                    ]);
+                });
+                $t->eq((int) $c->table('archives')->where('id_archive', $idDefault)->value('is_folder_permission'), 0, 'INSERT tanpa kolom is_folder_permission = default 0');
+            } finally {
+                q2_purge($t);
+            }
 
             // --- tabel archive_permissions
             $cols = [];
@@ -90,9 +107,8 @@ return [
             $config = include $beDir . '/Modules/UpdateVersion/Updaters/config.php';
             $key = array_search($class, $config, true);
             $t->true($key !== false, 'Updater terdaftar di config.php');
-            $others = $config;
-            unset($others[$key]);
-            $t->true($key > max(array_keys($others)), 'kunci config.php lebih besar dari semua Updater sebelumnya (urutan jalan)');
+            // (rev, AC-1) cukup TERDAFTAR; kunci tidak harus yang terbesar (Updater branch lain boleh datang sesudahnya)
+            $t->eq(count(array_keys($config, $class, true)), 1, 'Updater terdaftar tepat sekali di config.php');
 
             $showCreate = function () use ($c) {
                 return [
@@ -132,7 +148,8 @@ return [
             $uname = q2_uname($t);
 
             try {
-                $t->eq($t->db()->table('archives')->where('is_folder_permission', 1)->count(), 0, 'prasyarat: tidak ada folder ber-permission aktif');
+                // (rev) DB bersama: folder Izin On milik pengembang boleh ada. Yang diasersi = fixture sendiri (semua Izin Off, QA02-)
+                // dan baris root milik orang lain menurut DB-nya: Off di root = semua true, On = hanya is_folder_permission dicerminkan.
                 $P = q2_folder($t, 'P');
                 $C = q2_folder($t, 'C', ['parent' => $P]);
                 $D = q2_doc($t, 'D', ['parent' => $P]);
@@ -145,11 +162,15 @@ return [
                 $t->code($r, 'ARCHIVE200', 'root');
                 $t->eq($r[1]['result']['access'], null, 'root: result.access null');
                 $folders = 0;
+                $flagOf = $t->db()->table('archives')->where('type', 1)->whereNull('id_archive_parent')->pluck('is_folder_permission', 'id_archive')->all();
                 foreach ($r[1]['result']['data'] as $row) {
                     if ($row['type'] === 'Folder') {
                         $folders++;
-                        q2_access_is($t, $row['access'], q2_all_true(), 'root folder ' . $row['id_archive']);
-                        $t->eq($row['is_folder_permission'], 0, 'root folder is_folder_permission');
+                        $flag = (int) ($flagOf[$row['id_archive']] ?? 0);
+                        $t->eq($row['is_folder_permission'], $flag, 'root folder ' . $row['id_archive'] . ': is_folder_permission = DB');
+                        if ($flag === 0) {
+                            q2_access_is($t, $row['access'], q2_all_true(), 'root folder Izin Off ' . $row['id_archive']);
+                        }
                     } else {
                         $t->eq($row['access'], null, 'root dokumen: access null');
                         $t->eq($row['is_folder_permission'], 0, 'root dokumen: is_folder_permission 0');
@@ -233,8 +254,11 @@ return [
             $b = q2_uid($t);
             $bName = q2_uname($t);
             $o = q2_others($t, 2);
+            q2_role_purge($t);
 
             try {
+                $roleC = q2_role($t, 'C', q2_perms_c());          // A tanpa Folder Permissions
+                $roleD = q2_role($t, 'D', q2_perms_d());          // List Archive, View Folder, Folder Permissions saja
                 $P = q2_folder($t, 'P', ['perm' => 1]);
                 $D = q2_doc($t, 'D', ['parent' => $P]);
                 q2_perm($t, $P, $b, 1, 0, 0, 1);
@@ -262,8 +286,34 @@ return [
                     return ['id_user' => $w[0], 'username' => $w[1], 'is_view' => $w[2], 'is_update' => $w[3], 'is_delete' => $w[4], 'is_store' => $w[5]];
                 }, $want);
                 $t->eq(json_encode($res['folder_permissions']), json_encode($wantRows), 'folder_permissions: 3 baris, urut username, field persis kontrak');
-                q2_access_is($t, $res['access'], [1, 0, 0, 1], 'access B (View+Store)');
-                $t->eq($res['access']['manage_permission'], false, 'manage_permission = false (tanpa Update)');
+                q2_access_is($t, $res['access'], [1, 0, 0, 1], 'access A (View+Store)');
+                $t->eq($res['access']['manage_permission'], true, '(rev K-15 b) manage_permission = true (A ber-Folder Permissions) walau tanpa Update di P');
+
+                // (rev K-15 b) C = peran yang sama tanpa Folder Permissions: baris disembunyikan, manage_permission false, bentuk sama
+                $rc = q2_with_user($t, ['role' => $roleC], function ($set) use ($t, $s, $P) {
+                    return q2_show($t, $s, $P);
+                });
+                $t->status($rc, 200, 'C: show P');
+                $t->eq($rc[1]['result']['is_folder_permission'], 1, 'C: is_folder_permission tetap dikirim (1)');
+                $t->eq($rc[1]['result']['folder_permissions'], [], 'C: folder_permissions = []');
+                q2_access_is($t, $rc[1]['result']['access'], [1, 0, 0, 1], 'C: access', false);
+                foreach (['id_archive', 'name', 'access', 'folder_permissions', 'is_folder_permission'] as $k) {
+                    $t->has($rc[1]['result'], $k, 'C: kunci ' . $k . ' tetap ada (bentuk sama)');
+                }
+                // D = List Archive + View Folder + Folder Permissions saja (tanpa Update Folder): baris tampil, manage true
+                $rd = q2_with_user($t, ['role' => $roleD], function ($set) use ($t, $s, $P) {
+                    return q2_show($t, $s, $P);
+                });
+                $t->status($rd, 200, 'D: show P');
+                $t->eq(json_encode($rd[1]['result']['folder_permissions']), json_encode($wantRows), 'D: folder_permissions 3 baris persis');
+                q2_access_is($t, $rd[1]['result']['access'], [1, 0, 0, 1], 'D: access (tanpa Update Folder pun manage_permission true)', true);
+                // daftar: baris folder P membawa manage_permission menurut role pemanggil
+                $lc = q2_with_user($t, ['role' => $roleC], function ($set) use ($t, $s, $P) {
+                    return q2_list($t, $s, ['search' => json_encode(['query' => q2_row($t, $P)['name']]), 'pagination' => 20]);
+                });
+                q2_access_is($t, q2_find($lc, $P)['access'], [1, 0, 0, 1], 'C: baris P di pencarian', false);
+                $ld = q2_list($t, $s, ['search' => json_encode(['query' => q2_row($t, $P)['name']]), 'pagination' => 20]);
+                q2_access_is($t, q2_find($ld, $P)['access'], [1, 0, 0, 1], 'A: baris P di pencarian', true);
 
                 // toggle dimatikan: baris tetap dikirim (K-10 ii), access = semua true (folder tidak membatasi)
                 q2_set_archive($t, $P, ['is_folder_permission' => 0]);
@@ -281,10 +331,19 @@ return [
                 $t->eq($r[1]['result']['is_folder_permission'], 0, 'dokumen: is_folder_permission 0');
                 $t->eq($r[1]['result']['folder_permissions'], [], 'dokumen: folder_permissions []');
                 $t->eq($r[1]['result']['access'], null, 'dokumen: access null');
+
+                // (rev) folder tanpa View tetap 403 ARCHIVE407 walau pemanggil ber-Folder Permissions (diatur lewat PUT / ED-1029)
+                q2_deny($t, q2_show($t, $s, $P), 403, 'ARCHIVE407', 'show folder tanpa View (A ber-Folder Permissions)', q2_row($t, $P)['name']);
+                $rd2 = q2_with_user($t, ['role' => $roleD], function ($set) use ($t, $s, $P) {
+                    return q2_show($t, $s, $P);
+                });
+                q2_deny($t, $rd2, 403, 'ARCHIVE407', 'show folder tanpa View (D ber-Folder Permissions)', q2_row($t, $P)['name']);
             } finally {
                 q2_purge($t);
+                q2_role_purge($t);
             }
             q2_assert_clean($t, $base);
+            $t->eq($t->db()->table('roles')->where('role_name', 'like', Q2_ROLE_PREFIX . '%')->count(), 0, 'role fixture dibuang');
         },
     ],
 
@@ -432,215 +491,6 @@ return [
                 $r = q2_open($t, $s, $M);
                 $t->status($r, 403, 'buka M (nonaktif) di bawah P aktif');
                 $t->eq($r[1]['result']['denied_by']['id_archive'], $P, 'M: denied_by = P');
-            } finally {
-                q2_purge($t);
-            }
-            q2_assert_clean($t, $base);
-        },
-    ],
-
-    [
-        'id'    => 'AC-10',
-        'title' => 'Superadmin is_superadmin=1 dan =2 (juga role ganda 3+2) lolos semua hak di P aktif tanpa baris: buka/show/ubah/rename/Store/subfolder/hapus 200; role 3 ditolak (kontrol)',
-        'run'   => function ($t) {
-            q2_recover($t);
-            $s = $t->session();
-            q2_purge($t);
-            $base = q2_perm_total($t);
-
-            $scenario = function ($label) use ($t, $s) {
-                $P = q2_folder($t, 'P', ['perm' => 1]);
-                $Pdel = q2_folder($t, 'PD', ['perm' => 1]);
-                $Pc = q2_folder($t, 'PC', ['perm' => 1, 'parent' => $P]);
-                $D = q2_doc($t, 'D');
-                $name = q2_row($t, $P)['name'];
-
-                $r = q2_open($t, $s, $P);
-                $t->status($r, 200, "$label: buka P");
-                q2_access_is($t, $r[1]['result']['access'], q2_all_true(), "$label: result.access");
-                $t->eq(q2_ids($r), [$Pc], "$label: isi P");
-                q2_access_is($t, q2_find($r, $Pc)['access'], q2_all_true(), "$label: baris Pc");
-                $r = q2_open($t, $s, $Pc);
-                $t->status($r, 200, "$label: buka Pc (anak aktif)");
-                $r = q2_show($t, $s, $P);
-                $t->status($r, 200, "$label: show");
-                q2_access_is($t, $r[1]['result']['access'], q2_all_true(), "$label: show access");
-                $t->status(q2_hist($t, $s, $P), 200, "$label: history");
-                $r = q2_put($t, $s, $P, q2_body($name . 'U', ['is_folder_permission' => 1]));
-                $t->status($r, 200, "$label: update");
-                $t->code($r, 'ARCHIVE207', "$label: update");
-                $t->status(q2_rename($t, $s, $P, $name . 'R'), 200, "$label: rename");
-                $r = q2_putin($t, $s, $P, $D);
-                $t->status($r, 200, "$label: Store dokumen ke P");
-                $t->eq(q2_row($t, $D)['id_archive_parent'], $P, "$label: dokumen di P");
-                $r = q2_create($t, $s, ['name' => q2_name('SUB'), 'id_archive_parent' => $P, 'is_all_location' => 1]);
-                $t->status($r, 200, "$label: subfolder di P");
-                $r = q2_putin($t, $s, $Pdel, $Pc);
-                $t->status($r, 200, "$label: pindahkan folder ke Pdel");
-                $r = q2_putin($t, $s, null, $D);
-                $t->status($r, 200, "$label: dokumen keluar ke root");
-                $r = q2_delete($t, $s, $Pdel);
-                $t->status($r, 200, "$label: hapus folder yang memuat subfolder aktif (tanpa baris)");
-                $t->code($r, 'ARCHIVE203', "$label: hapus");
-                $t->eq((int) q2_row($t, $Pdel)['is_active'], 0, "$label: Pdel nonaktif");
-                $t->eq((int) q2_row($t, $Pc)['is_active'], 0, "$label: Pc ikut nonaktif");
-                q2_purge($t);
-            };
-
-            try {
-                // kontrol: role 3 ditolak di folder yang sama
-                $Pc = q2_folder($t, 'CTRL', ['perm' => 1]);
-                $r = q2_open($t, $s, $Pc);
-                $t->status($r, 403, 'kontrol: role 3 ditolak');
-                q2_purge($t);
-
-                foreach ([1 => 'role 1', 2 => 'role 2'] as $role => $label) {
-                    q2_with_user($t, ['role' => $role], function ($set) use ($scenario, $label) {
-                        $scenario($label);
-                    });
-                }
-                q2_with_user($t, ['role' => [3, 2]], function ($set) use ($scenario) {
-                    $scenario('role 3+2');
-                });
-            } finally {
-                q2_purge($t);
-            }
-            q2_assert_clean($t, $base);
-        },
-    ],
-
-    [
-        'id'    => 'AC-11',
-        'title' => 'Pembuat folder (created_by) punya semua hak di folder buatannya tanpa baris; anak aktif buatan orang lain tetap menolak; induk tetap dominan; huruf besar/kecil tidak beda; folder buatan lewat API',
-        'run'   => function ($t) {
-            q2_recover($t);
-            $s = $t->session();
-            q2_purge($t);
-            $base = q2_perm_total($t);
-            $me = q2_uname($t);
-            $o = q2_others($t, 2);
-
-            try {
-                // P aktif dibuat B, tanpa baris
-                $P = q2_folder($t, 'P', ['perm' => 1, 'by' => $me]);
-                $C = q2_folder($t, 'C', ['perm' => 1, 'parent' => $P, 'by' => 'QA02']);   // anak aktif milik orang lain
-                $pName = q2_row($t, $P)['name'];
-                $cName = q2_row($t, $C)['name'];
-
-                $r = q2_open($t, $s, $P);
-                $t->status($r, 200, 'pembuat membuka P');
-                q2_access_is($t, $r[1]['result']['access'], q2_all_true(), 'access pembuat di P');
-                $r = q2_show($t, $s, $P);
-                $t->status($r, 200, 'show P');
-                $r = q2_put($t, $s, $P, q2_body($pName . 'U'));
-                $t->status($r, 200, 'pembuat mengubah P');
-                $t->eq(q2_row($t, $P)['name'], $pName . 'U', 'nama P berubah');
-                $pName .= 'U';
-
-                // anak aktif milik orang lain: ditolak di C (denied_by = C)
-                $r = q2_open($t, $s, $C);
-                $t->status($r, 403, 'pembuat P ditolak di C (anak aktif tanpa hak)');
-                $t->eq($r[1]['result']['denied_by']['id_archive'], $C, 'denied_by = C');
-                $r = q2_put($t, $s, $C, q2_body($cName . 'U'));
-                q2_deny($t, $r, 403, 'ARCHIVE408', 'ubah C', $cName);
-                // baris folder C di daftar P membawa access view=false
-                $r = q2_open($t, $s, $P);
-                q2_access_is($t, q2_find($r, $C)['access'], [0, 0, 0, 0], 'access baris C di daftar P');
-
-                // induk tetap dominan: pembuat C tetapi P (aktif, orang lain, tanpa baris) menolak
-                $P2 = q2_folder($t, 'P2', ['perm' => 1, 'by' => 'QA02']);
-                $C2 = q2_folder($t, 'C2', ['perm' => 1, 'parent' => $P2, 'by' => $me]);
-                $p2Name = q2_row($t, $P2)['name'];
-                $r = q2_open($t, $s, $C2);
-                $t->status($r, 403, 'pembuat C2 ditolak karena P2 menolak');
-                $t->eq($r[1]['result']['denied_by']['id_archive'], $P2, 'denied_by = P2');
-                $r = q2_rename($t, $s, $C2, q2_name('X'));
-                q2_deny($t, $r, 403, 'ARCHIVE408', 'rename C2', $p2Name);
-
-                // huruf besar/kecil tidak beda (collation DB)
-                q2_set_archive($t, $P2, ['created_by' => strtoupper($me)]);
-                q2_set_archive($t, $C2, ['is_folder_permission' => 0]);
-                $r = q2_open($t, $s, $C2);
-                $t->status($r, 200, 'created_by huruf besar tetap dikenali sebagai pembuat');
-
-                // folder dibuat lewat API oleh B, lalu permission diaktifkan oleh pembuat -> tetap boleh
-                $name = q2_name('API');
-                $r = q2_create($t, $s, ['name' => $name, 'is_all_location' => 1]);
-                $t->status($r, 200, 'create-folder API');
-                $A = $t->db()->table('archives')->where('name', $name)->value('id_archive');
-                $r = q2_put($t, $s, $A, q2_body($name, ['is_folder_permission' => 1, 'folder_permissions' => [
-                    ['id_user' => $o[0][0], 'is_view' => 1, 'is_update' => 0, 'is_delete' => 0, 'is_store' => 0],
-                ]]));
-                $t->status($r, 200, 'pembuat mengaktifkan permission folder buatannya');
-                $t->eq((int) q2_row($t, $A)['is_folder_permission'], 1, 'aktif');
-                $r = q2_open($t, $s, $A);
-                $t->status($r, 200, 'pembuat tetap bisa membuka sesudah aktif (tanpa barisnya sendiri)');
-                q2_access_is($t, $r[1]['result']['access'], q2_all_true(), 'access pembuat');
-                $r = q2_delete($t, $s, $A);
-                $t->status($r, 200, 'pembuat menghapus folder buatannya');
-            } finally {
-                q2_purge($t);
-            }
-            q2_assert_clean($t, $base);
-        },
-    ],
-
-    [
-        'id'    => 'AC-15',
-        'title' => 'B tanpa View di P: search nomor dokumen di P tetap menemukannya; baris folder hasil search access.view=false; show/history P 403 ARCHIVE407; show/history dokumen 200; search+id_archive tidak ditolak',
-        'run'   => function ($t) {
-            q2_recover($t);
-            $s = $t->session();
-            q2_purge($t);
-            $base = q2_perm_total($t);
-
-            try {
-                $P = q2_folder($t, 'P', ['perm' => 1]);
-                $C = q2_folder($t, 'C', ['perm' => 1, 'parent' => $P]);
-                $D = q2_doc($t, 'DOC', ['parent' => $P]);
-                $Dc = q2_doc($t, 'DOC', ['parent' => $C]);
-                $pName = q2_row($t, $P)['name'];
-                $dName = q2_row($t, $D)['name'];
-                $dcName = q2_row($t, $Dc)['name'];
-
-                // search dokumen (lintas folder)
-                $r = q2_list($t, $s, ['search' => json_encode(['query' => $dName]), 'pagination' => 50]);
-                $t->status($r, 200, 'search dokumen di P');
-                $row = q2_find($r, $D);
-                $t->true($row !== null, 'dokumen di P (B tanpa View) muncul di pencarian');
-                $t->eq($row['access'], null, 'baris dokumen: access null');
-                $t->eq($row['is_folder_permission'], 0, 'baris dokumen: is_folder_permission 0');
-                $t->eq($row['name'][0]['transaction_no'], $dName, 'nomor dokumen');
-                $t->eq($r[1]['result']['access'], null, 'result.access null saat mencari');
-                $r = q2_list($t, $s, ['search' => json_encode(['query' => $dcName]), 'pagination' => 50]);
-                $t->true(q2_find($r, $Dc) !== null, 'dokumen di C (folder dalam P) juga muncul');
-
-                // search folder: baris folder membawa access.view=false & is_folder_permission=1
-                $r = q2_list($t, $s, ['search' => json_encode(['query' => $pName]), 'pagination' => 50]);
-                $t->status($r, 200, 'search folder');
-                $row = q2_find($r, $P);
-                $t->true($row !== null, 'folder P (tanpa View) muncul di pencarian');
-                q2_access_is($t, $row['access'], [0, 0, 0, 0], 'baris folder P hasil search');
-                $t->eq($row['is_folder_permission'], 1, 'baris folder P: is_folder_permission 1');
-
-                // search + id_archive: bukan membuka folder -> 200
-                $r = q2_list($t, $s, ['id_archive' => $P, 'search' => json_encode(['query' => $dName]), 'pagination' => 50]);
-                $t->status($r, 200, 'search dengan id_archive=P');
-                $t->true(q2_find($r, $D) !== null, 'dokumen tetap muncul');
-                $t->eq($r[1]['result']['access'], null, 'result.access null saat mencari');
-                // hanya showRelatedTransaction bukan pencarian: tetap membuka folder -> 403 bentuk formatResponse
-                $r = q2_list($t, $s, ['id_archive' => $P, 'search' => json_encode(['showRelatedTransaction' => true])]);
-                $t->status($r, 403, 'showRelatedTransaction saja = membuka folder');
-                $t->eq($r[1]['msg_code'] ?? null, 'ARCHIVE407', 'msg_code');
-
-                // show / history
-                q2_deny($t, q2_show($t, $s, $P), 403, 'ARCHIVE407', 'show P', $pName);
-                q2_deny($t, q2_hist($t, $s, $P), 403, 'ARCHIVE407', 'history P', $pName);
-                $r = q2_show($t, $s, $D);
-                $t->status($r, 200, 'show dokumen');
-                $r = q2_hist($t, $s, $D);
-                $t->status($r, 200, 'history dokumen (tidak dicek hak folder)');
-                $t->has($r[1], 'result.data', 'history dokumen: result.data');
             } finally {
                 q2_purge($t);
             }

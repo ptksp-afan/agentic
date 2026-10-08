@@ -1,7 +1,7 @@
 <?php
 /**
- * ED-1025 - AC-5 (simpan tab Permission lewat PUT), AC-6 (ARCHIVE411), AC-12 (Update/ganti induk), AC-9 (K-1 a: semua hak
- * dominan dari induk), AC-22 (riwayat `permission`), X-1 (semantik field opsional PUT).
+ * ED-1025 - AC-5 (simpan tab Permission lewat PUT), AC-6 (ARCHIVE411), AC-12 (Update/ganti induk), AC-9 ((rev) induk
+ * hanya dominan untuk View; Update/Delete/Store dinilai di folder itu), AC-22 (riwayat `permission`), X-1 (semantik field opsional PUT).
  *
  * User uji = QA_USER (role 3 = bukan bypass); baris permission/pembuat/flag folder uji menentukan hak efektifnya.
  */
@@ -246,7 +246,14 @@ return [
                 $before = q2_snap($t, [$Q]);
                 q2_deny($t, q2_put($t, $s, $Q, q2_body($qName . 'X')), 403, 'ARCHIVE408', 'PUT tanpa Update', $qName);
                 q2_deny($t, q2_rename($t, $s, $Q, $qName . 'X'), 403, 'ARCHIVE408', 'rename tanpa Update', $qName);
-                q2_deny($t, $t->call($s, 'PUT', 'api/v5/document-archive/archives/' . $Q, []), 403, 'ARCHIVE408', 'PUT tubuh kosong: 403 sebelum 422', $qName);
+                // (rev K-15 b, AC-38) PUT tanpa kedua kelompok = 422 (name + is_all_location wajib), BUKAN 403: hak folder tidak dinilai
+                // untuk body kosong (dulu 403 ARCHIVE408 mendahului 422). Rename tubuh kosong tetap 403 (rename = detail).
+                $re = $t->call($s, 'PUT', 'api/v5/document-archive/archives/' . $Q, []);
+                $t->status($re, 422, '(rev) PUT tubuh kosong = 422');
+                $t->true(isset($re[1]['errors']['name']) && isset($re[1]['errors']['is_all_location']), '(rev) PUT tubuh kosong: errors name + is_all_location');
+                $re = $t->call($s, 'PUT', 'api/v5/document-archive/archives/' . $Q, ['description' => 'x']);
+                $t->status($re, 403, '(rev) PUT hanya description = kelompok detail -> 403 (hak folder dinilai sebelum 422)');
+                $t->code($re, 'ARCHIVE408', '(rev) PUT description saja');
                 q2_deny($t, $t->call($s, 'PUT', 'api/v5/document-archive/archives/rename/' . $Q, []), 403, 'ARCHIVE408', 'rename tubuh kosong: 403 sebelum 422', $qName);
                 q2_deny($t, q2_put($t, $s, $Q, q2_body($qName . 'X', ['is_folder_permission' => 0, 'folder_permissions' => []])), 403, 'ARCHIVE408', 'PUT permission tanpa Update', $qName);
                 $t->true(q2_same($before, q2_snap($t, [$Q])), 'data tidak berubah oleh penolakan');
@@ -274,7 +281,7 @@ return [
                 $r = q2_put($t, $s, $M, q2_body($mName, ['id_archive_parent' => $parentOff]));
                 $t->status($r, 200, 'ke induk nonaktif');
                 $t->eq(q2_row($t, $M)['id_archive_parent'], $parentOff, 'DB: induk = PO');
-                // K-1 a: sesudah masuk PS (aktif, B View+Store), Update di M tetap perlu Update di PS; beri B Update di PS
+                // (rev K-12/13) sesudah masuk PS (aktif, B View+Store tanpa Update) Update di M tetap cukup di M; induk asal/tujuan tidak mensyaratkan Update
                 $r = q2_put($t, $s, $M, q2_body($mName, ['id_archive_parent' => $parentStore]));
                 $t->status($r, 200, 'ke induk ber-Store (B Update di M, Store di PS)');
                 $t->eq(q2_row($t, $M)['id_archive_parent'], $parentStore, 'DB: induk = PS');
@@ -300,7 +307,7 @@ return [
 
     [
         'id'    => 'AC-9',
-        'title' => 'Parent dominan untuk semua hak (K-1 a): C aktif View saja -> rename/Store ke C 403 ARCHIVE408/410; Store di C tanpa Store di P -> 403 (folder penolak = P); Update di C tanpa Update di P -> 403; kontrol 200',
+        'title' => '(rev) Induk dominan hanya untuk View: C aktif View saja -> rename/Store ke C 403 ARCHIVE408/410 (parameter C); hak di C tanpa hak di P -> 200 (dulu 403): Store ke C, rename/PUT/DELETE C; P sendiri tetap ditolak; kontrol 200',
         'run'   => function ($t) {
             q2_recover($t);
             $s = $t->session();
@@ -329,34 +336,40 @@ return [
                 $t->status($r, 200, '9a rename P (Update di P)');
                 $t->status(q2_putin($t, $s, $P, $Dr), 200, '9a put-in ke P (Store di P)');
 
-                // --- 9b: C (B V+U+S), P (B V+U tanpa Store) -> Store ke C ditolak oleh P
+                // --- 9b: (rev) C (B V+U+S), P (B V+U tanpa Store) -> Store ke C JALAN (Store dinilai di C; induk hanya View)
                 $P2 = q2_folder($t, 'P2', ['perm' => 1]);
                 $C2 = q2_folder($t, 'C2', ['perm' => 1, 'parent' => $P2]);
                 $p2Name = q2_row($t, $P2)['name'];
                 q2_perm($t, $P2, $b, 1, 1, 0, 0);
                 q2_perm($t, $C2, $b, 1, 1, 0, 1);
                 $D2 = q2_doc($t, 'D2');
-                q2_deny($t, q2_putin($t, $s, $C2, $D2), 403, 'ARCHIVE410', '9b put-in ke C2: P2 tanpa Store', $p2Name);
-                q2_deny($t, q2_create($t, $s, ['name' => q2_name('SUB'), 'id_archive_parent' => $C2, 'is_all_location' => 1]), 403, 'ARCHIVE410', '9b create-folder di C2', $p2Name);
-                $t->eq(q2_row($t, $D2)['id_archive_parent'], null, '9b: dokumen tetap di root');
-                // rename C2 jalan (Update di P2 dan C2)
-                $t->status(q2_rename($t, $s, $C2, q2_row($t, $C2)['name'] . 'R'), 200, '9b rename C2 (Update di P2 dan C2)');
-                // beri Store di P2 -> put-in jalan
-                q2_unperm($t, $P2, $b);
-                q2_perm($t, $P2, $b, 1, 1, 0, 1);
-                $t->status(q2_putin($t, $s, $C2, $D2), 200, '9b put-in ke C2 sesudah Store di P2');
+                $r = q2_putin($t, $s, $C2, $D2);
+                $t->status($r, 200, '9b put-in ke C2: P2 tanpa Store tidak menolak (rev)');
                 $t->eq(q2_row($t, $D2)['id_archive_parent'], $C2, '9b: dokumen kini di C2');
+                $subName = q2_name('SUB');
+                $r = q2_create($t, $s, ['name' => $subName, 'id_archive_parent' => $C2, 'is_all_location' => 1]);
+                $t->status($r, 200, '9b create-folder di C2 (rev)');
+                $t->eq(q2_row($t, $t->db()->table('archives')->where('name', $subName)->value('id_archive'))['id_archive_parent'], $C2, '9b: subfolder di C2');
+                $t->status(q2_rename($t, $s, $C2, q2_row($t, $C2)['name'] . 'R'), 200, '9b rename C2 (Update di C2)');
+                // kontrol: di P2 sendiri tidak ada Store -> tetap ditolak, parameter = P2
+                q2_deny($t, q2_putin($t, $s, $P2, q2_doc($t, 'D2B')), 403, 'ARCHIVE410', '9b put-in ke P2 (tanpa Store di P2)', $p2Name);
 
-                // --- 9c: Update di C tetapi tidak di P -> ditolak oleh P
+                // --- 9c: (rev) hak penuh di C, View saja di P -> rename/PUT/DELETE C jalan; P sendiri tetap ditolak
                 $P3 = q2_folder($t, 'P3', ['perm' => 1]);
                 $C3 = q2_folder($t, 'C3', ['perm' => 1, 'parent' => $P3]);
                 $p3Name = q2_row($t, $P3)['name'];
                 q2_perm($t, $P3, $b, 1);
                 q2_perm($t, $C3, $b, 1, 1, 1, 1);
                 $c3Name = q2_row($t, $C3)['name'];
-                q2_deny($t, q2_rename($t, $s, $C3, $c3Name . 'X'), 403, 'ARCHIVE408', '9c rename C3: P3 tanpa Update', $p3Name);
-                q2_deny($t, q2_put($t, $s, $C3, q2_body($c3Name . 'X')), 403, 'ARCHIVE408', '9c PUT C3: P3 tanpa Update', $p3Name);
-                q2_deny($t, q2_delete($t, $s, $C3), 403, 'ARCHIVE409', '9c delete C3: P3 tanpa Delete', $p3Name);
+                q2_deny($t, q2_rename($t, $s, $P3, q2_name('X')), 403, 'ARCHIVE408', '9c rename P3 (View saja di P3)', $p3Name);
+                q2_deny($t, q2_delete($t, $s, $P3), 403, 'ARCHIVE409', '9c delete P3 (tanpa Delete di P3)', $p3Name);
+                $t->status(q2_rename($t, $s, $C3, $c3Name . 'X'), 200, '9c rename C3 (Update di C3; P3 View saja) (rev: dulu 403)');
+                $t->status(q2_put($t, $s, $C3, q2_body($c3Name . 'Y')), 200, '9c PUT C3 (rev: dulu 403)');
+                $t->eq(q2_row($t, $C3)['name'], $c3Name . 'Y', '9c: nama C3 berubah');
+                $r = q2_delete($t, $s, $C3);
+                $t->status($r, 200, '9c delete C3 kosong (Delete di C3; P3 View saja) (rev: dulu 403)');
+                $t->code($r, 'ARCHIVE203', '9c delete C3');
+                $t->eq((int) q2_row($t, $C3)['is_active'], 0, '9c C3 nonaktif');
 
                 // --- 9d: kontrol: P dan C sama-sama memberi semua hak -> semua 200
                 $P4 = q2_folder($t, 'P4', ['perm' => 1]);

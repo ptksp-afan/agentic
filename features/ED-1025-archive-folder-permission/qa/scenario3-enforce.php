@@ -10,7 +10,7 @@ return [
 
     [
         'id'    => 'AC-13',
-        'title' => 'B tanpa Delete: DELETE 403 ARCHIVE409 (is_active tetap, riwayat tetap); Delete juga dituntut di induk aktif (K-1 a); urutan 404 -> 409 -> 401; dengan Delete 200',
+        'title' => 'B tanpa Delete: DELETE 403 ARCHIVE409 (is_active tetap, riwayat tetap); (rev K-12 a) anak Izin Off di bawah induk tanpa Delete BISA dihapus (induk hanya View); urutan 404 -> 409 -> 401; dengan Delete 200',
         'run'   => function ($t) {
             q2_recover($t);
             $s = $t->session();
@@ -21,16 +21,21 @@ return [
             try {
                 $P = q2_folder($t, 'P', ['perm' => 1]);
                 $Cin = q2_folder($t, 'CIN', ['perm' => 0, 'parent' => $P]);
+                $Cin2 = q2_folder($t, 'CIN2', ['perm' => 0, 'parent' => $P]);
                 $pName = q2_row($t, $P)['name'];
                 q2_perm($t, $P, $b, 1, 1, 0, 1);
-                $before = q2_snap($t, [$P, $Cin]);
+                $before = q2_snap($t, [$P, $Cin, $Cin2]);
 
                 q2_deny($t, q2_delete($t, $s, $P), 403, 'ARCHIVE409', 'DELETE P tanpa Delete', $pName);
                 $t->eq((int) q2_row($t, $P)['is_active'], 1, 'P tetap aktif');
-                $t->true(q2_same($before, q2_snap($t, [$P, $Cin])), 'data (P dan anak) tidak berubah');
-                // anak nonaktif-permission: Delete dituntut di induk aktif
-                q2_deny($t, q2_delete($t, $s, $Cin), 403, 'ARCHIVE409', 'DELETE anak: induk tanpa Delete', $pName);
-                $t->eq((int) q2_row($t, $Cin)['is_active'], 1, 'anak tetap aktif');
+                $t->true(q2_same($before, q2_snap($t, [$P, $Cin, $Cin2])), 'data (P dan anak) tidak berubah');
+                // (rev K-12 a) anak Izin Off tidak dibatasi induknya: B hanya View di P -> hapus anak (kosong) = 200
+                $r = q2_delete($t, $s, $Cin);
+                $t->status($r, 200, '(rev) DELETE anak Off: induk tanpa Delete tidak menolak');
+                $t->code($r, 'ARCHIVE203', '(rev) DELETE anak Off');
+                $t->eq((int) q2_row($t, $Cin)['is_active'], 0, '(rev) anak Off nonaktif');
+                $t->eq((int) q2_row($t, $P)['is_active'], 1, '(rev) P tetap aktif');
+                $t->eq((int) q2_row($t, $Cin2)['is_active'], 1, '(rev) anak lain tetap aktif');
 
                 // 404 mendahului 409
                 $r = q2_delete($t, $s, Q2_RANDOM_ID);
@@ -49,7 +54,7 @@ return [
                 $t->status($r, 200, 'DELETE P dengan Delete');
                 $t->code($r, 'ARCHIVE203', 'DELETE P');
                 $t->eq((int) q2_row($t, $P)['is_active'], 0, 'P nonaktif');
-                $t->eq((int) q2_row($t, $Cin)['is_active'], 0, 'anak nonaktif ikut');
+                $t->eq((int) q2_row($t, $Cin2)['is_active'], 0, 'anak nonaktif ikut');
 
                 // bahasa EN
                 $E = q2_folder($t, 'E', ['perm' => 1]);
@@ -137,9 +142,13 @@ return [
                 $r = q2_putin($t, $s, $S, $Fu);
                 $t->status($r, 200, 'folder dengan Update ke S');
                 $t->eq(q2_row($t, $Fu)['id_archive_parent'], $S, 'DB: folder FU kini di S');
-                // K-1 a: sesudah di bawah S (aktif; B View+Store tanpa Update), Update di FU juga butuh Update di S
-                q2_deny($t, q2_putin($t, $s, null, $Fu), 403, 'ARCHIVE408', 'FU di bawah S tanpa Update: ditolak oleh S', q2_row($t, $S)['name']);
-                // folder dengan Update ke root (dev: tetap butuh Update di folder yang dipindah): FU di bawah Z nonaktif-permission
+                // (rev K-13 a) sesudah di bawah S (aktif; B View+Store tanpa Update): Update di FU cukup, induk asal tidak dicek -> keluar ke root 200
+                $r = q2_putin($t, $s, null, $Fu);
+                $t->status($r, 200, '(rev) FU di bawah S tanpa Update: keluar ke root 200 (induk asal tidak dicek)');
+                $t->eq(q2_row($t, $Fu)['id_archive_parent'], null, '(rev) DB: FU di root');
+                // ... dan sebaliknya: folder FV (hanya View) tetap ditolak (Update di folder itu sendiri)
+                q2_deny($t, q2_putin($t, $s, null, $Fv), 403, 'ARCHIVE408', '(rev) FV tanpa Update tetap ditolak', $fvName);
+                // folder dengan Update ke root (dev: tetap butuh Update di folder yang dipindah): FU di bawah Z Izin Off
                 $Z = q2_folder($t, 'Z', ['perm' => 0]);
                 q2_set_archive($t, $Fu, ['id_archive_parent' => $Z]);
                 $r = q2_putin($t, $s, null, $Fu);
@@ -183,8 +192,14 @@ return [
                     $t->eq((int) q2_row($t, $id)['is_active'], 1, 'tetap aktif: ' . $id);
                 }
                 $t->true(q2_same($before, q2_snap($t, $ids)), 'semua data tidak berubah (tidak ada yang terhapus diam-diam)');
-                // G (nonaktif-permission) di bawah C: Delete di G mengikuti C -> ditolak
-                q2_deny($t, q2_delete($t, $s, $G), 403, 'ARCHIVE409', 'DELETE G langsung: ditolak oleh C', q2_row($t, $C)['name']);
+                // (rev K-12 a) G (Izin Off) di bawah C tanpa Delete: G tidak dibatasi induknya -> DELETE G langsung 200 (dulu 409 oleh C)
+                $G2 = q2_folder($t, 'G2', ['perm' => 0, 'parent' => $C]);
+                $r = q2_delete($t, $s, $G2);
+                $t->status($r, 200, '(rev) DELETE G2 (Off) di bawah C tanpa Delete');
+                $t->eq((int) q2_row($t, $G2)['is_active'], 0, '(rev) G2 nonaktif');
+                foreach ($ids as $id) {
+                    $t->eq((int) q2_row($t, $id)['is_active'], 1, '(rev) induk dan G tetap aktif: ' . $id);
+                }
 
                 // diberi Delete di C -> 200, seluruh pohon nonaktif
                 q2_unperm($t, $C, $b);

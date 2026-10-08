@@ -285,6 +285,19 @@ if (!function_exists('q2_dbname')) {
         return $row ? (array) $row : null;
     }
 
+    function q2_name_of($t, $id)
+    {
+        return q2_row($t, $id)['name'];
+    }
+
+    /** Peta baris yang diharapkan, diurut menurut id_user (sama dengan q2_perm_map): [id_user => [v,u,d,s]]. */
+    function q2_perm_expect(array $map)
+    {
+        ksort($map);
+
+        return $map;
+    }
+
     /** Baris archive_permissions satu folder, ternormalisasi, urut id_user: [id_user => [v,u,d,s]]. */
     function q2_perm_map($t, $idArchive)
     {
@@ -351,6 +364,151 @@ if (!function_exists('q2_dbname')) {
         }
 
         return $out;
+    }
+
+    // ------------------------------------------------------------------ role fixture (rev ED-1025)
+
+    define('Q2_ROLE_PREFIX', 'QA02-ROLE-');
+
+    /**
+     * Buat role fixture berawalan QA02-ROLE- dengan permission bernama $names (nama -> id dari tabel permissions),
+     * bukan superadmin (is_superadmin 4), aktif. Dibuang oleh q2_role_purge(). Tidak menyentuh role bawaan/pengembang.
+     * @return int id_role
+     */
+    function q2_role($t, $label, array $names)
+    {
+        return q2_w($t, function ($c) use ($label, $names) {
+            $now = date('Y-m-d H:i:s');
+            $id = $c->table('roles')->insertGetId([
+                'role_name' => Q2_ROLE_PREFIX . $label, 'description' => 'QA ED-1025 fixture', 'is_superadmin' => 4,
+                'is_active' => 1, 'is_used' => 1, 'created_by' => 'QA02', 'created_at' => $now, 'updated_by' => 'QA02', 'updated_at' => $now,
+            ]);
+            foreach ($names as $name) {
+                $perm = $c->table('permissions')->where('permission_name', $name)->first();
+                if (!$perm) {
+                    throw new \RuntimeException("prasyarat: permission '$name' tidak ada di DB uji (seed ulang belum diterapkan?)");
+                }
+                $c->table('role_permissions')->insert([
+                    'id_role' => $id, 'id_permission' => $perm->id_permission, 'permission_name' => $perm->permission_name,
+                    'created_at' => $now, 'updated_at' => $now, 'created_by' => 'QA02', 'updated_by' => 'QA02',
+                ]);
+            }
+
+            return (int) $id;
+        });
+    }
+
+    /** Hapus semua role fixture QA02-ROLE- (role_permissions, user_roles yang menunjuknya, lalu role). Idempoten. */
+    function q2_role_purge($t)
+    {
+        q2_w($t, function ($c) {
+            $ids = $c->table('roles')->where('role_name', 'like', Q2_ROLE_PREFIX . '%')->pluck('id_role')->all();
+            if ($ids) {
+                $c->table('user_roles')->whereIn('id_role', $ids)->delete();
+                $c->table('role_permissions')->whereIn('id_role', $ids)->delete();
+                $c->table('roles')->whereIn('id_role', $ids)->delete();
+            }
+        });
+    }
+
+    // permission modul Archive per peran uji (nama persis di tabel permissions)
+    function q2_perms_a()
+    {
+        return ['List Archive', 'Update Folder', 'Delete Folder', 'Add Folder', 'Add Document', 'Move Archive', 'View Folder', 'Folder Permissions'];
+    }
+
+    function q2_perms_c()
+    {
+        return ['List Archive', 'Update Folder', 'Delete Folder', 'Add Folder', 'Add Document', 'Move Archive', 'View Folder'];
+    }
+
+    function q2_perms_d()
+    {
+        return ['List Archive', 'View Folder', 'Folder Permissions'];
+    }
+
+    // ------------------------------------------------------------------ helper revisi (scenario8/9)
+
+
+    /** 403 GE0114 (bentuk middleware permission_v5): body `code` + `parameter` = nama permission, tanpa `result`. */
+    function q2_forbid_perm($t, $r, $permission, $label)
+    {
+        $t->status($r, 403, $label);
+        $t->code($r, 'GE0114', $label);
+        $t->eq($r[1]['parameter'] ?? null, $permission, $label . ': parameter');
+        $t->true(!array_key_exists('result', $r[1]), $label . ': tanpa data');
+    }
+
+    function q2_perm_row($idUser, $v = 1, $u = 0, $d = 0, $s = 0)
+    {
+        return ['id_user' => $idUser, 'is_view' => $v, 'is_update' => $u, 'is_delete' => $d, 'is_store' => $s];
+    }
+
+    /** Parse blok `INSERT INTO <table>(cols) VALUES ...;` seed menjadi array baris asosiatif (null bila blok tidak ada). */
+    function q2_seed_rows($sql, $table)
+    {
+        if (!preg_match('/INSERT INTO ' . $table . '\(([^)]*)\) VALUES(.*?);/s', $sql, $m)) {
+            return null;
+        }
+        $cols = array_map('trim', explode(',', $m[1]));
+        preg_match_all("/\(((?:[^()']|'[^']*')*)\)/", $m[2], $all);
+        $rows = [];
+        foreach ($all[1] as $tuple) {
+            $rows[] = array_combine($cols, array_map('trim', str_getcsv($tuple, ',', "'")));
+        }
+
+        return $rows;
+    }
+
+    /** Himpunan pasangan "a,b" (unik, terurut) yang menyebut salah satu id di $ids. */
+    function q2_seed_pairs($rows, array $ids)
+    {
+        $out = [];
+        foreach ($rows as $r) {
+            if (in_array((int) $r['id_permission'], $ids, true) || in_array((int) $r['id_permission_ref'], $ids, true)) {
+                $out[(int) $r['id_permission'] . ',' . (int) $r['id_permission_ref']] = true;
+            }
+        }
+        $keys = array_keys($out);
+        sort($keys);
+
+        return $keys;
+    }
+
+    function q2_db_pairs($c, $table, array $ids)
+    {
+        $out = [];
+        foreach ($c->table($table)->whereIn('id_permission', $ids)->orWhereIn('id_permission_ref', $ids)->get() as $r) {
+            $out[$r->id_permission . ',' . $r->id_permission_ref] = true;
+        }
+        $keys = array_keys($out);
+        sort($keys);
+
+        return $keys;
+    }
+
+    /** Berkas bertipe $exts di bawah $dir (rekursif) yang cocok $regex; $skip = nama direktori yang dilewati. */
+    function q2_grep_tree($dir, $regex, array $exts, array $skip = [])
+    {
+        $hits = [];
+        if (!is_dir($dir)) {
+            return $hits;
+        }
+        $it = new \RecursiveIteratorIterator(new \RecursiveCallbackFilterIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            function ($file) use ($skip) {
+                return !($file->isDir() && in_array($file->getFilename(), $skip, true));
+            }
+        ));
+        foreach ($it as $file) {
+            if ($file->isFile() && in_array(strtolower($file->getExtension()), $exts, true)) {
+                if (preg_match($regex, (string) file_get_contents($file->getPathname()))) {
+                    $hits[] = substr($file->getPathname(), strlen($dir));
+                }
+            }
+        }
+
+        return $hits;
     }
 
     // ------------------------------------------------------------------ request
@@ -465,8 +623,12 @@ if (!function_exists('q2_dbname')) {
         }
     }
 
-    /** access = objek 5 kunci dengan nilai [view, update, delete, store] dan manage_permission = update. */
-    function q2_access_is($t, $access, array $rights, $label)
+    /**
+     * access = objek 5 kunci dengan nilai [view, update, delete, store]. (rev ED-1025, K-15 b) manage_permission TIDAK lagi
+     * mengikuti update: nilainya = role pemanggil memegang `Folder Permissions` (sama di semua folder). Role bawaan QA_USER
+     * (role 3) memegangnya -> default true; beri $manage = false untuk role fixture/lain tanpa permission itu.
+     */
+    function q2_access_is($t, $access, array $rights, $label, $manage = true)
     {
         $t->true(is_array($access), $label . ': access berupa objek');
         $expected = [
@@ -474,7 +636,7 @@ if (!function_exists('q2_dbname')) {
             'update'            => (bool) $rights[1],
             'delete'            => (bool) $rights[2],
             'store'             => (bool) $rights[3],
-            'manage_permission' => (bool) $rights[1],
+            'manage_permission' => (bool) $manage,
         ];
         $t->eq(json_encode($access), json_encode($expected), $label . ': access');
     }

@@ -14,7 +14,9 @@ $archiveRoutes = function ($id, $folder, $docName) {
         'GET archives/{id}'    => ['GET', "$base/archives/$id", null, 'List Archive'],
         'GET history/{id}'     => ['GET', "$base/archives/history/$id", null, 'List Archive'],
         'POST create-folder'   => ['POST', "$base/archives/create-folder", ['name' => 'QA01-PERM', 'is_all_location' => 1], 'Add Folder'],
-        'PUT archives/{id}'    => ['PUT', "$base/archives/$id", ['name' => 'QA01-PERM', 'is_all_location' => 1], 'Update Folder'],
+        // (rev ED-1025, K-15 b) route PUT = permission_v5:Update Folder|Folder Permissions: tanpa keduanya parameter memuat dua nama
+        'PUT archives/{id}'    => ['PUT', "$base/archives/$id", ['name' => 'QA01-PERM', 'is_all_location' => 1], 'Update Folder, Folder Permissions'],
+        'PUT archives/{id} izin saja' => ['PUT', "$base/archives/$id", ['is_folder_permission' => 0], 'Update Folder, Folder Permissions'],
         'PUT rename/{id}'      => ['PUT', "$base/archives/rename/$id", ['name' => 'QA01-PERM'], 'Update Folder'],
         'DELETE delete/{id}'   => ['DELETE', "$base/archives/delete/$id", null, 'Delete Folder'],
         'POST put-in'          => ['POST', "$base/documents/put-in", ['id_archive_parent' => $folder, 'name' => $docName], 'Move Archive, Add Document'],
@@ -89,7 +91,7 @@ return [
                     $r = $call($routes['POST receive']);
                     $t->status($r, 200, 'role 16: receive (Receive Document)');
                     $t->code($r, 'ARCHIVE210', 'role 16: receive');
-                    foreach (['POST create-folder', 'PUT archives/{id}', 'PUT rename/{id}', 'DELETE delete/{id}'] as $label) {
+                    foreach (['POST create-folder', 'PUT archives/{id}', 'PUT archives/{id} izin saja', 'PUT rename/{id}', 'DELETE delete/{id}'] as $label) {
                         $forbid($call($routes[$label]), "role 16: $label", $routes[$label][3]);
                     }
                 });
@@ -132,7 +134,9 @@ return [
                 $t->true(!array_key_exists('result', $r[1]), 'tanpa data (result) pada penolakan');
             });
 
-            // 2. simulasi tenant tanpa seed Archive: permissions 1081-1090 tidak ada -> bahkan superadmin/Super Admin 403
+            // 2. simulasi tenant tanpa seed Archive: permissions modul Archive (1081-1090, (rev) 1139 Opname Document, 1140 Folder Permissions)
+            //    tidak ada -> bahkan superadmin/Super Admin 403, juga untuk PUT kelompok izin saja
+
             q1_without_archive_permissions($t, function () use ($t, $s, $routes) {
                 foreach ([3, 1] as $role) {
                     q1_with_user($t, ['role' => $role], function ($set) use ($t, $s, $routes, $role) {

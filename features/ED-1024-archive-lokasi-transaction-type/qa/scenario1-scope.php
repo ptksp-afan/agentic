@@ -10,20 +10,26 @@ return [
 
     [
         'id'    => 'AC-1',
-        'title' => 'Root: user JOG saja melihat Backup Arsip, CABANG - JOGJA, PUSAT - MAGELANG, bukan CABANG - SEMARANG',
+        'title' => 'Root: user JOG saja melihat Backup Arsip, CABANG - JOGJA, folder semua lokasi (fixture QA01-ALLROOT), bukan CABANG - SEMARANG / folder {MGL} (fixture QA01-MGLROOT)',
         'run'   => function ($t) {
             $s = $t->session();
             q1_purge($t);
             $loc = q1_locs($t);
+            // (rev ED-1025, QA) 'PUSAT - MAGELANG' = folder milik pengembang di DB bersama (sudah diubah jadi {MGL} saja oleh pengembang
+            // 2026-10-08): diganti fixture sendiri agar skenario tidak bergantung pada data itu
+            q1_add($t, ['name' => 'QA01-ALLROOT', 'type' => 1, 'all' => 1]);
+            q1_add($t, ['name' => 'QA01-MGLROOT', 'type' => 1, 'all' => 0, 'locs' => ['MGL']]);
 
+            try {
             q1_with_user($t, ['role' => 3, 'emp' => ['JOG']], function ($set) use ($t, $s, $loc) {
                 $r = q1_list($t, $s, ['pagination' => 100]);
                 $t->status($r, 200, 'root JOG');
                 $names = q1_names($r);
-                foreach (['Backup Arsip', 'CABANG - JOGJA', 'PUSAT - MAGELANG'] as $n) {
+                foreach (['Backup Arsip', 'CABANG - JOGJA', 'QA01-ALLROOT'] as $n) {
                     $t->true(in_array($n, $names, true), "root JOG memuat '$n'");
                 }
                 $t->true(!in_array('CABANG - SEMARANG', $names, true), 'root JOG TIDAK memuat CABANG - SEMARANG');
+                $t->true(!in_array('QA01-MGLROOT', $names, true), 'root JOG TIDAK memuat folder {MGL}');
 
                 $t->eq($r[1]['result']['total'], q1_expected_count($t, null, [$loc['JOG']]), 'root JOG: total = hitungan DB independen');
                 $all = q1_all_rows($t, $s, [], 200, 8);
@@ -41,8 +47,13 @@ return [
                 $r = q1_list($t, $s, ['pagination' => 100]);
                 $names = q1_names($r);
                 $t->true(!in_array('CABANG - JOGJA', $names, true) && !in_array('CABANG - SEMARANG', $names, true), 'MGL: tanpa CABANG JOGJA/SEMARANG');
-                $t->true(in_array('Backup Arsip', $names, true) && in_array('PUSAT - MAGELANG', $names, true), 'MGL: folder semua lokasi tetap tampil');
+                $t->true(in_array('Backup Arsip', $names, true) && in_array('QA01-ALLROOT', $names, true), 'MGL: folder semua lokasi tetap tampil');
+                $t->true(in_array('QA01-MGLROOT', $names, true), 'MGL: folder {MGL} tampil');
             });
+            } finally {
+                q1_purge($t);
+            }
+            q1_assert_clean($t, 'data uji AC-1 sudah dibuang');
         },
     ],
 
@@ -185,7 +196,11 @@ return [
                 $t->status($r, 200, 'root tanpa employee');
                 $n = q1_names($r);
                 sort($n);
-                $t->eq($n, ['Backup Arsip', 'PUSAT - MAGELANG'], 'root: hanya folder semua lokasi');
+                // (rev ED-1025, QA) himpunan nama dihitung dari DB (folder root aktif semua lokasi), bukan nama folder pengembang yang ditulis tangan
+                $expected = $t->db()->table('archives')->whereNull('id_archive_parent')->where('is_active', '>', 0)->where('is_all_location', 1)->orderBy('name')->pluck('name')->all();
+                sort($expected);
+                $t->true(in_array('Backup Arsip', $n, true), 'root: Backup Arsip (semua lokasi) tampil');
+                $t->eq($n, $expected, 'root: hanya baris semua lokasi (himpunan dari DB)');
                 $t->eq($r[1]['result']['total'], q1_expected_count($t, null, []), 'root: total = hitungan DB (hanya is_all_location=1)');
 
                 $r = q1_list($t, $s, ['id_archive' => $bk, 'pagination' => 100]);

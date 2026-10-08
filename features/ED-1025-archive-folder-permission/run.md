@@ -3,21 +3,23 @@ key: ED-1025
 epic: ED-1022
 title: Archive - Folder Permission per folder (tab Permission & akses ditolak)
 slug: archive-folder-permission
-phase: ba
-qa_round: 1
+phase: gate2
+qa_round: 1   # revisi: ronde dihitung ulang dari 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
 agents:
   analyst: {id: abdb886b9da10fc6a, at: 2026-10-06 16:20}
-  qa_be: {id: ab355587439620c95, at: 2026-10-06 22:58}
-  be_dev: {id: acbb8627855d7e2cb, at: 2026-10-06 22:37}
-  fe_dev: {id: a78e9e5a4694293dd, at: 2026-10-07 02:07}
-  qa_fe: {id: aa711278b641b0805, at: 2026-10-07 02:57}
+  qa_be: {id: a98b5d7f91511bb97, at: 2026-10-08 17:28}
+  be_dev: {id: af75bddd604985321, at: 2026-10-08 15:57}
+  fe_dev: {id: a1d205900d36921cf, at: 2026-10-08 18:29}
+  qa_fe: {id: a9b2761fda0d516d7, at: 2026-10-08 19:45}
 ---
 ## Status ringkas
-**Minta perbaikan (review batch ED-1022, 2026-10-08 09:25).** Feedback developer untuk item ini: `epics/ED-1022-review-feedback.md` § ED-1025. Developer minta **BA revisi + Gate 1 dulu**, lalu menunggu instruksinya sebelum dikerjakan (bukan langsung be/fe). Commit lama tetap; perbaikan nanti jadi commit baru di atasnya.
-Jira: In Progress, label ai-review dilepas, komentar minta perbaikan. Spec `status: draft` sampai Gate 1 revisi.
-
+**Revisi selesai, commit lokal, menunggu review batch (long run ED-1022).** QA BE rev r1 PASS (25/0/1 MANUAL), QA FE rev r1 PASS (13/0/1 MANUAL).
+Commit perbaikan: BE 8ea8ebcf2, FE e5355a9c6 (di atas 44bea5136 / 7fa63869d, tanpa amend). Jira ED-1025 In Progress + label ai-review + komentar siap review.
+**INSIDEN DB uji (QA FE D-1):** teardown fixture e2e ED-1026 menghapus seluruh tabel opname + kolom verifikasi `archives` di api_sidomaju (data developer: 13 sesi). Tidak dipulihkan AI.
+Long run dihentikan (RESULT env-fail): developer memulihkan data; fixture e2e ED-1026/1027/1028 + harness diperbaiki sebelum QA item itu jalan lagi.
+Sisa: 6 baris `QA01-R2-*` di `archives` (pembersihan ditolak classifier, tidak diulang).
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -30,6 +32,11 @@ Jira: In Progress, label ai-review dilepas, komentar minta perbaikan. Spec `stat
 | ED-1059 | [FE] Archive - Drawer folder bertab + tab Permission | FE | In Progress |
 | ED-1063 | [FE] Archive - Layar akses ditolak, menu baris/"+"/picker ikut hak folder, ikon perisai | FE | In Progress |
 | ED-1066 | [QA] Skenario folder permission | QA | In Progress |
+| ED-1083 | [BE] (rev) Hak folder efektif: induk hanya dominan untuk View, folder Izin nonaktif tidak dibatasi | BE | In Progress |
+| ED-1084 | [BE] (rev) Permission Folder Permissions: seed 1140 & Opname Document 1139, kelompok detail/izin | BE | In Progress |
+| ED-1085 | [FE] (rev) Archive - tab Izin: Perizinan Folder, kolom All, hak otomatis | FE | In Progress |
+| ED-1086 | [FE] (rev) Archive - konfirmasi cabut View sendiri, tooltip, teks induk, Kembali ke Arsip | FE | In Progress |
+| ED-1087 | [QA] (rev) Skenario revisi, skenario usang, regresi | QA | In Progress |
 
 ## Keputusan developer
 - G1 (gabungan ED-1022, 19:24): semua rekomendasi diterima - EPIC K-1 a, EPIC K-2 b, grup G-1..G-7 (epics/ED-1022-gate1.md §6), K-n lain = rekomendasi analyst; jawaban tertulis di spec § Keputusan
@@ -48,23 +55,49 @@ Jira: In Progress, label ai-review dilepas, komentar minta perbaikan. Spec `stat
 - FE review: id-ID `archive.Back to Archive` = "Back to Archive" (teks desain BR-11, belum "Kembali ke Arsip"); `ArchiveForm` meneruskan `disabled` (folder isUsed / tanpa Update kini read-only penuh)
 - QA FE (non-blokir): C-2 breadcrumb layar 06 dari hasil pencarian tidak memakai `result.breadcrumbs` body 403 (`ArchivePage/index.js`); C-3 label switch EN "Active" terpotong saat disabled; C-1 test ArchiveDrawer/ArchivePage timeout 5 dtk saat mesin sibuk
 
+- Rev review BE: R-4 cek kelompok PUT memakai `MyHelper::hasPermission` (tanpa bypass customer, beda dengan middleware `permission_v5`) - customer memang tidak boleh ubah folder?
+- Rev review BE: R-5 ED-1029 belum sinkron: `manage_permission` = `Folder Permissions`, tetapi `user-permissions` + `assertCanManage` masih Update Folder/Update efektif (PUT 403 ARCHIVE408); komentar `api.php:60` usang -> revisi ED-1029
+- Rev review BE: R-6 tanpa Updater 1133->1139 di `role_permissions`: tenant yang sudah setup dengan 1133 (QA/dev DB) perlu seed + grant ulang (1133 belum rilis)
+- Rev dev: PUT kelompok izin ke `{id}` dokumen tetap menulis `archive_permissions` (perilaku lama)
+
+- QA BE rev T-1: suite BE ED-1026/1027/1028 tidak bisa jalan bersih di api_sidomaju (prasyarat "tabel opname kosong" vs 13 sesi opname milik developer); dijalankan dari salinan longgar di scratchpad -> regresi item itu sebagian tidak terverifikasi; perlu DB uji bersih atau baseline oleh pemilik
+- QA BE rev: ED-1024 AC-1/5/10 dipindah ke fixture (developer mengubah PUSAT - MAGELANG); efek samping ED-1027 X-1 menulis ulang updater_logs id 197 (log saja)
+- QA BE rev O-1: PUT izin ke id dokumen menulis is_folder_permission=1 pada dokumen (pra-ada, menyimpang dari contract §2)
+
+- Rev digest P-22: PUT kelompok izin ke id dokumen (pra-ada, QA O-1) dijawab orkestrator = di luar revisi, FE tak terdampak; keputusan BE untuk review batch
+- Rev digest: bagian #25/#26 (ED-1029) di `_api.md` basi (route Update Folder / managePermission lama) -> pass digest saat revisi ED-1029
+
+- Rev FE: cek superadmin modal pakai `isFolderPermissionBypass` (role mana pun isSuperadmin 1/2, = BE), bukan `findLowestSuperadminLevel` (spec §5) - helper itu salah untuk role ganda; `disabled` Detail lewat `ConfigProvider componentDisabled` (pola baru)
+- Rev FE: test pra-ada gagal `ArchiveVerificationModal/index.test.js` (tombol "Tutup", footer dibuang di 7fa63869d) - bukan batch ini
+
+- Rev FE review: komentar usang `archive-components/ArchiveVerification/index.js:101-103` (`disabled={false}` workaround kini redundan, berkas ED-1027)
+
+- QA FE rev: F-1 AC-23 tukar lisensi tidak ada di Daftar tes UI task mana pun; C-1 `ArchivePage/index.test.js:110-117` tooltip timeout 1 dtk (flake); C-2/C-3 menu "+" Atur Izin per User + sel by User masih gerbang Update Folder (revisi ED-1029)
+
 ## Usulan pipeline
+- (insiden rev) e2e `fixture.php` ED-1026/1027/1028 `purge()` menghapus seluruh tabel opname + reset kolom verifikasi tanpa cek milik fixture, dan harness `scripts/e2e/lib/fixtures.js` menjalankan `down` walau `up` gagal di prasyarat -> `down` hanya baris berprefiks/jurnal, tolak `down` tanpa jurnal, harness tanpa teardown bila `up` gagal; v5-qa: jangan jalankan e2e item lain bila QA sebelumnya mencatat prasyaratnya gagal karena data developer
+- (rev) QA BE/FE: prasyarat "tabel kosong" di suite ED-1026/1027/1028 tidak cocok untuk DB uji bersama; perlu DB uji khusus QA atau prasyarat berbasis fixture
 - QA BE `scope: be` memperluas fuzzing tipe/karakter tiap ronde (r2: 435 kasus baru) sehingga 500 pra-ada lintas v5 (CustomizeBuilder, kolasi latin1) muncul sebagai FAIL item; usul: aturan baku di v5-qa - 500 pra-ada di luar baris diff = "Dilacak di luar item" + usulan tiket, tidak menentukan verdict; ronde 2+ dibatasi ke kegagalan + regresi
 - FE dev: orkestrator/BA menjalankan `/ui-discuss --auto` sebelum Gate 1 juga untuk module lama tanpa `_module.md` (kalau tidak, `/ui-plan` berhenti)
 - FE dev: baseline full suite FE (4 suite gagal pra-ada: Production.function, InterbankTransferForm, components/Item/BatchOut, CustomerPurchaseOrderView) disimpan di knowledge/ agar QA tidak menghitungnya defect; `/ui-slice` boleh memakai endpoint GET yang sudah tersambung di module lama
 - QA FE F-1: butir MANUAL AC-23 (tukar lisensi) tidak punya rumah di `## Daftar tes UI` (sama dengan usulan ED-1024 QA FE F-2): tempat baku di daftar Gate 2 epic
 
 ## Log
-- 2026-10-06 16:09 start: baseline BE 42f3e07cb (0 berkas kotor), FE 6afd19054 (0 berkas kotor)
-- 2026-10-06 16:20 ba: selesai, 17 BR / 24 AC / 8 subtask / 11 K (spec.md, contract.md)
-- 2026-10-06 19:50 gate1: disetujui (gabungan); Jira ED-1025 + 8 subtask dibuat, sprint 46
-- 2026-10-06 21:17 long-run: mulai fase be; preflight OK (WARN additionalDirectories -> fallback agen by path); rebaseline BE b0efd0722 / FE 6afd19054 (0 kotor) karena HEAD BE bergeser oleh commit ED-1024; ED-1025 + 8 subtask -> In Progress
-- 2026-10-06 21:35-23:02 be+qa-be (diringkas): v5-be-dev 5/5 subtask, 19->21 berkas NEW, Updater dijalankan di api_sidomaju; be-review 0 harus/3 konfirmasi; QA BE r1 FAIL (D-1,D-2), r2 FAIL (D-3; D-4/D-5 pra-ada), r3 PASS 17 AC/1 MANUAL, 31/31, ED-1024 26/26; found ED-1070 (D-1,D-5,O-3), ED-1071 (D-4 kolasi); pause 23:02 atas permintaan developer, phase fe
-- 2026-10-07 01:23 resume: long run ED-1022 melanjutkan fase fe; preflight OK; BE 21 berkas NEW tetap di working tree, FE bersih (HEAD 6afd19054)
-- 2026-10-07 01:31 fe digest: api-contract-analyst (a049a8f393527a74e, sonnet) -> ksp-react docs/specs/Archive/_api.md baru, 11 endpoint; 7 Perlu dikonfirmasi dijawab orkestrator dari spec/kode BE (ditulis di digest), 0 blocker
-- 2026-10-07 02:07 fe: FE dev (a78e9e5a4694293dd) ui-discuss(konfirmasi)/ui-plan/slice/logic -> task 001 (ED-1059) + 002 (ED-1063) logic-done; 12 berkas M + 6 baru; eslint 0, build staging OK x4, test Archive 62/62, full suite 1373/1383 (10 gagal = 5 timeout lulus ulang + 4 suite gagal sama di HEAD bersih)
-- 2026-10-07 02:09 fe-review: convention-reviewer (a720fbfbe9463fce3, sonnet) Harus diperbaiki 0, Perlu dikonfirmasi 2 (locale id-ID "Back to Archive" tak diterjemahkan; ArchiveForm kini meneruskan disabled)
-- 2026-10-07 02:57 qa-fe r1: PASS (AC-3,17-21 PASS, AC-23 MANUAL; e2e 7/7 A+B; unit Archive 62/62; full suite 4 suite gagal = baseline HEAD; regresi BE ED-1025 31/31, ED-1024 26/26); galeri work/e2e/ED-1025-archive-folder-permission-20261007-025357/; qa-fe.md: 1 username QA_USER diredaksi orkestrator
-- 2026-10-07 02:58 found: ED-1072 Bug (ai-found) di bawah ED-1022 - klik ⋯ baris dokumen ikut memicu klik sel (QA FE C-5, pra-ada)
-- 2026-10-07 02:59 commit: BE 9fec7c427 (21 berkas NEW), FE 89b3b98a6 (22 berkas NEW), agentic 7c11743; Jira ED-1025 label ai-review + komentar siap review; phase: gate2 (menunggu review batch)
+- 2026-10-06..07 run awal (diringkas): baseline BE 42f3e07cb/FE 6afd19054; BA 17 BR/24 AC/8 subtask; Gate 1 gabungan; BE+QA BE r1-r3 PASS (found ED-1070, ED-1071); FE task 001/002; QA FE r1 PASS; found ED-1072; commit BE 9fec7c427, FE 89b3b98a6, agentic 7c11743
 - 2026-10-08 09:25 review batch: Minta perbaikan → phase: ba (BA revisi menunggu instruksi developer); feedback di epics/ED-1022-review-feedback.md § ED-1025; label ai-review dilepas
+- 2026-10-08 13:20 ba (rev): spec.md + contract.md diperbarui untuk FB-4a/5/6/7/9, D-2, N-3 - BR 8 diubah + 5 baru (BR-18..22), AC 10 diubah + 13 baru (AC-25..37), 5 subtask (rev) (2 BE, 2 FE, 1 QA), K-12..K-16 baru; permission baru `Folder Permissions` (seed 1134, tanpa Updater); spec 29 KB
+- 2026-10-08 15:27 gate1 (rev): jawaban diterapkan (K-12 a, K-13 a, K-14 a, K-15 b, K-16 b, EPIC K-4 a 1139/1140) - 22 BR / 38 AC (AC-38 baru) / 5 subtask (rev); contract §3 PUT dua kelompok, §7 id
+- 2026-10-08 15:37 gate1 (rev) Jira: subtask baru ED-1083 [BE] hak folder efektif · ED-1084 [BE] permission Folder Permissions/seed · ED-1085 [FE] tab Izin · ED-1086 [FE] konfirmasi/tooltip/teks · ED-1087 [QA] (sprint 46, To Do; story tetap In Progress)
+- 2026-10-08 gate1 ronde 2 disetujui developer (epics/ED-1022-gate1.md §9b); spec status approved; phase: be (long run)
+- 2026-10-08 15:39 long-run rev: mulai fase be; preflight OK; rebaseline BE 44bea5136 / FE 7fa63869d (0 kotor); ED-1083, ED-1084 -> In Progress
+- 2026-10-08 15:57 be (rev): v5-be-dev (af75bddd604985321) ED-1083+ED-1084 selesai; 5 berkas BE M (ArchivePermissionService, ArchiveService, UpdateRequest, api.php, permission_salesman.sql 1139/1140); contract §3 2 presisi; seed 1139/1140 diterapkan ke api_sidomaju (tanpa TRUNCATE; role 1/2/3); smoke dev PASS 4/4 (qa/dev-smoke-rev, data uji dibersihkan); suite ED-1025 lama 18/13 FAIL = skenario usang revisi + AC-1/2 data developer di QA DB (4 folder Izin On, kevinsudjadi.adm/sam)
+- 2026-10-08 16:04 be-review (rev): v5-be-reviewer (a865e07cdae8c8cf2, sonnet) Harus diperbaiki 0, Perlu dikonfirmasi 3 (R-4..R-6); ED-1087 -> In Progress; phase qa-be r1
+- 2026-10-08 17:28 qa-be (rev) r1: PASS - 25 PASS / 0 FAIL / 1 MANUAL (AC-23 tukar lisensi); suite ED-1025 40/40 (9 skenario baru scenario7/8/9/1b); seed QA DB sudah sesuai (0 langkah); usang diperbarui: ED-1025 milik sendiri + ED-1024 (26/26); usang dicatat: ED-1026/1027/1028/1029 (qa-be.md); T-1 data developer
+- 2026-10-08 17:38 fe digest (rev): api-contract-analyst (a422b74e0fdbe9cd3, sonnet) memperbarui ksp-react docs/specs/Archive/_api.md (#1-#8, §7 id); 1 Perlu dikonfirmasi (22) dijawab orkestrator dari kode BE; 0 blocker; ED-1085/1086 -> In Progress
+- 2026-10-08 18:29 fe (rev): FE dev (a1d205900d36921cf) ui-plan -> task 013 (ED-1085) + 014 (ED-1086) logic-done; 10 berkas src/test M + 2 task baru + _module.md; eslint 0, build staging OK x4, test Archive 317/318 (1 pra-ada ArchiveVerificationModal), full suite efektif 1634/1639 (5 pra-ada)
+- 2026-10-08 18:33 fe-review (rev): convention-reviewer (a1bcf941769a5e938, sonnet) Harus diperbaiki 1 (prettier archive.function.js:227, ArchiveForm/index.js:145-151) -> FE dev via SendMessage; Perlu dikonfirmasi 2 (ConfigProvider componentDisabled, isFolderPermissionBypass) = sudah di daftar review
+- 2026-10-08 18:35 fe fix (rev): prettier 2 berkas diperbaiki FE dev; prettier --check OK, eslint 0, test Archive 317/318 (1 pra-ada); phase qa-fe r1
+- 2026-10-08 19:45 qa-fe (rev) r1: PASS - 13 PASS / 0 FAIL / 1 MANUAL (AC-23); e2e ED-1025 17/17 (galeri work/e2e/ED-1025-archive-folder-permission-20261008-190715/), ED-1024 e2e 3/3 (diperbarui), ED-1029 e2e 13 OK / 3 usang (dicatat); unit Archive 316/318 (1 pra-ada, 1 flake); full suite = HEAD bersih; regresi BE ED-1025 40/40, ED-1029 18/4 usang/1 skip; tes UI manual 34 butir (task 013/014)
+- 2026-10-08 19:45 INSIDEN (QA FE D-1): QA menjalankan e2e ED-1026/1027/1028; teardown `down` ED-1026 menghapus seluruh archive_opnames/_folders/_documents + kolom verifikasi archives di api_sidomaju (data developer, 13 sesi); tidak ada cadangan, tidak dipulihkan; classifier menolak pembersihan 6 baris QA01-R2-* (tidak diulang)
+- 2026-10-08 19:45 smoke dev qa/dev-smoke-rev dihapus (data uji sudah dibersihkan dev)
+- 2026-10-08 19:45 commit (rev): BE 8ea8ebcf2, FE e5355a9c6; Jira ED-1025 label ai-review + komentar siap review (dengan catatan insiden); phase: gate2 (menunggu review batch); RESULT env-fail karena insiden DB uji

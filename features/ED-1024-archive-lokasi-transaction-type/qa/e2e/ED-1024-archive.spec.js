@@ -116,7 +116,9 @@ test.describe('ED-1024 Archive', () => {
     expect(root.status, 'GET document-archive/archives (root)').toBe(200);
     const rootNames = namesOf(root);
     monitor.note(`root (halaman 1): ${rootNames.join(' | ')}`);
-    for (const n of ['Backup Arsip', 'CABANG - JOGJA', 'PUSAT - MAGELANG']) expect(rootNames, `root memuat ${n}`).toContain(n);
+    // PUSAT - MAGELANG tidak lagi dipakai: data pengembang mengubah lokasinya jadi {MGL} saja (2026-10-08 09:50), user JOG tidak melihatnya
+    // lagi. Cukup dua folder root berlokasi semua/JOG yang stabil (QA ED-1025 ronde revisi memperbarui asersi ini).
+    for (const n of ['Backup Arsip', 'CABANG - JOGJA']) expect(rootNames, `root memuat ${n}`).toContain(n);
     expect(rootNames, 'root TIDAK memuat CABANG - SEMARANG').not.toContain('CABANG - SEMARANG');
     const txt = await tableText(page);
     expect(txt, 'UI memuat Backup Arsip').toContain('Backup Arsip');
@@ -212,7 +214,7 @@ test.describe('ED-1024 Archive', () => {
     await modal.waitFor({ state: 'visible', timeout: 15000 });
     await app.settle();
     const mtxt = await modal.innerText();
-    expect(mtxt, 'modal Pindahkan memuat folder root').toContain('PUSAT - MAGELANG');
+    expect(mtxt, 'modal Pindahkan memuat folder root').toContain('CABANG - JOGJA');
     expect(mtxt, 'modal Pindahkan tanpa CABANG - SEMARANG').not.toContain('CABANG - SEMARANG');
     await app.screenshot('AC16-08-modal-pindahkan');
     await closeTopLayer(page);
@@ -273,7 +275,7 @@ test.describe('ED-1024 Archive', () => {
     expect(root.status, 'GET document-archive/archives (root)').toBe(200);
     const rootNames = namesOf(root);
     monitor.note(`root (halaman 1): ${rootNames.join(' | ')}`);
-    for (const n of ['Backup Arsip', 'CABANG - JOGJA', 'CABANG - SEMARANG', 'PUSAT - MAGELANG']) expect(rootNames, `root memuat ${n}`).toContain(n);
+    for (const n of ['Backup Arsip', 'CABANG - JOGJA', 'CABANG - SEMARANG']) expect(rootNames, `root memuat ${n}`).toContain(n);
     const txt = await tableText(page);
     expect(txt, 'UI memuat CABANG - SEMARANG').toContain('CABANG - SEMARANG');
     expect(txt, 'UI memuat CABANG - JOGJA').toContain('CABANG - JOGJA');
