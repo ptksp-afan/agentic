@@ -2,7 +2,7 @@
   "fixtures": [
     {
       "name": "opname-data",
-      "reason": "AC-3/4/7/8/13/14/17/22 butuh folder uji berawalan 0QA26- (dengan/tanpa subfolder, sudah diopname hari ini) dan user QA berlokasi Semarang saja; dibuat langsung di DB; teardown membuang HANYA baris milik fixture (jurnal + prefiks 0QA26-; sesi opname developer tidak disentuh), memulihkan user/role QA dan memastikan tidak ada sisa milik fixture. Mode norole (env QA26_MODE) mencabut Opname Document dari role user QA untuk AC-3.",
+      "reason": "AC-3/4/7/8/13/14/17/22/24/28/29/30 butuh folder uji berawalan 0QA26- (dengan/tanpa subfolder, sudah diopname hari ini, ZULFA/HIST/OMEGA, dokumen root RD1/RD2) dan user QA berlokasi Semarang saja; dibuat langsung di DB; teardown membuang HANYA baris milik fixture (jurnal + prefiks 0QA26-; sesi opname developer tidak disentuh; sesi yang dibuat spec lewat Konfirmasi pada folder fixture ikut dibuang), memulihkan user/role/bahasa QA dan memastikan tidak ada sisa milik fixture. Mode norole (env QA26_MODE) mencabut Opname Document dari role user QA untuk AC-3 / FB-8a.",
       "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" up",
       "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" down",
       "timeout_s": 240

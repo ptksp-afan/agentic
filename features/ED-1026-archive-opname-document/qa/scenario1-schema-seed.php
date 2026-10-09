@@ -1,8 +1,11 @@
 <?php
 /**
- * ED-1026 - AC-1 (skema + Updater 2x + Updater dari nol di DB scratch), AC-2 (seed permission 'Opname Document' hanya
- * di permission_salesman.sql + DB + SQL seed dijalankan di DB scratch), EXTRA-LANG (kode pesan en_EN/id_ID sesuai kontrak).
+ * ED-1026 (rev 2026-10-09, opname tanpa draft) - AC-1 (skema + dua Updater: terdaftar, 2x tanpa error, objek ada, pembersih
+ * draft di DB scratch dan DB QA), AC-2 (seed 'Opname Document' id 1139 hanya di permission_salesman.sql + DB + SQL seed di DB
+ * scratch), EXTRA-LANG (kode pesan en_EN/id_ID sesuai kontrak; kode lama dihapus; respons mengikuti bahasa user).
  * Tukar lisensi sungguhan = MANUAL Gate 2 epic (PROFILES kosong, EPIC K-2 b).
+ * Data developer di DB uji dijaga: tidak ada asersi "tabel opname kosong"; Updater pembersih hanya dijalankan di DB QA bila tidak
+ * ada sesi status 1/3 milik non-QA (kalau ada: dibuktikan di DB scratch saja).
  */
 require_once __DIR__ . '/qa_lib.php';
 
@@ -70,12 +73,12 @@ return [
 
     [
         'id'    => 'AC-1',
-        'title' => 'Skema: 4 kolom + indeks id_archive_parent di archives, 3 tabel baru; baris lama is_verified=0; Updater 2x tanpa error; Updater dari nol (DB scratch) membuat skema identik',
+        'title' => 'Skema: 4 kolom + indeks id_archive_parent di archives, 3 tabel opname; Updater AddArchiveOpname & DeleteArchiveOpnameDraft terdaftar di config.php, 2x tanpa error; pembersih draft (DB scratch + DB QA): 0 sesi status 1/3, 0 baris anak tanpa sesi, sesi status 2 & archives tak berubah',
         'run'   => function ($t) use ($spec, $columns, $indexes, $hasIndex) {
             $c = $t->db();
             $db = q26_dbname($t);
 
-            // --- archives: 4 kolom baru, tepat setelah is_active
+            // --- archives: 4 kolom baru, tepat setelah is_active (asersi per objek, bukan SHOW CREATE utuh)
             $cols = $columns($c, 'archives');
             foreach (['is_verified', 'verified_at', 'verified_by', 'id_archive_opname'] as $k) {
                 $t->true(isset($cols[$k]), "archives.$k ada");
@@ -92,17 +95,15 @@ return [
             $t->eq(array_search('is_verified', $order), array_search('is_active', $order) + 1, 'is_verified tepat sesudah is_active');
             $t->eq(array_slice($order, array_search('is_verified', $order), 4), ['is_verified', 'verified_at', 'verified_by', 'id_archive_opname'], 'urutan 4 kolom');
 
-            // indeks baru id_archive_parent
             $aidx = $indexes($c, 'archives');
             $t->true($hasIndex($aidx, ['id_archive_parent'], false) !== null, 'archives punya indeks (id_archive_parent)');
 
-            // baris lama = unverified
-            $t->eq($c->table('archives')->where('name', 'not like', Q26_PREFIX . '%')
-                ->where(function ($q) {
-                    $q->whereNull('is_verified')->orWhere('is_verified', '!=', 0);
-                })->count(), 0, 'semua dokumen/folder lama is_verified = 0');
+            // data developer boleh punya dokumen verified: yang dijaga nilai bawaan kolom dan tidak ada NULL / nilai liar
+            $t->eq($c->table('archives')->where(function ($q) {
+                $q->whereNull('is_verified')->orWhereNotIn('is_verified', [0, 1]);
+            })->count(), 0, 'archives.is_verified hanya 0/1 (tanpa NULL)');
 
-            // --- 3 tabel baru
+            // --- 3 tabel opname
             $arch = $c->selectOne("SHOW TABLE STATUS LIKE 'archives'");
             foreach ($spec as $table => $expected) {
                 $got = $columns($c, $table);
@@ -112,7 +113,12 @@ return [
                     $norm = function ($type) {
                         return strpos($type, 'varchar') === 0 ? $type : preg_replace('/\(\d+\)/', '', $type);
                     };
-                    $t->eq($norm($g[0]), $norm($e[0]), "$table.$col tipe");
+                    if ($table === 'archive_opname_documents' && $col === 'scanned_at') {
+                        // urutan scan terbaru dulu pasti: DATETIME(6) (ronde 2 ED-1026)
+                        $t->eq($g[0], 'datetime(6)', "$table.$col tipe datetime(6)");
+                    } else {
+                        $t->eq($norm($g[0]), $norm($e[0]), "$table.$col tipe");
+                    }
                     $t->eq($g[1], $e[1], "$table.$col nullable");
                     if ($e[2] !== '*') {
                         $t->eq($g[2], $e[2], "$table.$col default");
@@ -123,7 +129,6 @@ return [
                 $t->eq($st->Collation, $arch->Collation, "$table collation = archives");
                 $t->eq($st->Engine, 'InnoDB', "$table engine InnoDB");
             }
-            $t->eq($c->table('archive_opnames')->count() + $c->table('archive_opname_folders')->count() + $c->table('archive_opname_documents')->count(), 0, 'tabel opname kosong di awal');
 
             $i1 = $indexes($c, 'archive_opnames');
             $t->eq(array_values($i1['PRIMARY']['cols']), ['id_archive_opname'], 'archive_opnames PK');
@@ -139,20 +144,36 @@ return [
             $t->true($hasIndex($i3, ['id_archive_opname', 'result'], false) !== null, 'archive_opname_documents KEY (id_archive_opname, result)');
             $t->true($hasIndex($i3, ['id_archive'], false) !== null, 'archive_opname_documents KEY id_archive');
 
-            // --- Updater: berkas tunggal, terdaftar di config.php dengan kunci terbesar
+            // --- dua Updater: berkas tunggal, terdaftar di config.php (TIDAK harus kunci terbesar), Delete jalan sesudah Add
             $beDir = $t->probe(function () {
                 return base_path();
             });
-            $files = glob($beDir . '/Modules/UpdateVersion/Updaters/*_AddArchiveOpname.php');
-            $t->eq(count($files), 1, 'tepat satu berkas Updater AddArchiveOpname');
-            $class = 'Modules\\UpdateVersion\\Updaters\\' . basename($files[0], '.php');
             $config = include $beDir . '/Modules/UpdateVersion/Updaters/config.php';
-            $key = array_search($class, $config, true);
-            $t->true($key !== false, 'Updater terdaftar di config.php');
-            $others = $config;
-            unset($others[$key]);
-            $t->true($key > max(array_keys($others)), 'kunci config.php lebih besar dari semua Updater lain (urutan jalan)');
+            $files = [];
+            $keys = [];
+            foreach (['AddArchiveOpname', 'DeleteArchiveOpnameDraft'] as $name) {
+                $found = glob($beDir . '/Modules/UpdateVersion/Updaters/*_' . $name . '.php');
+                $t->eq(count($found), 1, "tepat satu berkas Updater $name");
+                $files[$name] = $found[0];
+                $class = 'Modules\\UpdateVersion\\Updaters\\' . basename($found[0], '.php');
+                $hits = array_keys($config, $class, true);
+                $t->eq(count($hits), 1, "Updater $name terdaftar tepat sekali di config.php");
+                $keys[$name] = $hits[0];
+                $t->true(is_int($hits[0]) && $hits[0] > 0, "Updater $name: kunci config.php bilangan (urutan jalan)");
+            }
+            $t->true($keys['DeleteArchiveOpnameDraft'] > $keys['AddArchiveOpname'], 'DeleteArchiveOpnameDraft jalan sesudah AddArchiveOpname (kunci lebih besar dari pasangannya, bukan dari semua Updater)');
+            $implements = $t->probe(function () use ($files) {
+                $out = [];
+                foreach ($files as $name => $f) {
+                    $o = require $f;
+                    $out[$name] = $o instanceof \Modules\UpdateVersion\Contracts\Updater;
+                }
 
+                return $out;
+            });
+            $t->eq($implements, ['AddArchiveOpname' => true, 'DeleteArchiveOpnameDraft' => true], 'kedua berkas Updater mengembalikan objek Updater');
+
+            // --- AddArchiveOpname 2x di DB QA: skema tak berubah
             $snapshot = function () use ($c) {
                 $out = [];
                 foreach (['archive_opnames', 'archive_opname_folders', 'archive_opname_documents'] as $tb) {
@@ -164,30 +185,61 @@ return [
                 $out['archives_idx'] = array_map(function ($r) {
                     return [$r->Key_name, $r->Column_name];
                 }, $c->select('SHOW INDEX FROM archives'));
-                $out['archives_rows'] = $c->selectOne('SELECT COUNT(*) n, SUM(is_verified) v FROM archives');
 
                 return json_encode($out);
             };
             $before = $snapshot();
+            $stateBefore = q26_devstate($t);
             $error = null;
             $t->probe(function () use ($db, $files, &$error) {
                 \Illuminate\Support\Facades\DB::setDefaultConnection($db);
                 try {
-                    $updater = require $files[0];
+                    $updater = require $files['AddArchiveOpname'];
                     $updater->run();
                     $updater->run();
                 } catch (\Throwable $e) {
                     $error = get_class($e) . ': ' . $e->getMessage();
                 }
             });
-            $t->eq($error, null, 'Updater dijalankan 2x tanpa error');
-            $t->true($before === $snapshot(), 'skema + jumlah baris archives tidak berubah oleh run ulang Updater');
+            $t->eq($error, null, 'AddArchiveOpname dijalankan 2x tanpa error (DB QA)');
+            $t->true($before === $snapshot(), 'skema archives + 3 tabel tidak berubah oleh run ulang AddArchiveOpname');
+            $t->true(q26_same_state($stateBefore, q26_devstate($t)), 'data opname & kolom verifikasi developer tidak berubah oleh AddArchiveOpname');
 
-            // --- Updater dari nol di DB scratch: archives lama (tanpa kolom baru) + tabel opname belum ada
+            // --- DeleteArchiveOpnameDraft di DB QA: hanya bila tidak ada sesi status 1/3 milik non-QA (data developer tidak dihapus)
+            $drafts = $c->table('archive_opnames')->whereIn('status', [1, 3])->count();
+            $orphanSql = function () use ($c) {
+                $f = $c->selectOne('SELECT COUNT(*) n FROM archive_opname_folders x LEFT JOIN archive_opnames o ON o.id_archive_opname = x.id_archive_opname WHERE o.id_archive_opname IS NULL')->n;
+                $d = $c->selectOne('SELECT COUNT(*) n FROM archive_opname_documents x LEFT JOIN archive_opnames o ON o.id_archive_opname = x.id_archive_opname WHERE o.id_archive_opname IS NULL')->n;
+
+                return [(int) $f, (int) $d];
+            };
+            if ($drafts === 0) {
+                $stateBefore = q26_devstate($t);
+                $error = null;
+                $t->probe(function () use ($db, $files, &$error) {
+                    \Illuminate\Support\Facades\DB::setDefaultConnection($db);
+                    try {
+                        $updater = require $files['DeleteArchiveOpnameDraft'];
+                        $updater->run();
+                        $updater->run();
+                    } catch (\Throwable $e) {
+                        $error = get_class($e) . ': ' . $e->getMessage();
+                    }
+                });
+                $t->eq($error, null, 'DeleteArchiveOpnameDraft dijalankan 2x tanpa error (DB QA, tanpa draft)');
+                $t->eq($c->table('archive_opnames')->whereIn('status', [1, 3])->count(), 0, 'DB QA: 0 sesi status 1/3');
+                $t->eq($orphanSql(), [0, 0], 'DB QA: 0 baris _folders/_documents tanpa sesi');
+                $t->true(q26_same_state($stateBefore, q26_devstate($t)), 'DB QA: sesi status 2 (dan semua baris opname) + kolom verifikasi archives tidak berubah');
+            } else {
+                $t->note("DB QA punya $drafts sesi status 1/3 milik non-QA: DeleteArchiveOpnameDraft TIDAK dijalankan di DB QA (data developer tidak dihapus); pembuktian di DB scratch saja");
+            }
+
+            // --- DB scratch: AddArchiveOpname dari nol (SHOW CREATE identik), lalu DeleteArchiveOpnameDraft pada data campuran
             $scratch = 'qa26_scratch_' . substr(uniqid(), -6);
             $error = null;
             $diff = null;
-            $t->probe(function () use ($db, $files, $scratch, &$error, &$diff) {
+            $clean = null;
+            $t->probe(function () use ($db, $files, $scratch, &$error, &$diff, &$clean) {
                 $src = \Illuminate\Support\Facades\DB::connection($db);
                 $cfg = $src->getConfig();
                 $src->statement("CREATE DATABASE `$scratch` CHARACTER SET latin1 COLLATE latin1_general_ci");
@@ -200,9 +252,9 @@ return [
                     $s->statement('ALTER TABLE archives DROP COLUMN IF EXISTS is_verified, DROP COLUMN IF EXISTS verified_at, DROP COLUMN IF EXISTS verified_by, DROP COLUMN IF EXISTS id_archive_opname');
                     $s->statement('ALTER TABLE archives DROP INDEX IF EXISTS id_archive_parent');
                     \Illuminate\Support\Facades\DB::setDefaultConnection('qa26scratch');
-                    $updater = require $files[0];
-                    $updater->run();
-                    $updater->run();
+                    $add = require $files['AddArchiveOpname'];
+                    $add->run();
+                    $add->run();
 
                     $norm = function ($conn, $table) {
                         $row = (array) $conn->selectOne("SHOW CREATE TABLE `$table`");
@@ -212,22 +264,66 @@ return [
                     };
                     $diff = [];
                     foreach (['archives', 'archive_opnames', 'archive_opname_folders', 'archive_opname_documents'] as $tb) {
-                        // archives: bandingkan hanya bagian kolom baru + indeks (tabel asli punya FK/indeks lain yang ikut dicopy LIKE)
-                        $a = $norm($s, $tb);
-                        $b = $norm($src, $tb);
-                        $diff[$tb] = $a === $b;
+                        $diff[$tb] = $norm($s, $tb) === $norm($src, $tb);
                     }
+
+                    // data campuran: draft (1), batal (3), terkonfirmasi (2) + dokumen archives yang menunjuk sesi terkonfirmasi
+                    $now = '2026-10-09 08:00:00';
+                    foreach (['D1' => 1, 'C1' => 3, 'K1' => 2, 'D2' => 1] as $sid => $status) {
+                        $s->table('archive_opnames')->insert(['id_archive_opname' => $sid, 'id_archive' => null, 'status' => $status, 'selected_at' => $now, 'confirmed_at' => $status === 2 ? $now : null, 'created_at' => $now, 'created_by' => 'x', 'updated_at' => $now, 'updated_by' => 'x']);
+                        foreach (['f1', 'f2'] as $f) {
+                            $s->table('archive_opname_folders')->insert(['id_archive_opname_folder' => "$sid$f", 'id_archive_opname' => $sid, 'name' => "n$f", 'level' => 0, 'created_at' => $now]);
+                        }
+                        foreach (['d1', 'd2', 'd3'] as $d) {
+                            $s->table('archive_opname_documents')->insert(['id_archive_opname_document' => "$sid$d", 'id_archive_opname' => $sid, 'code' => "$sid-$d", 'result' => 1, 'scanned_at' => '2026-10-09 08:00:00.000123', 'created_at' => $now]);
+                        }
+                    }
+                    $s->table('archives')->insert(['id_archive' => 'A1', 'name' => 'A1', 'type' => 2, 'is_verified' => 1, 'verified_at' => $now, 'verified_by' => 'x', 'id_archive_opname' => 'K1', 'is_active' => 1]);
+                    $sum = function () use ($s) {
+                        return [
+                            'k_op' => json_encode($s->table('archive_opnames')->where('id_archive_opname', 'K1')->get()->all()),
+                            'k_fo' => json_encode($s->table('archive_opname_folders')->where('id_archive_opname', 'K1')->orderBy('id_archive_opname_folder')->get()->all()),
+                            'k_do' => json_encode($s->table('archive_opname_documents')->where('id_archive_opname', 'K1')->orderBy('id_archive_opname_document')->get()->all()),
+                            'archives' => json_encode($s->table('archives')->orderBy('id_archive')->get()->all()),
+                        ];
+                    };
+                    $keep = $sum();
+                    $del = require $files['DeleteArchiveOpnameDraft'];
+                    $del->run();
+                    $after1 = [
+                        'sessions' => $s->table('archive_opnames')->orderBy('id_archive_opname')->pluck('status', 'id_archive_opname')->all(),
+                        'folders' => $s->table('archive_opname_folders')->count(),
+                        'documents' => $s->table('archive_opname_documents')->count(),
+                        'orphan_f' => (int) $s->selectOne('SELECT COUNT(*) n FROM archive_opname_folders x LEFT JOIN archive_opnames o ON o.id_archive_opname = x.id_archive_opname WHERE o.id_archive_opname IS NULL')->n,
+                        'orphan_d' => (int) $s->selectOne('SELECT COUNT(*) n FROM archive_opname_documents x LEFT JOIN archive_opnames o ON o.id_archive_opname = x.id_archive_opname WHERE o.id_archive_opname IS NULL')->n,
+                        'keep_same' => $sum() === $keep,
+                    ];
+                    $del->run();
+                    $after2 = ['keep_same' => $sum() === $keep, 'sessions' => $s->table('archive_opnames')->count()];
+                    // tenant tanpa tabel opname: dilewati tanpa error
+                    $s->statement('DROP TABLE archive_opname_documents');
+                    $s->statement('DROP TABLE archive_opname_folders');
+                    $s->statement('DROP TABLE archive_opnames');
+                    $del->run();
+                    $clean = ['after1' => $after1, 'after2' => $after2, 'no_tables' => true];
                 } catch (\Throwable $e) {
-                    $error = get_class($e) . ': ' . $e->getMessage();
+                    $error = get_class($e) . ': ' . substr($e->getMessage(), 0, 300);
                 } finally {
                     \Illuminate\Support\Facades\DB::setDefaultConnection($db);
                     $src->statement("DROP DATABASE IF EXISTS `$scratch`");
                     \Illuminate\Support\Facades\DB::purge('qa26scratch');
                 }
             });
-            $t->eq($error, null, 'Updater dari nol di DB scratch tanpa error (2x)');
+            $t->eq($error, null, 'Updater di DB scratch (Add dari nol 2x, Delete pada data campuran, tanpa tabel) tanpa error');
             $t->eq(json_encode($diff), json_encode(['archives' => true, 'archive_opnames' => true, 'archive_opname_folders' => true, 'archive_opname_documents' => true]),
-                'SHOW CREATE TABLE hasil Updater dari nol identik dengan DB QA (archives + 3 tabel baru)');
+                'SHOW CREATE TABLE hasil AddArchiveOpname dari nol identik dengan DB QA (archives + 3 tabel)');
+            $a1 = $clean['after1'] ?? [];
+            $t->eq($a1['sessions'] ?? null, ['K1' => 2], 'scratch: hanya sesi status 2 (K1) tersisa; draft (D1, D2) dan batal (C1) dihapus');
+            $t->eq([$a1['folders'] ?? null, $a1['documents'] ?? null], [2, 3], 'scratch: baris _folders/_documents tinggal milik K1 (2 + 3)');
+            $t->eq([$a1['orphan_f'] ?? null, $a1['orphan_d'] ?? null], [0, 0], 'scratch: 0 baris _folders/_documents tanpa sesi');
+            $t->true(($a1['keep_same'] ?? false) === true, 'scratch: sesi, folder, dokumen K1 dan baris archives (id_archive_opname K1) tidak berubah');
+            $t->true(($clean['after2']['keep_same'] ?? false) === true && ($clean['after2']['sessions'] ?? null) === 1, 'scratch: run ke-2 idempoten (K1 sama, 1 sesi)');
+            $t->true(($clean['no_tables'] ?? false) === true, 'scratch: tenant tanpa tabel opname dilewati tanpa error');
             $left = $t->db()->selectOne("SELECT COUNT(*) n FROM information_schema.schemata WHERE schema_name LIKE 'qa26_scratch_%'")->n;
             $t->eq($left, 0, 'DB scratch dibuang');
         },
@@ -235,7 +331,7 @@ return [
 
     [
         'id'    => 'AC-2',
-        'title' => 'Seed: permission Opname Document (1133, module 1266) + checks/unchecks hanya di permission_salesman.sql; DB QA punya barisnya; SQL seed dijalankan utuh di DB scratch tanpa error. Tanpa lisensi = MANUAL',
+        'title' => "Seed: permission 'Opname Document' id 1139 (module 1266) + checks/unchecks hanya di permission_salesman.sql; tak ada baris Archive id 1133; DB QA punya barisnya (dicari per nama); SQL seed dijalankan utuh di DB scratch. Tanpa lisensi = MANUAL",
         'run'   => function ($t) {
             $c = $t->db();
             $beDir = $t->probe(function () {
@@ -243,49 +339,85 @@ return [
             });
             $dir = $beDir . '/app/Sql/data';
 
-            // --- baris hanya di permission_salesman.sql
+            // --- teks 'Opname Document' hanya di permission_salesman.sql; tak ada tuple Archive id 1133
             $hits = [];
+            $old = [];
             foreach (glob($dir . '/*.sql') as $f) {
                 $body = file_get_contents($f);
-                if (stripos($body, 'Opname Document') !== false || preg_match('/\(1133,\s*1266,/', $body) || preg_match('/[(,]1133[,)]/', $body)) {
+                if (stripos($body, 'Opname Document') !== false) {
                     $hits[] = basename($f);
                 }
+                if (preg_match('/\(1133,\s*1266,/', $body)) {
+                    $old[] = basename($f);
+                }
             }
-            $t->eq($hits, ['permission_salesman.sql'], "baris 'Opname Document' / id 1133 hanya di permission_salesman.sql (bukan permissions.sql / lisensi lain)");
+            $t->eq($hits, ['permission_salesman.sql'], "'Opname Document' hanya di permission_salesman.sql (bukan permissions.sql / lisensi lain)");
+            $t->eq($old, [], 'tidak ada baris Archive (module 1266) ber-id 1133 di seed mana pun');
 
             $salesman = file_get_contents($dir . '/permission_salesman.sql');
-            $t->true(strpos($salesman, "(1133,1266,'Opname Document','Opname Dokumen','Opname Document',10,1)") !== false, 'seed: tuple permission 1133');
+            $t->true(strpos($salesman, "(1139,1266,'Opname Document','Opname Dokumen','Opname Document',10,1)") !== false, 'seed: tuple permission 1139');
+            $t->true(strpos($salesman, "(1140,1266,'Folder Permissions','Perizinan Folder','Folder Permissions',11,1)") !== false, 'seed: Folder Permissions = 1140 (ED-1025)');
             $t->eq(preg_match_all("/'Opname Document'/", $salesman), 2, "seed: 'Opname Document' tepat di 2 kolom (label & nama) satu baris");
 
-            // id 1133 belum dipakai dan lebih besar dari semua id di permissions.sql
+            // id 1139 belum dipakai dan lebih besar dari semua id di permissions.sql
             $base = file_get_contents($dir . '/permissions.sql');
             preg_match_all('/^\((\d+),\d+,/m', $base, $m);
-            $t->true(max(array_map('intval', $m[1])) < 1133, 'id 1133 > semua id permissions.sql (tidak bentrok)');
+            $t->true(max(array_map('intval', $m[1])) < 1133, 'permissions.sql: id tertinggi < 1133 (1133-1138 dipakai branch AI)');
             preg_match_all('/^\((\d+),\d+,/m', $salesman, $m2);
             $ids = array_map('intval', $m2[1]);
-            $t->eq(count(array_keys($ids, 1133)), 1, '1133 muncul sekali di tabel permissions seed salesman');
+            $t->eq(count(array_keys($ids, 1139)), 1, '1139 muncul sekali di tabel permissions seed salesman');
+            $t->eq(count(array_keys($ids, 1133)), 0, '1133 tidak ada di tabel permissions seed salesman');
 
-            // --- DB QA
-            $p = $c->table('permissions')->where('id_permission', 1133)->first();
-            $t->true($p !== null, 'DB: permission 1133 ada');
-            $t->eq([(int) $p->id_module, $p->permission_label, $p->indonesian_permission_label, $p->permission_name, (int) $p->sort_index, (int) $p->is_active],
-                [1266, 'Opname Document', 'Opname Dokumen', 'Opname Document', 10, 1], 'DB: kolom permission 1133');
-            $t->eq($c->table('permissions')->where('permission_name', 'Opname Document')->count(), 1, 'DB: satu baris bernama Opname Document');
-            $t->eq($c->table('permission_checks')->where('id_permission', 1133)->where('id_permission_ref', 1082)->count(), 1, 'DB: check (1133,1082)');
-            $t->eq($c->table('permission_checks')->where('id_permission', 1081)->where('id_permission_ref', 1133)->count(), 1, 'DB: check (1081,1133)');
-            $t->eq($c->table('permission_checks')->where(function ($q) {
-                $q->where('id_permission', 1133)->orWhere('id_permission_ref', 1133);
-            })->count(), 2, 'DB: tepat 2 check untuk 1133');
-            foreach ([[1133, 1081], [1081, 1133], [1082, 1133]] as $pair) {
+            // blok checks / unchecks
+            $blocks = preg_split('/^INSERT INTO /m', $salesman);
+            $checks = '';
+            $unchecks = '';
+            foreach ($blocks as $b) {
+                if (strpos($b, 'permission_checks') === 0) {
+                    $checks = $b;
+                } elseif (strpos($b, 'permission_unchecks') === 0) {
+                    $unchecks = $b;
+                }
+            }
+            $pairs = function ($block) {
+                preg_match_all('/\((\d+),(\d+)\)/', $block, $mm, PREG_SET_ORDER);
+                $out = [];
+                foreach ($mm as $x) {
+                    if ($x[1] == 1139 || $x[2] == 1139) {
+                        $out[] = $x[1] . ',' . $x[2];
+                    }
+                }
+                sort($out);
+
+                return $out;
+            };
+            $t->eq($pairs($checks), ['1081,1139', '1139,1082'], 'seed checks: (1139,1082) dan (1081,1139) saja');
+            $t->eq($pairs($unchecks), ['1081,1139', '1082,1139', '1139,1081'], 'seed unchecks: (1139,1081), (1081,1139), (1082,1139) saja');
+            $t->true(strpos($salesman, '1133,1082') === false && strpos($salesman, '1081,1133') === false, 'seed: tak ada sisa pasangan checks/unchecks 1133');
+
+            // --- DB QA: dicari per nama
+            $p = $c->table('permissions')->where('permission_name', 'Opname Document')->get();
+            $t->eq(count($p), 1, 'DB: tepat satu baris bernama Opname Document');
+            $p = $p[0];
+            $t->eq([(int) $p->id_permission, (int) $p->id_module, $p->permission_label, $p->indonesian_permission_label, $p->permission_name, (int) $p->sort_index, (int) $p->is_active],
+                [1139, 1266, 'Opname Document', 'Opname Dokumen', 'Opname Document', 10, 1], 'DB: kolom permission Opname Document = id 1139');
+            $fp = $c->table('permissions')->where('permission_name', 'Folder Permissions')->first();
+            $t->true($fp !== null && (int) $fp->id_permission === 1140 && (int) $fp->id_module === 1266, 'DB: Folder Permissions = 1140 (module 1266)');
+            $t->eq($c->table('permissions')->where('id_permission', 1133)->where('id_module', 1266)->count(), 0, 'DB: tak ada permission module Archive ber-id 1133');
+            $id = (int) $p->id_permission;
+            $t->eq($c->table('permission_checks')->where('id_permission', $id)->where('id_permission_ref', 1082)->count(), 1, "DB: check ($id,1082)");
+            $t->eq($c->table('permission_checks')->where('id_permission', 1081)->where('id_permission_ref', $id)->count(), 1, "DB: check (1081,$id)");
+            $t->eq($c->table('permission_checks')->where(function ($q) use ($id) {
+                $q->where('id_permission', $id)->orWhere('id_permission_ref', $id);
+            })->count(), 2, "DB: tepat 2 check untuk $id");
+            foreach ([[$id, 1081], [1081, $id], [1082, $id]] as $pair) {
                 $t->eq($c->table('permission_unchecks')->where('id_permission', $pair[0])->where('id_permission_ref', $pair[1])->count(), 1, "DB: uncheck ($pair[0],$pair[1])");
             }
-            $t->eq($c->table('permission_unchecks')->where(function ($q) {
-                $q->where('id_permission', 1133)->orWhere('id_permission_ref', 1133);
-            })->count(), 3, 'DB: tepat 3 uncheck untuk 1133');
-            // modul Archive ada (module 1266)
+            $t->eq($c->table('permission_unchecks')->where(function ($q) use ($id) {
+                $q->where('id_permission', $id)->orWhere('id_permission_ref', $id);
+            })->count(), 3, "DB: tepat 3 uncheck untuk $id");
             $t->true($c->table('modules')->where('id_module', 1266)->exists(), 'DB: modul 1266 ada');
-            // superadmin 1/2 dan role Super Admin QA memegang permission itu
-            $roles = $c->table('role_permissions')->where('id_permission', 1133)->pluck('id_role')->all();
+            $roles = $c->table('role_permissions')->where('id_permission', $id)->pluck('id_role')->all();
             foreach ([1, 2, 3] as $r) {
                 $t->true(in_array($r, $roles), "DB: role $r punya Opname Document");
             }
@@ -308,7 +440,6 @@ return [
                     foreach (['permissions', 'permission_checks', 'permission_unchecks', 'modules'] as $tb) {
                         $s->statement("CREATE TABLE `$tb` LIKE `$db`.`$tb`");
                     }
-                    // pecah per statement INSERT (berakhir ';' di akhir baris)
                     $stmts = preg_split('/;\s*\n/', trim($salesman));
                     foreach ($stmts as $sql) {
                         $sql = trim($sql);
@@ -317,14 +448,14 @@ return [
                         }
                     }
                     $result = [
+                        'p1139' => $s->table('permissions')->where('id_permission', 1139)->count(),
                         'p1133' => $s->table('permissions')->where('id_permission', 1133)->count(),
                         'checks' => $s->table('permission_checks')->where(function ($q) {
-                            $q->where('id_permission', 1133)->orWhere('id_permission_ref', 1133);
+                            $q->where('id_permission', 1139)->orWhere('id_permission_ref', 1139);
                         })->count(),
                         'unchecks' => $s->table('permission_unchecks')->where(function ($q) {
-                            $q->where('id_permission', 1133)->orWhere('id_permission_ref', 1133);
+                            $q->where('id_permission', 1139)->orWhere('id_permission_ref', 1139);
                         })->count(),
-                        'perm_total' => $s->table('permissions')->count(),
                     ];
                 } catch (\Throwable $e) {
                     $error = get_class($e) . ': ' . substr($e->getMessage(), 0, 300);
@@ -334,9 +465,10 @@ return [
                 }
             });
             $t->eq($error, null, 'seed permission_salesman.sql dijalankan utuh di DB scratch tanpa error');
-            $t->eq($result['p1133'] ?? null, 1, 'scratch: permission 1133 satu baris');
-            $t->eq($result['checks'] ?? null, 2, 'scratch: 2 check untuk 1133');
-            $t->eq($result['unchecks'] ?? null, 3, 'scratch: 3 uncheck untuk 1133');
+            $t->eq($result['p1139'] ?? null, 1, 'scratch: permission 1139 satu baris');
+            $t->eq($result['p1133'] ?? null, 0, 'scratch: tidak ada permission 1133');
+            $t->eq($result['checks'] ?? null, 2, 'scratch: 2 check untuk 1139');
+            $t->eq($result['unchecks'] ?? null, 3, 'scratch: 3 uncheck untuk 1139');
             $t->note('MANUAL (Gate 2 epic): "tanpa lisensi Salesman Activity -> permission tidak ada" dibuktikan lewat baris seed yang hanya di permission_salesman.sql; tukar lisensi sungguhan tidak dijalankan (PROFILES kosong)');
             $left = $t->db()->selectOne("SELECT COUNT(*) n FROM information_schema.schemata WHERE schema_name LIKE 'qa26_scratch_%'")->n;
             $t->eq($left, 0, 'DB scratch dibuang');
@@ -345,18 +477,15 @@ return [
 
     [
         'id'    => 'EXTRA-LANG',
-        'title' => 'Kode pesan ARCHIVE211-214 & 412-417 ada di en_EN dan id_ID dengan teks sesuai kontrak; respons mengikuti bahasa user',
+        'title' => 'Kode pesan ARCHIVE212/213/412/414-417 ada di en_EN dan id_ID sesuai kontrak; ARCHIVE211/214/413 sudah dihapus; respons API mengikuti bahasa user (EN/ID)',
         'run'   => function ($t) {
             $beDir = $t->probe(function () {
                 return base_path();
             });
             $contract = [
-                'ARCHIVE211' => ['Opname session saved', 'Sesi opname disimpan'],
                 'ARCHIVE212' => ['Document scanned', 'Dokumen discan'],
                 'ARCHIVE213' => ['Opname successfully confirmed', 'Opname berhasil dikonfirmasi'],
-                'ARCHIVE214' => ['Opname session cancelled', 'Sesi opname dibatalkan'],
                 'ARCHIVE412' => ["Opname session isn't found", 'Sesi opname tidak ditemukan'],
-                'ARCHIVE413' => ['Opname session has already been confirmed or cancelled', 'Sesi opname sudah dikonfirmasi atau dibatalkan'],
                 'ARCHIVE414' => ['Folder <b>[0]</b> was opnamed by <b>[1]</b> at [2] while this session was running. Please re-select the folders', 'Folder <b>[0]</b> sudah diopname oleh <b>[1]</b> pukul [2] selama sesi ini berjalan. Pilih ulang folder'],
                 'ARCHIVE415' => ['This opname session was started on another day. Please start a new session', 'Sesi opname ini dimulai di hari lain. Mulai sesi baru'],
                 'ARCHIVE416' => ['Selected folder must be a direct subfolder of the opname folder', 'Folder yang dipilih harus subfolder langsung dari folder yang diopname'],
@@ -370,34 +499,56 @@ return [
                 $t->true(strpos($en, "'$code' => " . var_export($texts[0], true)) !== false || strpos($en, "'$code' => \"" . $texts[0] . '"') !== false, "en_EN: teks $code sesuai kontrak");
                 $t->true(strpos($id, "'$code' => " . var_export($texts[1], true)) !== false || strpos($id, "'$code' => \"" . $texts[1] . '"') !== false, "id_ID: teks $code sesuai kontrak");
             }
+            foreach (['ARCHIVE211', 'ARCHIVE214', 'ARCHIVE413'] as $gone) {
+                $t->eq(substr_count($en, "'$gone'"), 0, "en_EN: $gone dihapus (nomor tidak dipakai ulang)");
+                $t->eq(substr_count($id, "'$gone'"), 0, "id_ID: $gone dihapus");
+            }
+            // kode lain di rentang Archive tetap ada (tidak ikut terhapus)
+            foreach (['ARCHIVE200', 'ARCHIVE201', 'ARCHIVE400', 'ARCHIVE407'] as $keep) {
+                $t->eq(substr_count($en, "'$keep'"), 1, "en_EN: $keep tetap");
+            }
 
             // respons API mengikuti bahasa user (EN / ID)
             $s = $t->session();
             q26_baseline($t);
             try {
-                $f = q26_folder($t, 'LANG');
+                $x = q26_tree($t);
+                $yesterday = q26_now('-1 day')->format('Y-m-d') . ' 10:00:00';
                 foreach (['EN' => 0, 'ID' => 1] as $lang => $i) {
-                    q26_with_user($t, ['lang' => $lang], function () use ($t, $s, $f, $contract, $i, $lang) {
-                        $r = q26_store($t, $s, $f);
-                        $t->status($r, 200, "$lang: store");
-                        $t->eq($r[1]['message'] ?? null, $contract['ARCHIVE211'][$i], "$lang: message ARCHIVE211");
-                        $sid = $r[1]['result']['id_archive_opname'];
-                        $r = q26_scan($t, $s, $sid, 'QA26-TIDAK-ADA');
+                    q26_with_user($t, ['lang' => $lang], function () use ($t, $s, $x, $contract, $i, $lang, $yesterday) {
+                        $sel = q26_selection($x['F'], q26_sel([$x['S1']]));
+                        $r = q26_scan($t, $s, $sel, 'QA26-TIDAK-ADA');
+                        $t->status($r, 200, "$lang: scan");
                         $t->eq($r[1]['message'] ?? null, $contract['ARCHIVE212'][$i], "$lang: message ARCHIVE212");
                         $t->eq($r[1]['result']['row']['result_label'] ?? null, $i === 0 ? 'Invalid' : 'Tidak valid', "$lang: result_label");
-                        $show = q26_show($t, $s, $sid);
-                        $t->eq($show[1]['result']['status_label'] ?? null, $i === 0 ? 'Running' : 'Berjalan', "$lang: status_label");
-                        $r = q26_cancel($t, $s, $sid);
-                        $t->eq($r[1]['message'] ?? null, $contract['ARCHIVE214'][$i], "$lang: message ARCHIVE214");
-                        $r = q26_confirm($t, $s, $sid);
-                        $t->status($r, 400, "$lang: confirm sesi batal");
-                        $t->eq($r[1]['code'] ?? null, 'ARCHIVE413', "$lang: ARCHIVE413");
-                        $t->eq($r[1]['message'] ?? null, $contract['ARCHIVE413'][$i], "$lang: message ARCHIVE413");
-                        $r = q26_scan($t, $s, Q26_RANDOM_ID, 'x');
+
+                        $o = q26_do($t, $s, $x['S2'], [], null, [q26_n($t, $x['d21'])]);
+                        $t->status($o['r'], 200, "$lang: Konfirmasi");
+                        $t->eq($o['r'][1]['message'] ?? null, $contract['ARCHIVE213'][$i], "$lang: message ARCHIVE213");
+                        $show = q26_show($t, $s, $o['id']);
+                        $t->eq($show[1]['result']['status_label'] ?? null, $i === 0 ? 'Confirmed' : 'Dikonfirmasi', "$lang: status_label");
+                        $r = q26_show($t, $s, Q26_RANDOM_ID);
+                        q26_deny($t, $r, 404, 'ARCHIVE412', "$lang: sesi tak ada");
                         $t->eq($r[1]['message'] ?? null, $contract['ARCHIVE412'][$i], "$lang: message ARCHIVE412");
+
+                        // ARCHIVE414: kirim ulang body yang sama
+                        $r = q26_store($t, $s, $o['sel'], $o['scans'], $o['selected_at']);
+                        q26_deny($t, $r, 400, 'ARCHIVE414', "$lang: kirim ulang");
+                        $msg = $r[1]['message'] ?? '';
+                        $t->true(strpos($msg, q26_n($t, $x['S2'])) !== false, "$lang: ARCHIVE414 memuat nama folder");
+                        $t->true(strpos($msg, $i === 0 ? 'was opnamed by' : 'sudah diopname oleh') !== false, "$lang: ARCHIVE414 bahasa");
+
+                        $r = q26_store($t, $s, q26_selection($x['S2']), [], $yesterday);
+                        q26_deny($t, $r, 400, 'ARCHIVE415', "$lang: selected_at kemarin");
+                        $t->eq($r[1]['message'] ?? null, $contract['ARCHIVE415'][$i], "$lang: message ARCHIVE415");
+                        $r = q26_scan($t, $s, q26_selection($x['F'], q26_sel([$x['S1a']])), 'x');
+                        q26_deny($t, $r, 400, 'ARCHIVE416', "$lang: bukan subfolder langsung");
+                        $t->eq($r[1]['message'] ?? null, $contract['ARCHIVE416'][$i], "$lang: message ARCHIVE416");
+                        $r = q26_scan($t, $s, q26_selection($x['dF1']), 'x');
+                        q26_deny($t, $r, 400, 'ARCHIVE417', "$lang: folder opname = dokumen");
+                        $t->eq($r[1]['message'] ?? null, $contract['ARCHIVE417'][$i], "$lang: message ARCHIVE417");
                         $r = q26_folders($t, $s, Q26_RANDOM_ID);
-                        $t->status($r, 404, "$lang: folder tak ada");
-                        $t->eq($r[1]['code'] ?? null, 'ARCHIVE400', "$lang: ARCHIVE400");
+                        q26_deny($t, $r, 404, 'ARCHIVE400', "$lang: folder tak ada");
                     });
                 }
             } finally {

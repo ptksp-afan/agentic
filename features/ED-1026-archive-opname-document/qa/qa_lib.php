@@ -3,14 +3,19 @@
  * Helper bersama skenario ED-1026 (BUKAN skenario: nama berkas tidak cocok scenario*.php).
  * Di-require_once oleh setiap scenario*.php.
  *
- * Aturan pakai:
+ * Aturan pakai (revisi 2026-10-09: opname tanpa draft + data developer ada di DB uji):
  * - Data uji archive berawalan "QA26-" (folder, dokumen, lokasi, archive_documents). Dibuat lewat q26_add(), dibuang
- *   lewat q26_purge(). Sesi opname dibuat lewat API nyata dan dicatat di jurnal (.sessions-journal.json);
- *   q26_cleanup() menghapus baris archive_opname* sesi itu dan mengembalikan kolom verifikasi `archives` ke default
- *   (is_verified=0, verified_at/by/id_archive_opname=NULL) untuk baris yang ditandai id_archive_opname sesi itu.
- *   Prasyarat run: tabel opname kosong dan semua kolom verifikasi `archives` default (q26_baseline()).
- * - QA_USER2 tidak bisa login di api_sidomaju: "user tanpa hak" / "user lokasi lain" = QA_USER sendiri dengan keadaan
- *   sementara (role, lokasi employee, bahasa) lewat q26_with_user(); jurnal pemulihan user di .restore-journal-q26.json.
+ *   lewat q26_purge(). Sesi opname hanya ada sesudah POST opnames (Konfirmasi); sesi yang dibuat QA dicatat di jurnal
+ *   sesi (.sessions-journal.json).
+ * - Data developer BOLEH ada (sesi opname, dokumen verified). q26_baseline() TIDAK menuntut tabel opname kosong atau
+ *   archives default: ia mencatat (a) jurnal pra-citra kolom verifikasi `archives` non-QA26 yang tidak default
+ *   (.verif-journal.json) dan (b) checksum keadaan developer (q26_devstate). q26_cleanup() memulihkan NILAI SEBELUMNYA
+ *   persis (bukan default) untuk baris archives yang ditandai sesi QA, membuang hanya sesi QA, lalu membuktikan checksum
+ *   developer sama dengan sebelum AC. Jurnal bertahan bila run mati; baseline run berikutnya memulihkannya lebih dulu.
+ * - Teardown tidak jalan bila setup gagal: q26_baseline() dipanggil DI LUAR try; q26_cleanup() hanya di finally.
+ * - QA_USER2 (role 5, tanpa Opname Document) boleh login di api_sidomaju: dipakai untuk uji 403. "User lokasi lain" /
+ *   "user tanpa hak" lain = QA_USER sendiri dengan keadaan sementara (role, lokasi employee, bahasa) lewat
+ *   q26_with_user(); jurnal pemulihan user di .restore-journal-q26.json.
  *   Role bawaan QA_USER = 3 (Super Admin, is_superadmin 3: TIDAK bypass lokasi/hak folder, punya Opname Document).
  *   Bypass (superadmin 1/2) = role 1 dan 2. Role 29 = hanya List Archive. Role 6 = tanpa permission Archive.
  * - Tulis lewat koneksi default non-read-only di dalam $t->probe(); baca lewat $t->db() (read-only).
@@ -409,10 +414,14 @@ if (!function_exists('q26_dbname')) {
         return $out;
     }
 
-    // ------------------------------------------------------------------ jurnal sesi opname & pembersihan
+
+    // ------------------------------------------------------------------ jurnal sesi, pra-citra verifikasi, keadaan developer
 
     function q26_track($id)
     {
+        if (!$id) {
+            return;
+        }
         $ids = is_file(q26_sjournal()) ? (json_decode(file_get_contents(q26_sjournal()), true) ?: []) : [];
         $ids[] = $id;
         file_put_contents(q26_sjournal(), json_encode(array_values(array_unique($ids))));
@@ -423,61 +432,172 @@ if (!function_exists('q26_dbname')) {
         return is_file(q26_sjournal()) ? (json_decode(file_get_contents(q26_sjournal()), true) ?: []) : [];
     }
 
-    /** Hapus data opname sesi tercatat dan kembalikan kolom verifikasi archives yang ditandai sesi itu. */
+    function q26_vjournal()
+    {
+        return __DIR__ . '/.verif-journal.json';
+    }
+
+    /** Baris archives non-QA26 dengan kolom verifikasi tidak default (builder baca saja). */
+    function q26_nondefault($t)
+    {
+        return $t->db()->table('archives')->where('name', 'not like', Q26_PREFIX . '%')->where(function ($q) {
+            $q->whereNull('is_verified')->orWhere('is_verified', '!=', 0)->orWhereNotNull('verified_at')
+                ->orWhereNotNull('verified_by')->orWhereNotNull('id_archive_opname');
+        });
+    }
+
+    /**
+     * Tulis pra-citra: nilai kolom verifikasi SEMUA baris archives non-QA26 yang tidak default (data developer), persis
+     * sebelum AC jalan. Baris lain default (0, NULL, NULL, NULL) menurut definisi. Mengembalikan jumlah baris.
+     */
+    function q26_write_vjournal($t)
+    {
+        $rows = [];
+        foreach (q26_nondefault($t)->get(['id_archive', 'is_verified', 'verified_at', 'verified_by', 'id_archive_opname']) as $r) {
+            $rows[(string) $r->id_archive] = [$r->is_verified === null ? null : (int) $r->is_verified, $r->verified_at, $r->verified_by, $r->id_archive_opname];
+        }
+        file_put_contents(q26_vjournal(), json_encode(['taken_at' => date('c'), 'rows' => $rows]));
+
+        return count($rows);
+    }
+
+    function q26_read_vjournal()
+    {
+        return is_file(q26_vjournal()) ? (json_decode(file_get_contents(q26_vjournal()), true) ?: []) : [];
+    }
+
+    /**
+     * Hapus data opname sesi QA tercatat dan kembalikan kolom verifikasi `archives` yang ditandai sesi itu ke NILAI
+     * SEBELUMNYA (pra-citra jurnal; bukan default). Baris tanpa pra-citra = default. Hanya baris yang ditandai
+     * `id_archive_opname` sesi QA yang disentuh; sesi dan baris developer tidak. Mengembalikan jumlah baris archives dipulihkan.
+     */
     function q26_sweep($t)
     {
         $ids = q26_tracked();
+        $pre = q26_read_vjournal()['rows'] ?? [];
+        $restored = 0;
         if ($ids) {
-            q26_w($t, function ($c) use ($ids) {
+            $restored = q26_w($t, function ($c) use ($ids, $pre) {
+                $n = 0;
                 foreach (array_chunk($ids, 100) as $chunk) {
-                    $c->table('archives')->whereIn('id_archive_opname', $chunk)->update([
-                        'is_verified' => 0, 'verified_at' => null, 'verified_by' => null, 'id_archive_opname' => null,
-                    ]);
+                    $groups = [];
+                    foreach ($c->table('archives')->whereIn('id_archive_opname', $chunk)->pluck('id_archive')->all() as $id) {
+                        $groups[json_encode($pre[(string) $id] ?? [0, null, null, null])][] = $id;
+                    }
+                    foreach ($groups as $json => $list) {
+                        $v = json_decode($json, true);
+                        foreach (array_chunk($list, 500) as $part) {
+                            $c->table('archives')->whereIn('id_archive', $part)->update([
+                                'is_verified' => $v[0], 'verified_at' => $v[1], 'verified_by' => $v[2], 'id_archive_opname' => $v[3],
+                            ]);
+                        }
+                        $n += count($list);
+                    }
                     $c->table('archive_opname_documents')->whereIn('id_archive_opname', $chunk)->delete();
                     $c->table('archive_opname_folders')->whereIn('id_archive_opname', $chunk)->delete();
                     $c->table('archive_opnames')->whereIn('id_archive_opname', $chunk)->delete();
                 }
+
+                return $n;
             });
         }
         @unlink(q26_sjournal());
+
+        return $restored;
     }
 
-    /** Jumlah baris opname (3 tabel) + baris archives dengan kolom verifikasi tidak default (di luar baris QA26-). */
-    function q26_dirty($t)
+    function q26_cols($t, $table)
     {
-        $c = $t->db();
+        $out = [];
+        foreach ($t->db()->select("SHOW COLUMNS FROM `$table`") as $r) {
+            $out[] = $r->Field;
+        }
 
-        return [
-            'opnames'   => $c->table('archive_opnames')->count(),
-            'folders'   => $c->table('archive_opname_folders')->count(),
-            'documents' => $c->table('archive_opname_documents')->count(),
-            'archives'  => $c->table('archives')->where('name', 'not like', Q26_PREFIX . '%')->where(function ($q) {
-                $q->where('is_verified', '!=', 0)->orWhereNotNull('verified_at')->orWhereNotNull('verified_by')->orWhereNotNull('id_archive_opname');
-            })->count(),
-        ];
+        return $out;
     }
 
-    /** Awal AC: pulihkan sisa run yang mati, lalu pastikan keadaan = default (opname kosong, verifikasi default). */
+    /** [jumlah baris, jumlah CRC32 per baris] satu tabel (opsional WHERE). */
+    function q26_sum($t, $table, array $cols, $where = '', array $bind = [])
+    {
+        $parts = array_map(function ($c) {
+            return "IFNULL(CAST(`$c` AS CHAR),'~')";
+        }, $cols);
+        $r = $t->db()->selectOne("SELECT COUNT(*) n, IFNULL(SUM(CRC32(CONCAT_WS('|'," . implode(',', $parts) . '))),0) h FROM `' . $table . '` ' . $where, $bind);
+
+        return [(int) $r->n, (string) $r->h];
+    }
+
+    /**
+     * Keadaan tiga tabel opname (semua baris) + kolom verifikasi archives. $devOnly: archives tanpa baris QA26- (data
+     * developer). Dipakai untuk "request ini tidak menulis" (sebelum/sesudah) dan "data developer tidak berubah".
+     */
+    function q26_state($t, $devOnly = false)
+    {
+        $out = [];
+        foreach (['archive_opnames' => 'opnames', 'archive_opname_folders' => 'folders', 'archive_opname_documents' => 'documents'] as $table => $key) {
+            $out[$key] = q26_sum($t, $table, q26_cols($t, $table));
+        }
+        $out['archives'] = $devOnly
+            ? q26_sum($t, 'archives', ['id_archive', 'is_verified', 'verified_at', 'verified_by', 'id_archive_opname'], "WHERE name NOT LIKE ?", [Q26_PREFIX . '%'])
+            : q26_sum($t, 'archives', ['id_archive', 'is_verified', 'verified_at', 'verified_by', 'id_archive_opname']);
+
+        return $out;
+    }
+
+    function q26_devstate($t)
+    {
+        return q26_state($t, true);
+    }
+
+    function q26_same_state($a, $b)
+    {
+        return json_encode($a) === json_encode($b);
+    }
+
+    /**
+     * Awal AC. Pulihkan sisa run yang mati (dari pra-citra LAMA), buang data QA26-, catat pra-citra baru dan keadaan
+     * developer. TIDAK menuntut tabel opname kosong atau archives default.
+     */
     function q26_baseline($t)
     {
         q26_recover_user($t);
         q26_sweep($t);
+        @unlink(q26_vjournal());
         q26_purge($t);
-        $d = q26_dirty($t);
-        $t->eq(json_encode($d), json_encode(['opnames' => 0, 'folders' => 0, 'documents' => 0, 'archives' => 0]),
-            'prasyarat: tabel opname kosong & kolom verifikasi archives default');
+        $n = q26_write_vjournal($t);
+        $GLOBALS['q26_base'] = q26_devstate($t);
+        $GLOBALS['q26_last'] = 0;
+        $b = $GLOBALS['q26_base'];
+        $t->note(sprintf('data developer di DB uji dijaga: %d sesi, %d baris folder, %d baris dokumen opname; %d baris archives verifikasi tidak default', $b['opnames'][0], $b['folders'][0], $b['documents'][0], $n));
+
+        return $b;
     }
 
-    /** Akhir AC (finally): bersihkan dan buktikan tidak ada sisa. */
+    /** Akhir AC (finally): pulihkan nilai sebelumnya, buang data QA, buktikan data developer sama persis. */
     function q26_cleanup($t, $label = 'data uji dibuang')
     {
+        $tracked = q26_tracked();
         q26_sweep($t);
         q26_purge($t);
-        $d = q26_dirty($t);
-        $t->eq(json_encode($d), json_encode(['opnames' => 0, 'folders' => 0, 'documents' => 0, 'archives' => 0]),
-            $label . ': opname kosong & verifikasi default');
-        $t->eq($t->db()->table('archives')->where('name', 'like', Q26_PREFIX . '%')->count(), 0, $label . ' (archives QA26-)');
-        $t->eq($t->db()->table('archive_documents')->where('transaction_no', 'like', Q26_PREFIX . '%')->count(), 0, $label . ' (archive_documents)');
+        $c = $t->db();
+        $gone = $tracked ? $c->table('archive_opnames')->whereIn('id_archive_opname', $tracked)->count() : 0;
+        $now = q26_devstate($t);
+        $base = $GLOBALS['q26_base'] ?? null;
+        $t->eq($gone, 0, $label . ' (sesi opname QA)');
+        $t->eq($c->table('archives')->where('name', 'like', Q26_PREFIX . '%')->count(), 0, $label . ' (archives QA26-)');
+        $t->eq($c->table('archive_documents')->where('transaction_no', 'like', Q26_PREFIX . '%')->count(), 0, $label . ' (archive_documents)');
+        $t->eq($c->table('archive_permissions')->where('created_by', 'QA26')->count(), 0, $label . ' (archive_permissions QA26)');
+        if ($base === null) {
+            $t->fail($label . ': keadaan developer sebelum AC tidak tercatat (baseline tidak jalan)');
+        }
+        $diff = [];
+        foreach ($base as $k => $v) {
+            if (json_encode($v) !== json_encode($now[$k])) {
+                $diff[] = $k . ' ' . json_encode($v) . ' -> ' . json_encode($now[$k]);
+            }
+        }
+        $t->true($diff === [], $label . ': data developer sama persis dengan sebelum AC (' . implode('; ', $diff) . ')');
+        @unlink(q26_vjournal());
     }
 
     // ------------------------------------------------------------------ request
@@ -509,41 +629,123 @@ if (!function_exists('q26_dbname')) {
         return $t->call($s, 'GET', q26_url(Q26_BASE . '/opnames/folders', $id === null ? [] : ['id_archive' => $id]));
     }
 
-    /** POST opnames; sesi sukses dicatat di jurnal. */
-    function q26_store($t, $s, $folder, array $folders = [], $continue = null)
+    /** Body pilihan Step 1: folder opname (null = root), subfolder terpilih (q26_sel), is_continue folder opname. */
+    function q26_selection($folder, array $folders = [], $continue = null)
     {
-        $body = ['id_archive' => $folder, 'folders' => $folders];
+        $b = ['id_archive' => $folder, 'folders' => $folders];
         if ($continue !== null) {
-            $body['is_continue'] = $continue;
+            $b['is_continue'] = $continue;
         }
-        $r = $t->call($s, 'POST', Q26_BASE . '/opnames', $body);
-        $id = $r[1]['result']['id_archive_opname'] ?? null;
-        if ($id) {
-            q26_track($id);
+
+        return $b;
+    }
+
+    /** Tunggu sampai detik server berikutnya sesudah Konfirmasi terakhir: selected_at baru tidak bentrok dengannya. */
+    function q26_wait()
+    {
+        while (time() <= (int) ($GLOBALS['q26_last'] ?? 0)) {
+            usleep(100000);
         }
+    }
+
+    /** Muat Step 1 (GET opnames/folders) dan kembalikan selected_at (waktu server). */
+    function q26_selected($t, $s, $folder)
+    {
+        q26_wait();
+        $r = q26_folders($t, $s, $folder);
+        $t->status($r, 200, 'muat Step 1 (selected_at)');
+        $at = $r[1]['result']['selected_at'] ?? null;
+        $t->true(is_string($at) && preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/', $at) === 1, 'selected_at = Y-m-d H:i:s');
+
+        return $at;
+    }
+
+    /** POST opnames/scan (klasifikasi satu kode, tanpa simpan). */
+    function q26_scan($t, $s, array $sel, $code)
+    {
+        return $t->call($s, 'POST', Q26_BASE . '/opnames/scan', $sel + ['code' => $code]);
+    }
+
+    function q26_preview($t, $s, array $sel, array $scans = [])
+    {
+        return $t->call($s, 'POST', Q26_BASE . '/opnames/preview', $sel + ['scans' => $scans]);
+    }
+
+    /** POST opnames/preview/documents; $q = result/page/pagination (di body). */
+    function q26_pdocs($t, $s, array $sel, array $scans = [], array $q = [])
+    {
+        return $t->call($s, 'POST', Q26_BASE . '/opnames/preview/documents', $sel + ['scans' => $scans] + $q);
+    }
+
+    /** Semua halaman preview/documents satu filter: [row...]. */
+    function q26_pall($t, $s, array $sel, array $scans, $result, $pagination = 200, $maxPages = 400)
+    {
+        $rows = [];
+        $page = 1;
+        do {
+            $r = q26_pdocs($t, $s, $sel, $scans, ['result' => $result, 'pagination' => $pagination, 'page' => $page]);
+            $t->status($r, 200, "preview/documents $result hal $page");
+            foreach ($r[1]['result']['data'] ?? [] as $row) {
+                $rows[] = $row;
+            }
+            $last = $r[1]['result']['last_page'] ?? 1;
+            $page++;
+        } while ($page <= $last && $page <= $maxPages);
+
+        return $rows;
+    }
+
+    /** Scan tiap kode lewat POST opnames/scan seperti FE; kembalikan [scans (untuk body), rows (respons)]. */
+    function q26_scan_all($t, $s, array $sel, array $codes)
+    {
+        $scans = [];
+        $rows = [];
+        foreach ($codes as $code) {
+            $r = q26_scan($t, $s, $sel, $code);
+            $t->status($r, 200, "scan $code");
+            $row = $r[1]['result']['row'];
+            $scans[] = ['code' => $code, 'scanned_at' => $row['scanned_at']];
+            $rows[] = $row;
+        }
+
+        return [$scans, $rows];
+    }
+
+    /** POST opnames = Konfirmasi Opname; sesi sukses dicatat di jurnal. */
+    function q26_store($t, $s, array $sel, array $scans, $selectedAt)
+    {
+        $r = $t->call($s, 'POST', Q26_BASE . '/opnames', $sel + ['scans' => $scans, 'selected_at' => $selectedAt]);
+        $GLOBALS['q26_last'] = time();
+        q26_track($r[1]['result']['id_archive_opname'] ?? null);
 
         return $r;
     }
 
-    /** Buat sesi dan kembalikan id (gagal bila tidak 200). */
-    function q26_session($t, $s, $folder, array $folders = [], $continue = null)
+    /**
+     * Alur lengkap seperti FE: muat Step 1 (selected_at), scan tiap kode, Konfirmasi. $selectedAt diberikan = dipakai apa
+     * adanya (mis. kemarin). Mengembalikan ['id', 'r' (respons Konfirmasi), 'sel', 'scans', 'rows', 'selected_at'].
+     */
+    function q26_do($t, $s, $folder, array $folders = [], $continue = null, array $codes = [], $selectedAt = null)
     {
-        $r = q26_store($t, $s, $folder, $folders, $continue);
-        $t->status($r, 200, 'buat sesi');
-        $id = $r[1]['result']['id_archive_opname'] ?? null;
-        $t->true($id !== null, 'buat sesi: id dikembalikan');
+        $sel = q26_selection($folder, $folders, $continue);
+        if ($selectedAt === null) {
+            $selectedAt = q26_selected($t, $s, $folder);
+        }
+        list($scans, $rows) = q26_scan_all($t, $s, $sel, $codes);
+        $r = q26_store($t, $s, $sel, $scans, $selectedAt);
 
-        return $id;
+        return ['id' => $r[1]['result']['id_archive_opname'] ?? null, 'r' => $r, 'sel' => $sel, 'scans' => $scans, 'rows' => $rows, 'selected_at' => $selectedAt];
     }
 
-    function q26_update($t, $s, $id, array $folders = [], $continue = null)
+    /** q26_do() yang menuntut 200 dan mengembalikan id sesi. */
+    function q26_ok($t, $s, $folder, array $folders = [], $continue = null, array $codes = [], $label = 'Konfirmasi')
     {
-        $body = ['folders' => $folders];
-        if ($continue !== null) {
-            $body['is_continue'] = $continue;
-        }
+        $o = q26_do($t, $s, $folder, $folders, $continue, $codes);
+        $t->status($o['r'], 200, $label);
+        $t->eq($o['r'][1]['msg_code'] ?? null, 'ARCHIVE213', $label . ': ARCHIVE213');
+        $t->true($o['id'] !== null, $label . ': id sesi dikembalikan');
 
-        return $t->call($s, 'PUT', Q26_BASE . '/opnames/' . $id, $body);
+        return $o['id'];
     }
 
     function q26_show($t, $s, $id)
@@ -554,21 +756,6 @@ if (!function_exists('q26_dbname')) {
     function q26_docs($t, $s, $id, array $query = [])
     {
         return $t->call($s, 'GET', q26_url(Q26_BASE . '/opnames/' . $id . '/documents', $query));
-    }
-
-    function q26_scan($t, $s, $id, $code)
-    {
-        return $t->call($s, 'POST', Q26_BASE . '/opnames/' . $id . '/scan', ['code' => $code]);
-    }
-
-    function q26_confirm($t, $s, $id)
-    {
-        return $t->call($s, 'PUT', Q26_BASE . '/opnames/' . $id . '/confirm');
-    }
-
-    function q26_cancel($t, $s, $id)
-    {
-        return $t->call($s, 'DELETE', Q26_BASE . '/opnames/' . $id);
     }
 
     /** Semua halaman /documents satu filter: [row...]. */
@@ -589,7 +776,7 @@ if (!function_exists('q26_dbname')) {
         return $rows;
     }
 
-    /** Ubah pemilik sesi di DB (mensimulasikan sesi milik user lain; QA_USER2 tak bisa login di DB ini). */
+    /** Ubah pemilik sesi di DB (mensimulasikan sesi milik user lain). */
     function q26_set_owner($t, $id, $username)
     {
         q26_w($t, function ($c) use ($id, $username) {
@@ -597,11 +784,39 @@ if (!function_exists('q26_dbname')) {
         });
     }
 
-    /** Ubah kolom sesi di DB (waktu, status) untuk skenario hari lain. */
+    /** Ubah kolom sesi di DB (waktu) untuk skenario hari lain. */
     function q26_set_opname($t, $id, array $cols)
     {
         q26_w($t, function ($c) use ($id, $cols) {
             $c->table('archive_opnames')->where('id_archive_opname', $id)->update($cols);
+        });
+    }
+
+    /** Sisipkan baris sesi langsung di DB (data lama, mis. status 1/3 versi draft) dan catat di jurnal. */
+    function q26_insert_session($t, $status, $folder = null, array $extra = [])
+    {
+        $id = q26_new_id($t);
+        $now = date('Y-m-d H:i:s');
+        q26_track($id);
+        q26_w($t, function ($c) use ($id, $status, $folder, $now, $extra) {
+            $c->table('archive_opnames')->insert($extra + [
+                'id_archive_opname' => $id, 'id_archive' => $folder, 'status' => $status, 'selected_at' => $now,
+                'created_at' => $now, 'created_by' => 'QA26', 'updated_at' => $now, 'updated_by' => 'QA26',
+            ] + ['id_archive_opname' => $id]);
+        });
+
+        return $id;
+    }
+
+    /** Sisipkan baris folder snapshot untuk sesi (data lama / simulasi), dibuang bersama sesinya oleh q26_sweep. */
+    function q26_insert_session_folder($t, $sessionId, $folderId, $name, $level = 0)
+    {
+        $now = date('Y-m-d H:i:s');
+        q26_w($t, function ($c) use ($sessionId, $folderId, $name, $level, $now) {
+            $c->table('archive_opname_folders')->insert([
+                'id_archive_opname_folder' => \Modules\V5\Entities\Helper\MyHelper::generateId(), 'id_archive_opname' => $sessionId,
+                'id_archive' => $folderId, 'name' => $name, 'level' => $level, 'created_at' => $now,
+            ]);
         });
     }
 
@@ -634,7 +849,7 @@ if (!function_exists('q26_dbname')) {
         return $out;
     }
 
-    /** Cari baris result.data dengan id_archive. */
+    /** Cari baris result.children dengan id_archive. */
     function q26_child($r, $id)
     {
         foreach ($r[1]['result']['children'] ?? [] as $row) {
@@ -653,75 +868,29 @@ if (!function_exists('q26_dbname')) {
         }, $r[1]['result']['children'] ?? []);
     }
 
-    // ------------------------------------------------------------------ oracle independen (SQL + PHP, tanpa kode BE)
-
     /**
-     * Hitung dari DB (tanpa service BE): folder terlihat (aktif, lokasi, tanpa folder-permission aktif di fixture) dan
-     * jumlah dokumen aktif terlihat per subtree. $locCodes null = lihat semua (superadmin 1/2).
-     * @return array ['children' => [id => [name, count]], 'direct' => n (dokumen langsung $parent), 'tree' => ...]
+     * Folder (dan root '*') yang tercakup sesi terkonfirmasi hari ini (tanggal Asia/Jakarta), dari DB: kunci => [id sesi,
+     * confirmed_at, created_by]. Aturan sama dengan "Sudah diopname hari ini": level 0-2, root hanya level 0, konfirmasi terakhir.
      */
-    function q26_oracle($t, $parent, $locCodes)
+    function q26_opnamed_today($t)
     {
-        $c = $t->db();
-        $locIds = null;
-        if ($locCodes !== null) {
-            $map = q26_locs($t);
-            $locIds = array_map(function ($code) use ($map) {
-                return $map[$code];
-            }, $locCodes);
-        }
-
-        $archiveLocs = [];
-        foreach ($c->table('archive_locations')->get(['id_archive', 'id_location']) as $r) {
-            $archiveLocs[$r->id_archive][] = $r->id_location;
-        }
-        $visible = function ($row) use ($locIds, $archiveLocs) {
-            if ($locIds === null || (int) $row->is_all_location === 1) {
-                return true;
-            }
-
-            return count(array_intersect($archiveLocs[$row->id_archive] ?? [], $locIds)) > 0;
-        };
-
-        $children = [];
-        $names = [];
-        foreach ($c->table('archives')->where('type', 1)->where('is_active', '>', 0)->get(['id_archive', 'id_archive_parent', 'name', 'is_all_location']) as $f) {
-            if (!$visible($f)) {
+        $start = q26_today() . ' 00:00:00';
+        $end = q26_now('+1 day')->format('Y-m-d') . ' 00:00:00';
+        $rows = $t->db()->table('archive_opname_folders as f')
+            ->join('archive_opnames as o', 'o.id_archive_opname', '=', 'f.id_archive_opname')
+            ->where('o.status', 2)->where('o.confirmed_at', '>=', $start)->where('o.confirmed_at', '<', $end)
+            ->orderBy('o.confirmed_at')
+            ->get(['f.id_archive', 'f.level', 'o.id_archive_opname', 'o.confirmed_at', 'o.created_by']);
+        $out = [];
+        foreach ($rows as $r) {
+            if ($r->id_archive === null && (int) $r->level !== 0) {
                 continue;
             }
-            $children[$f->id_archive_parent === null ? '*' : $f->id_archive_parent][] = $f->id_archive;
-            $names[$f->id_archive] = $f->name;
-        }
-
-        $direct = [];
-        $q = $c->table('archives')->where('type', 2)->where('is_active', 1)->get(['id_archive', 'id_archive_parent', 'is_all_location']);
-        foreach ($q as $d) {
-            if (!$visible($d)) {
-                continue;
-            }
-            $k = $d->id_archive_parent === null ? '*' : $d->id_archive_parent;
-            $direct[$k] = ($direct[$k] ?? 0) + 1;
-        }
-
-        $sub = function ($id) use (&$sub, $children, $direct) {
-            $n = $direct[$id] ?? 0;
-            foreach ($children[$id] ?? [] as $ch) {
-                $n += $sub($ch);
-            }
-
-            return $n;
-        };
-
-        $key = $parent === null ? '*' : $parent;
-        $out = ['children' => [], 'direct' => $direct[$key] ?? 0];
-        $list = $children[$key] ?? [];
-        usort($list, function ($a, $b) use ($names) {
-            return strcasecmp($names[$a], $names[$b]) ?: strcmp($a, $b);
-        });
-        foreach ($list as $ch) {
-            $out['children'][$ch] = [$names[$ch], $sub($ch), !empty($children[$ch])];
+            $out[$r->id_archive === null ? '*' : $r->id_archive] = [$r->id_archive_opname, $r->confirmed_at, $r->created_by];
         }
 
         return $out;
     }
 }
+
+require_once __DIR__ . '/qa_lib_oracle.php';

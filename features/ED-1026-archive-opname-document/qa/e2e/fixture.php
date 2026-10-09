@@ -9,7 +9,9 @@
  *                                    baseline hanya INFO (DB bersama)
  *   "$PHP_BIN" fixture.php ids       cetak peta nama -> id_archive (JSON, tanpa rahasia)
  *   "$PHP_BIN" fixture.php inspect   cetak keadaan DB: is_verified per dokumen uji + sesi opname milik fixture (JSON)
- *   "$PHP_BIN" fixture.php backdate  mundurkan created_at draft milik fixture terbaru (status 1) satu hari (uji ARCHIVE415)
+ *   "$PHP_BIN" fixture.php lang <ID|EN>   tukar bahasa user QA (AC-28 en); dipulihkan persis di down (bagian snapshot user)
+ *   "$PHP_BIN" fixture.php reparent <nama> <induk|root>   pindahkan satu archive milik fixture (berawalan PREFIX) ke induk
+ *                                    fixture lain / root (uji ARCHIVE416: subfolder terpilih tak lagi subfolder langsung)
  *
  * Jurnal (.fixture-journal.json, ditulis up SEBELUM baris pertama): id sesi opname yang sudah ada sebelum up, snapshot kolom
  * verifikasi archives yang tak-bawaan, id archive dan id sesi yang disisipkan fixture, snapshot user/role QA. Milik fixture =
@@ -17,8 +19,11 @@
  * folder fixture atau di root oleh QA_USER/QA_USER2. Kolom verifikasi archives lain yang disentuh sesi itu dikembalikan ke
  * nilai jurnal. Data developer di tabel yang sama tidak pernah dihapus/direset; down tanpa jurnal tidak melakukan apa pun.
  *
- * Mode: env QA26_MODE = main (default) | norole. norole = baris role_permissions (role user QA, permission 1133) dicabut
+ * Mode: env QA26_MODE = main (default) | norole. norole = baris role_permissions (role user QA, permission 'Opname Document' dicari per nama) dicabut
  * sebelum login e2e dan dikembalikan persis (id baris sama) di down.
+ *
+ * Revisi tanpa draft (FB-3): fixture tidak lagi membuat/menggeser draft; sesi yang dibuat spec lewat aplikasi (Konfirmasi) pada folder
+ * fixture atau di root oleh user QA tetap dianggap milik fixture dan dibuang di down (kolom verifikasi lain dipulihkan dari jurnal).
  *
  * Pohon uji (semua di root, aktif, is_all_location=1, tanpa folder permission; nama berawalan "0" agar urut paling awal):
  *   0QA26-ALPHA    AD1 AD2  | S1 (S1D1 S1D2, sub X: S1XD1) | S2 (S2D1) | S3 (S3D1)     folder dengan subfolder
@@ -28,6 +33,10 @@
  *   0QA26-EPS      E01..E12                                             tanpa subfolder, 12 dokumen (paginasi Step 3)
  *   0QA26-VIEWONLY VD1; folder permission: user QA hanya View (menu Info/Lihat/Opname; opname tetap boleh)
  *   0QA26-NOVIEW   folder permission aktif tanpa baris untuk user QA (tanpa View: tanpa menu aksi)
+ *   0QA26-ZULFA    ZD1                                                  tanpa subfolder, tak pernah dikonfirmasi (AC-8, Batal/Cancel)
+ *   0QA26-HIST     H1 H2                                                tanpa subfolder; sesi riwayat dibuat spec lewat API (AC-30)
+ *   0QA26-OMEGA    OD0 | OM-S1 (OD1) | OM-S2 (OD2)                      uji ARCHIVE416 (S2 dipindah di tengah sesi)
+ *   0QA26-RD1/RD2  dokumen di root (tanpa folder): RD1 verified (peringatan root "Semua Arsip" AC-28), RD2 tak verified (target scan, K-4)
  */
 
 namespace QaHttp;
@@ -43,7 +52,19 @@ use Illuminate\Support\Facades\DB;
 const PREFIX = '0QA26-';
 const ARCH_TABLES = ['archives', 'archive_documents', 'archive_locations', 'archive_permissions'];
 const OP_TABLES = ['archive_opnames', 'archive_opname_folders', 'archive_opname_documents'];
-const PERMISSION_ID = 1133;
+/** id permission 'Opname Document' dicari per nama (seed 1139 sejak EPIC K-4 a; tidak di-hardcode agar tak salah cabut permission lain). */
+function permissionId($c)
+{
+    static $id = null;
+    if ($id === null) {
+        $id = $c->table('permissions')->where('permission_name', 'Opname Document')->value('id_permission');
+        if ($id === null) {
+            fail("permission 'Opname Document' tidak ada di DB uji (seed permission_salesman.sql belum dijalankan)");
+        }
+    }
+
+    return (int) $id;
+}
 const JOURNAL_V = 2;
 const VERIF_COLS = ['is_verified', 'verified_at', 'verified_by', 'id_archive_opname'];
 
@@ -99,16 +120,20 @@ function userSnapshot($c)
     return [
         'uid'      => $user->id_user,
         'username' => $user->username,
+        'language' => $user->language ?? null,
         'emp_id'   => $emp->id_employee ?? null,
         'emp_all'  => $emp->is_all_location ?? null,
         'emp_locs' => $emp ? rows($c->table('employee_locations')->where('id_employee', $emp->id_employee)->orderBy('id_employee_location')->get()) : [],
         'role_ids' => $roles,
-        'role_perm' => rows($c->table('role_permissions')->whereIn('id_role', $roles ?: [0])->where('id_permission', PERMISSION_ID)->orderBy('id_role_permission')->get()),
+        'role_perm' => rows($c->table('role_permissions')->whereIn('id_role', $roles ?: [0])->where('id_permission', permissionId($c))->orderBy('id_role_permission')->get()),
     ];
 }
 
 function userRestore($c, array $snap)
 {
+    if (array_key_exists('language', $snap) && !empty($snap['uid'])) {
+        $c->table('users')->where('id_user', $snap['uid'])->update(['language' => $snap['language']]);
+    }
     if ($snap['emp_id']) {
         $c->table('employees')->where('id_employee', $snap['emp_id'])->update(['is_all_location' => $snap['emp_all']]);
         $c->table('employee_locations')->where('id_employee', $snap['emp_id'])->delete();
@@ -116,10 +141,20 @@ function userRestore($c, array $snap)
             $c->table('employee_locations')->insert($snap['emp_locs']);
         }
     }
-    $c->table('role_permissions')->whereIn('id_role', $snap['role_ids'] ?: [0])->where('id_permission', PERMISSION_ID)->delete();
+    $c->table('role_permissions')->whereIn('id_role', $snap['role_ids'] ?: [0])->where('id_permission', permissionId($c))->delete();
     if ($snap['role_perm']) {
         $c->table('role_permissions')->insert($snap['role_perm']);
     }
+}
+
+/** snapshot user sama dengan jurnal (jurnal lama tanpa kunci language: bahasa tidak dibandingkan) */
+function sameUser(array $now, array $old)
+{
+    if (!array_key_exists('language', $old)) {
+        unset($now['language']);
+    }
+
+    return $now === $old;
 }
 
 // ------------------------------------------------------------------ jurnal + pembersihan terbatas pada data milik fixture
@@ -316,7 +351,7 @@ if ($cmd === 'up') {
         $r = purge($c, $old);
         userRestore($c, $old['user']);
         $lines = leftovers($c, $old, $r['sessions']);
-        if (userSnapshot($c) !== $old['user']) {
+        if (!sameUser(userSnapshot($c), $old['user'])) {
             $lines[] = 'BEDA user/role QA';
         }
         if ($lines) {
@@ -360,7 +395,7 @@ if ($cmd === 'up') {
         ]);
     }
     if ($mode === 'norole') {
-        $c->table('role_permissions')->whereIn('id_role', $user['role_ids'] ?: [0])->where('id_permission', PERMISSION_ID)->delete();
+        $c->table('role_permissions')->whereIn('id_role', $user['role_ids'] ?: [0])->where('id_permission', permissionId($c))->delete();
     }
 
     $ids = [];
@@ -420,6 +455,21 @@ if ($cmd === 'up') {
             $add(PREFIX . sprintf('E%02d', $i), 2, $eps, 6);
         }
 
+        // revisi tanpa draft: folder tanpa subfolder yang tak pernah dikonfirmasi (AC-8, Batal), folder riwayat (AC-30), ARCHIVE416, dokumen root
+        $zulfa = $add(PREFIX . 'ZULFA', 1, null);
+        $add(PREFIX . 'ZD1', 2, $zulfa, 6);
+        $hist = $add(PREFIX . 'HIST', 1, null);
+        $add(PREFIX . 'H1', 2, $hist, 6);
+        $add(PREFIX . 'H2', 2, $hist, 7);
+        $omega = $add(PREFIX . 'OMEGA', 1, null);
+        $add(PREFIX . 'OD0', 2, $omega, 6);
+        $os1 = $add(PREFIX . 'OMEGA-S1', 1, $omega);
+        $add(PREFIX . 'OD1', 2, $os1, 6);
+        $os2 = $add(PREFIX . 'OMEGA-S2', 1, $omega);
+        $add(PREFIX . 'OD2', 2, $os2, 6);
+        $add(PREFIX . 'RD1', 2, null, 6); // verified di bawah (peringatan root)
+        $add(PREFIX . 'RD2', 2, null, 7); // tak verified: target scan dokumen root
+
         // hak folder (ED-1025): VIEWONLY = user QA hanya View; NOVIEW = folder permission aktif tanpa baris untuk user QA
         $vo = $add(PREFIX . 'VIEWONLY', 1, null, 6, 1);
         $add(PREFIX . 'VD1', 2, $vo, 6);
@@ -432,7 +482,7 @@ if ($cmd === 'up') {
     });
     journalAdd($journal, 'archives', array_values($ids));
 
-    // BETA + BETA-T1 sudah diopname hari ini 09:15 (sesi terkonfirmasi, dibuat langsung di DB); BD1 dan T1D1 verified
+    // BETA + BETA-T1 sudah diopname hari ini 09:15 (sesi terkonfirmasi, dibuat langsung di DB); BD1, T1D1 dan RD1 (root) verified
     $sid = $gen();
     journalAdd($journal, 'sessions', [$sid]);
     $todayAt = $now->copy()->setTime(9, 15, 0)->format('Y-m-d H:i:s');
@@ -454,7 +504,7 @@ if ($cmd === 'up') {
         };
         $folder(0, PREFIX . 'BETA', $ids[PREFIX . 'BETA'], null, 1, 1);
         $folder(1, PREFIX . 'BETA-T1', $ids[PREFIX . 'BETA-T1'], $ids[PREFIX . 'BETA'], 2, 1);
-        foreach ([PREFIX . 'BD1', PREFIX . 'T1D1'] as $doc) {
+        foreach ([PREFIX . 'BD1', PREFIX . 'T1D1', PREFIX . 'RD1'] as $doc) {
             $c->table('archives')->where('id_archive', $ids[$doc])->update([
                 'is_verified' => 1, 'verified_at' => $todayAt, 'verified_by' => $by, 'id_archive_opname' => $sid,
             ]);
@@ -485,7 +535,7 @@ if ($cmd === 'down') {
     $r = purge($c, $old);
     userRestore($c, $old['user']);
     $lines = leftovers($c, $old, $r['sessions']);
-    if (userSnapshot($c) !== $old['user']) {
+    if (!sameUser(userSnapshot($c), $old['user'])) {
         $lines[] = 'BEDA user/role QA: tidak sama dengan snapshot awal';
     }
     $info = [];
@@ -536,21 +586,41 @@ if ($cmd === 'inspect') {
             'docs' => $c->table('archive_opname_documents')->where('id_archive_opname', $s->id_archive_opname)->count(),
         ];
     }
-    echo json_encode(['docs' => $docs, 'sessions' => $sessions]) . "\n";
-    exit(0);
-}
-
-if ($cmd === 'backdate') {
-    $j = journalRead($journal);
-    $own = $j ? fixtureSessionIds($c, $j, fixtureArchiveIds($c, $j)) : []; // hanya draft milik fixture
-    $id = $own ? $c->table('archive_opnames')->whereIn('id_archive_opname', $own)->where('status', 1)
-        ->orderBy('created_at', 'desc')->orderBy('id_archive_opname', 'desc')->value('id_archive_opname') : null;
-    if (!$id) {
-        fail('tidak ada draft milik fixture untuk dimundurkan');
+    $tables = [];
+    foreach (OP_TABLES as $t) {
+        $tables[$t] = (int) $c->table($t)->count();
     }
-    $c->update('UPDATE archive_opnames SET created_at = created_at - INTERVAL 1 DAY WHERE id_archive_opname = ?', [$id]);
-    say('draft dimundurkan 1 hari');
+    $tables['verification_non_default'] = count(verificationSnapshot($c));
+    echo json_encode(['docs' => $docs, 'sessions' => $sessions, 'tables' => $tables]) . "\n";
     exit(0);
 }
 
-fail('pakai: up | down | ids | inspect | backdate');
+if ($cmd === 'lang') {
+    $lang = strtoupper($argv[2] ?? '');
+    $j = journalRead($journal);
+    if (!in_array($lang, ['ID', 'EN'], true) || !$j) {
+        fail('lang: ID | EN (dan fixture harus sudah up)');
+    }
+    $c->table('users')->where('id_user', $j['user']['uid'])->update(['language' => $lang]);
+    say("bahasa user QA: $lang (dipulihkan di down)");
+    exit(0);
+}
+
+if ($cmd === 'reparent') {
+    $name = $argv[2] ?? '';
+    $to = $argv[3] ?? '';
+    $j = journalRead($journal);
+    if (!$j || strpos($name, PREFIX) !== 0 || ($to !== 'root' && strpos($to, PREFIX) !== 0)) {
+        fail('reparent <nama berawalan ' . PREFIX . '> <induk berawalan ' . PREFIX . ' | root>');
+    }
+    $row = $c->table('archives')->whereRaw("`name` = BINARY ?", [$name])->first();
+    $parent = $to === 'root' ? null : $c->table('archives')->whereRaw("`name` = BINARY ?", [$to])->value('id_archive');
+    if (!$row || ($to !== 'root' && !$parent)) {
+        fail('archive fixture tidak ditemukan');
+    }
+    $c->table('archives')->where('id_archive', $row->id_archive)->update(['id_archive_parent' => $parent]);
+    say("$name dipindah ke $to");
+    exit(0);
+}
+
+fail('pakai: up | down | ids | inspect | lang <ID|EN> | reparent <nama> <induk|root>');

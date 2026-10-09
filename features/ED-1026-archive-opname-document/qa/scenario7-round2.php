@@ -1,18 +1,19 @@
 <?php
 /**
- * ED-1026 - ronde 2 (verifikasi perbaikan D-1 dan D-2 + Updater yang berubah).
+ * ED-1026 - ronde 2 (perbaikan D-1 dan D-2) disesuaikan alur tanpa draft (rev 2026-10-09):
  *   R2-D1       POST opnames id_archive: rule-nya sendiri (bukan string / > 30 karakter) -> 422 tanpa lookup; lolos rule tapi
- *               tidak ada -> 404 ARCHIVE400; urutan 401 > 403 GE0114 > 403 ARCHIVE407 > 422; GET folders sama; tak ada sesi tercipta.
- *   R2-D2       scanned_at DATETIME(6): urutan scan terbaru dulu pasti (draft, filter, sesudah Confirm, dibaca superadmin);
- *               jam mundur / limpah detik; format response Y-m-d H:i:s; duplikat tidak menggeser urutan.
- *   R2-SCANVOL  100 scan beruntun: urutan monoton, tanpa pelambatan berarti.
+ *               tidak ada -> 404 ARCHIVE400; urutan 401 > 403 GE0114 > 403 ARCHIVE407 > 422; GET folders sama.
+ *   R2-D2       scanned_at DATETIME(6): urutan scan terbaru dulu pasti (Konfirmasi, filter, dibaca superadmin); jam mundur /
+ *               kode ganda tidak menggeser urutan; format response Y-m-d H:i:s.
+ *   R2-SCANVOL  100 scan beruntun (POST opnames/scan, tanpa simpan) lalu satu Konfirmasi: urutan monoton, tanpa pelambatan.
+ *   R2-PARALLEL-DIFF  scan kode BERBEDA bersamaan: semua 200 dan tanpa tulis; Konfirmasi sesudahnya menyimpan urutan pasti.
  *   R2-SCHEMA   scanned_at = datetime(6) di DB QA; Updater pada DB yang sudah menjalankan versi awalnya (scanned_at DATETIME) ->
  *               MODIFY sekali, data utuh, run ulang tanpa perubahan, skema = DB QA.
  */
 require_once __DIR__ . '/qa_lib.php';
 
 if (!function_exists('q26r2_rows_db')) {
-    /** [[code, scanned_at(raw, 26 karakter)]] baris scan sesi urut scanned_at naik. */
+    /** [[code, scanned_at(raw, 26 karakter), result]] baris scan sesi urut scanned_at naik. */
     function q26r2_rows_db($t, $id)
     {
         $out = [];
@@ -29,29 +30,38 @@ if (!function_exists('q26r2_rows_db')) {
             return $r['code'];
         }, $rows);
     }
+
+    function q26r2_strict($db)
+    {
+        for ($i = 1; $i < count($db); $i++) {
+            if (strcmp($db[$i][1], $db[$i - 1][1]) <= 0) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 return [
 
     [
         'id'    => 'R2-D1',
-        'title' => 'D-1: POST opnames id_archive > 30 karakter / bukan string -> 422 (bukan 404); 30 karakter tak ada -> 404 ARCHIVE400; urutan penolakan; GET folders konsisten',
+        'title' => 'D-1: POST opnames id_archive > 30 karakter / bukan string -> 422 (bukan 404); 30 karakter tak ada -> 404 ARCHIVE400; urutan penolakan; GET folders konsisten; penolakan tidak menyimpan sesi',
         'run'   => function ($t) {
             $s = $t->session();
             q26_baseline($t);
             try {
                 $x = q26_tree($t);
                 $B = Q26_BASE . '/opnames';
-                $count = function () use ($t) {
-                    return $t->db()->table('archive_opnames')->count();
-                };
-                $before = $count();
-                $post = function ($body, $session = null) use ($t, $s, $B) {
-                    return $t->call($session ?: $s, 'POST', $B, $body);
+                $now = q26_now()->format('Y-m-d H:i:s');
+                $post = function ($body, $session = null) use ($t, $s, $B, $now) {
+                    return $t->call($session ?: $s, 'POST', $B, $body + ['selected_at' => $now]);
                 };
                 $mentions = function ($r) {
                     return strpos(json_encode($r[1]), 'id_archive') !== false;
                 };
+                $before = q26_state($t);
 
                 // 1) panjang: 31..300 karakter -> 422 (rule max:30), tanpa lookup
                 foreach ([31, 32, 60, 255, 300] as $n) {
@@ -61,12 +71,10 @@ return [
                     $t->true($mentions($r), "POST id_archive $n karakter: pesan validasi menyebut id_archive");
                     $t->true(!isset($r[1]['msg_code']) || $r[1]['msg_code'] !== 'ARCHIVE400', "POST id_archive $n karakter: bukan ARCHIVE400");
                 }
-                // tanpa body lain & dengan body lain yang juga salah
                 $r = $post(['id_archive' => str_repeat('a', 31)]);
                 $t->status($r, 422, 'id 31 karakter tanpa folders -> 422');
                 $r = $post(['id_archive' => str_repeat('a', 31), 'folders' => 'bukan-array', 'is_continue' => 'x']);
                 $t->status($r, 422, 'id 31 karakter + field lain salah -> 422');
-                // camelCase level terluar
                 $r = $post(['idArchive' => str_repeat('a', 31), 'folders' => []]);
                 $t->status($r, 422, 'camelCase idArchive 31 karakter -> 422');
                 $r = $post(['idArchive' => str_repeat('a', 30), 'folders' => []]);
@@ -98,29 +106,33 @@ return [
                     $t->status($r, 422, "POST id_archive $label -> 422 (rule string)");
                 }
 
-                // 5) dokumen -> 400 ARCHIVE417; folder valid -> 200 (lalu dibatalkan); string kosong & null -> root 200
+                // 5) dokumen -> 400 ARCHIVE417; subfolder 30 karakter tak ada -> 416; 31 karakter -> 422
                 $r = $post(['id_archive' => $x['dF1'], 'folders' => []]);
                 q26_deny($t, $r, 400, 'ARCHIVE417', 'POST id dokumen');
-                $r = $post(['id_archive' => $x['F'], 'folders' => []]);
-                $t->status($r, 200, 'POST folder valid');
-                q26_track($r[1]['result']['id_archive_opname'] ?? '');
-                $created = [$r[1]['result']['id_archive_opname'] ?? null];
-                foreach (['string kosong' => '', 'null' => null] as $label => $v) {
-                    $r = $post(['id_archive' => $v, 'folders' => []]);
-                    $t->status($r, 200, "POST id_archive $label = root");
-                    q26_track($r[1]['result']['id_archive_opname'] ?? '');
-                    $created[] = $r[1]['result']['id_archive_opname'] ?? null;
-                    $row = q26_opname($t, $r[1]['result']['id_archive_opname'] ?? '');
-                    $t->true($row !== null && $row['id_archive'] === null, "DB: id_archive $label -> root (NULL)");
-                }
-                // subfolder 30 karakter tak ada -> 416; 31 karakter -> 422 (folders.*.id_archive)
                 $r = $post(['id_archive' => $x['F'], 'folders' => [['id_archive' => str_repeat('c', 30)]]]);
                 q26_deny($t, $r, 400, 'ARCHIVE416', 'folders.* 30 karakter tak ada');
                 $r = $post(['id_archive' => $x['F'], 'folders' => [['id_archive' => str_repeat('c', 31)]]]);
                 $t->status($r, 422, 'folders.* 31 karakter -> 422');
-                $t->eq($count(), $before + 3, 'hanya 3 sesi yang sah tercipta; semua penolakan tidak menyimpan apa pun');
+                $t->true(q26_same_state($before, q26_state($t)), 'semua penolakan tidak menyimpan apa pun');
 
-                // 6) GET opnames/folders: perilaku sama untuk input yang sama
+                // 6) folder valid -> satu sesi; string kosong & null = root (pratinjau; Konfirmasi root cukup sekali di AC lain)
+                $leaf = q26_folder($t, 'LEAF');
+                $r = $post(['id_archive' => $leaf, 'folders' => []]);
+                q26_track($r[1]['result']['id_archive_opname'] ?? null);
+                $t->status($r, 200, 'POST folder valid');
+                $t->eq(q26_opname($t, $r[1]['result']['id_archive_opname'] ?? '')['id_archive'] ?? null, $leaf, 'DB: id_archive = folder valid');
+                foreach (['string kosong' => '', 'null' => null] as $label => $v) {
+                    $r = q26_preview($t, $s, ['id_archive' => $v, 'folders' => []]);
+                    $t->status($r, 200, "preview id_archive $label = root");
+                    $t->true($r[1]['result']['id_archive'] === null && $r[1]['result']['scope']['is_root'] === true, "preview id_archive $label -> root");
+                }
+                $r = $post(['id_archive' => '', 'folders' => []]);
+                $t->status($r, 200, 'POST id_archive "" = root');
+                q26_track($r[1]['result']['id_archive_opname'] ?? null);
+                $row = q26_opname($t, $r[1]['result']['id_archive_opname'] ?? '');
+                $t->true($row !== null && $row['id_archive'] === null, 'DB: id_archive "" -> root (NULL)');
+
+                // 7) GET opnames/folders: perilaku sama untuk input yang sama
                 $g = function ($id) use ($t, $s) {
                     return q26_folders($t, $s, $id);
                 };
@@ -129,9 +141,10 @@ return [
                 q26_deny($t, $g(str_repeat('é', 10)), 404, 'ARCHIVE400', 'GET folders non-ASCII 10 karakter');
                 $t->status($g(str_repeat('é', 31)), 422, 'GET folders non-ASCII 31 karakter -> 422');
 
-                // 7) urutan penolakan: tanpa token 401 > tanpa permission 403 GE0114 > F luar scope 403 ARCHIVE407 > 422
+                // 8) urutan penolakan: tanpa token 401 > tanpa permission 403 GE0114 > F luar scope 403 ARCHIVE407 > 422
                 $res = $t->raw('POST', $B, ['id_archive' => str_repeat('a', 31), 'folders' => []]);
                 $t->status($res, 401, 'tanpa token + id 31 karakter -> 401');
+                $mid = q26_state($t);
                 foreach ([Q26_ROLE_NONE, Q26_ROLE_LIST_ONLY] as $role) {
                     q26_with_user($t, ['role' => $role], function () use ($t, $s, $B, $x, $role) {
                         foreach ([str_repeat('a', 31), str_repeat('a', 30), $x['F'], $x['dF1']] as $id) {
@@ -149,7 +162,7 @@ return [
                     $r = $t->call($s, 'POST', $B, ['id_archive' => $x['F'], 'folders' => 'bukan-array']);
                     $t->status($r, 422, 'user Semarang: F valid + body salah -> 422');
                 });
-                $t->eq($count(), $before + 3, 'penolakan role/lokasi tidak menyimpan sesi');
+                $t->true(q26_same_state($mid, q26_state($t)), 'penolakan role/lokasi tidak menyimpan sesi');
             } finally {
                 q26_cleanup($t);
             }
@@ -158,7 +171,7 @@ return [
 
     [
         'id'    => 'R2-D2',
-        'title' => 'D-2: scanned_at DATETIME(6): urutan scan terbaru dulu pasti (draft, filter, sesudah Confirm, dibaca superadmin); jam mundur / limpah detik; format Y-m-d H:i:s',
+        'title' => 'D-2: scanned_at DATETIME(6) pada Konfirmasi: urutan scan terbaru dulu pasti (filter, halaman kecil, dibaca superadmin); scan satu detik, waktu mundur, kode ganda; format response Y-m-d H:i:s',
         'run'   => function ($t) {
             $s = $t->session();
             q26_baseline($t);
@@ -189,35 +202,36 @@ return [
                 foreach ($notFound as $c) { $kind[$c] = 2; }
                 foreach ($invalid as $c) { $kind[$c] = 3; }
 
-                $id = q26_session($t, $s, $F, []);
-                $respTimes = [];
+                // Step 1 + scan beruntun (waktu server, banyak dalam detik yang sama) + Konfirmasi
+                $sel = q26_selection($F);
+                $selected = q26_selected($t, $s, $F);
                 $secs = [];
+                $scans = [];
                 foreach ($codes as $c) {
-                    $r = q26_scan($t, $s, $id, $c);
+                    $r = q26_scan($t, $s, $sel, $c);
                     $t->status($r, 200, "scan $c");
                     $at = $r[1]['result']['row']['scanned_at'] ?? null;
-                    $respTimes[] = $at;
                     $t->true(is_string($at) && preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/', $at) === 1, 'response /scan scanned_at = Y-m-d H:i:s (' . var_export($at, true) . ')');
                     $secs[$at] = ($secs[$at] ?? 0) + 1;
+                    $scans[] = ['code' => $c, 'scanned_at' => $at];
                 }
                 $t->true(max($secs) > 1, 'prasyarat: beberapa scan jatuh pada detik yang sama (maks ' . max($secs) . ' per detik)');
+                $r = q26_store($t, $s, $sel, $scans, $selected);
+                $t->status($r, 200, 'Konfirmasi');
+                $id = $r[1]['result']['id_archive_opname'];
 
-                // DB: scanned_at 26 karakter (mikrodetik), naik ketat sesuai urutan scan
+                // DB: scanned_at 26 karakter (mikrodetik), naik ketat sesuai urutan scans
                 $db = q26r2_rows_db($t, $id);
-                $t->eq(array_map(function ($r) { return $r[0]; }, $db), $codes, 'DB: urutan scanned_at naik = urutan scan');
-                $strict = true;
+                $t->eq(array_map(function ($r) { return $r[0]; }, $db), $codes, 'DB: urutan scanned_at naik = urutan scans');
                 $micro = true;
-                for ($i = 0; $i < count($db); $i++) {
-                    $micro = $micro && strlen($db[$i][1]) === 26 && preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{6}$/', $db[$i][1]) === 1;
-                    if ($i > 0 && strcmp($db[$i][1], $db[$i - 1][1]) <= 0) {
-                        $strict = false;
-                    }
+                foreach ($db as $row) {
+                    $micro = $micro && strlen($row[1]) === 26 && preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{6}$/', $row[1]) === 1;
                 }
                 $t->true($micro, 'DB: scanned_at format Y-m-d H:i:s.uuuuuu');
-                $t->true($strict, 'DB: scanned_at naik ketat (tanpa nilai kembar) per scan dalam sesi');
+                $t->true(q26r2_strict($db), 'DB: scanned_at naik ketat (tanpa nilai kembar) per scan dalam sesi');
                 $t->true(count(array_unique(array_map(function ($r) { return substr($r[1], 0, 19); }, $db))) < count($db), 'DB: ada nilai satu detik yang sama dengan mikrodetik berbeda');
                 $dbMap = [];
-                foreach ($db as $r) { $dbMap[$r[0]] = $r[1]; }
+                foreach ($db as $row) { $dbMap[$row[0]] = $row[1]; }
 
                 // GET documents: scanned terbaru dulu, halaman kecil melintasi batas
                 $expect = array_reverse($codes);
@@ -228,89 +242,43 @@ return [
                     $t->eq($row['scanned_at'], substr($dbMap[$row['code']], 0, 19), 'documents: scanned_at = DB (detik)');
                 }
                 $t->eq(q26r2_codes(q26_all_docs($t, $s, $id, 'scanned', 100)), $expect, 'documents?result=scanned (pagination 100) sama');
-                // filter per hasil: subset dengan urutan kebalikan scan
                 foreach ([1 => 'verified', 2 => 'not_found', 3 => 'invalid'] as $k => $name) {
                     $sub = array_values(array_filter($expect, function ($c) use ($kind, $k) { return $kind[$c] === $k; }));
                     $t->eq(q26r2_codes(q26_all_docs($t, $s, $id, $name, 3)), $sub, "documents?result=$name: urut scan terbaru dulu");
                 }
-                // all: scan terbaru dulu, lalu belum discan per code naik
                 $sortedUn = $unscanned;
                 usort($sortedUn, 'strcasecmp');
-                $all = q26_all_docs($t, $s, $id, 'all', 6);
-                $t->eq(q26r2_codes($all), array_merge($expect, $sortedUn), 'documents?result=all: scan terbaru dulu, lalu belum discan per code');
+                $t->eq(q26r2_codes(q26_all_docs($t, $s, $id, 'all', 6)), array_merge($expect, $sortedUn), 'documents?result=all: scan terbaru dulu, lalu belum discan per code');
+                // pratinjau (sebelum Konfirmasi) urutannya sama dengan tersimpan
+                $t->eq(q26r2_codes(q26_pall($t, $s, $sel, $scans, 'scanned', 4)), $expect, 'preview/documents scanned (pagination 4): urutan sama dengan yang tersimpan');
 
-                // scan duplikat: tidak menggeser urutan / scanned_at
-                $dup = $codes[3];
-                $r = q26_scan($t, $s, $id, strtoupper($dup));
-                $t->status($r, 200, 'scan ulang (huruf besar)');
-                $t->eq($r[1]['result']['is_duplicate'] ?? null, true, 'duplikat: is_duplicate true');
-                $t->eq($r[1]['result']['row']['scanned_at'] ?? null, substr($dbMap[$dup], 0, 19), 'duplikat: scanned_at baris lama');
-                $t->eq(q26r2_codes(q26_all_docs($t, $s, $id, 'scanned', 100)), $expect, 'duplikat: urutan tetap');
-                $db2 = q26r2_rows_db($t, $id);
-                $t->eq($db2, $db, 'duplikat: DB tidak berubah (kode, scanned_at, result)');
-
-                // jam mundur: scan terakhir "di masa depan" -> scan baru harus tetap sesudahnya (+1 mikrodetik)
-                $lastCode = $codes[count($codes) - 1];
-                q26_w($t, function ($c) use ($id, $lastCode) {
-                    $c->table('archive_opname_documents')->where('id_archive_opname', $id)->where('code', $lastCode)
-                        ->update(['scanned_at' => '2099-01-01 00:00:00.500000']);
-                });
-                $newA = q26_name('NEWA');
-                $r = q26_scan($t, $s, $id, $newA);
-                $t->status($r, 200, 'scan sesudah scan terakhir bertanggal masa depan');
-                $rowA = $t->db()->table('archive_opname_documents')->where('id_archive_opname', $id)->where('code', $newA)->first();
-                $t->eq((string) $rowA->scanned_at, '2099-01-01 00:00:00.500001', 'jam mundur: scanned_at baru = terakhir + 1 mikrodetik');
-                $rows = q26_all_docs($t, $s, $id, 'scanned', 50);
-                $t->eq($rows[0]['code'] ?? null, $newA, 'jam mundur: scan baru di baris pertama');
-                $t->eq(count($rows), count($codes) + 1, 'jam mundur: jumlah baris scan');
-
-                // limpah detik: terakhir .999999 -> scan berikut = detik berikutnya .000000
-                q26_w($t, function ($c) use ($id, $newA) {
-                    $c->table('archive_opname_documents')->where('id_archive_opname', $id)->where('code', $newA)
-                        ->update(['scanned_at' => '2099-01-01 23:59:59.999999']);
-                });
-                $newB = q26_name('NEWB');
-                $r = q26_scan($t, $s, $id, $newB);
-                $t->status($r, 200, 'scan sesudah .999999');
-                $rowB = $t->db()->table('archive_opname_documents')->where('id_archive_opname', $id)->where('code', $newB)->first();
-                $t->eq((string) $rowB->scanned_at, '2099-01-02 00:00:00.000000', 'limpah: .999999 + 1 mikrodetik = detik berikutnya');
-                $t->eq($r[1]['result']['row']['scanned_at'] ?? null, '2099-01-02 00:00:00', 'limpah: response Y-m-d H:i:s');
-                $kind[$newA] = 3; // kode baru tak dikenal = Invalid
-                $kind[$newB] = 3;
-                $full = array_merge([$newB, $newA], $expect);
-                $t->eq(q26r2_codes(q26_all_docs($t, $s, $id, 'scanned', 7)), $full, 'sesudah jam mundur + limpah: urutan penuh benar');
-
-                // Back/Next (PUT): scan dipertahankan dan urutan tetap
-                $r = q26_update($t, $s, $id, []);
-                $t->status($r, 200, 'PUT pilihan folder');
-                $t->eq(q26r2_codes(q26_all_docs($t, $s, $id, 'scanned', 100)), $full, 'sesudah PUT: urutan tetap');
-
-                // Confirm: snapshot menyalin scanned_at (mikrodetik) dan urutan sama
-                $pre = [];
-                foreach (q26r2_rows_db($t, $id) as $r) { $pre[$r[0]] = $r[1]; }
-                $r = q26_confirm($t, $s, $id);
-                $t->status($r, 200, 'confirm');
-                $t->eq($r[1]['msg_code'] ?? null, 'ARCHIVE213', 'confirm: ARCHIVE213');
-                $post = [];
-                foreach (q26r2_rows_db($t, $id) as $r) { $post[$r[0]] = $r[1]; }
-                $t->eq($post, $pre, 'DB: scanned_at snapshot sama persis (mikrodetik) dengan draft');
-                $t->eq(array_map('strtolower', q26r2_codes(q26_all_docs($t, $s, $id, 'scanned', 4))), array_map('strtolower', $full), 'terkonfirmasi: scanned urut scan terbaru dulu (pagination 4)');
-                foreach ([1 => 'verified', 2 => 'not_found', 3 => 'invalid'] as $k => $name) {
-                    $sub = array_values(array_filter($full, function ($c) use ($kind, $k) { return isset($kind[$c]) && $kind[$c] === $k; }));
-                    $t->eq(q26r2_codes(q26_all_docs($t, $s, $id, $name, 3)), $sub, "terkonfirmasi: result=$name urut scan terbaru dulu");
+                // kode ganda dan waktu mundur di pratinjau & Konfirmasi: tidak menggeser urutan; DB menjaga naik ketat
+                $leaf = q26_folder($t, 'LEAF');
+                $ln = [];
+                foreach (['a', 'b', 'c', 'd'] as $k) {
+                    $ln[$k] = q26_n($t, q26_doc($t, "L$k", ['parent' => $leaf]));
                 }
-                $allAfter = q26_all_docs($t, $s, $id, 'all', 6);
-                $t->eq(q26r2_codes($allAfter), array_merge($full, $sortedUn), 'terkonfirmasi: all = scan terbaru dulu, lalu belum discan per code');
-                foreach ($allAfter as $row) {
-                    if ($row['scanned_at'] !== null) {
-                        $t->true(preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/', $row['scanned_at']) === 1, 'terkonfirmasi: scanned_at Y-m-d H:i:s');
-                    } else {
-                        $t->eq($row['result'], 'unscanned', 'terkonfirmasi: scanned_at null hanya untuk belum discan');
-                    }
-                }
+                $day = q26_today();
+                $sel2 = q26_selection($leaf);
+                $list = [
+                    ['code' => $ln['a'], 'scanned_at' => "$day 10:00:05"],
+                    ['code' => $ln['b'], 'scanned_at' => "$day 10:00:03"],   // waktu mundur
+                    ['code' => strtoupper($ln['a']), 'scanned_at' => "$day 10:00:04"], // kode ganda: dibuang, tak menggeser
+                    ['code' => $ln['c'], 'scanned_at' => "$day 10:00:03"],   // sama dengan sebelumnya
+                    ['code' => $ln['d'], 'scanned_at' => "$day 10:00:09"],
+                ];
+                $r = q26_store($t, $s, $sel2, $list, q26_selected($t, $s, $leaf));
+                $t->status($r, 200, 'Konfirmasi dengan waktu mundur & kode ganda');
+                $id2 = $r[1]['result']['id_archive_opname'];
+                $db2 = q26r2_rows_db($t, $id2);
+                $t->eq(array_column($db2, 0), [$ln['a'], $ln['b'], $ln['c'], $ln['d']], 'DB: urutan = urutan scans tanpa kode ganda');
+                $t->eq(array_column($db2, 1), ["$day 10:00:05.000000", "$day 10:00:05.000001", "$day 10:00:05.000002", "$day 10:00:09.000000"], 'DB: waktu mundur/sama dinaikkan +1 mikrodetik dari scan sebelumnya; kode ganda tak menambah');
+                $t->eq(q26r2_codes(q26_all_docs($t, $s, $id2, 'scanned', 3)), [$ln['d'], $ln['c'], $ln['b'], $ln['a']], 'documents: terbaru dulu = scans terbalik (pagination 3)');
+                $t->eq(array_column(q26_all_docs($t, $s, $id2, 'scanned', 10), 'scanned_at'), ["$day 10:00:09", "$day 10:00:05", "$day 10:00:05", "$day 10:00:05"], 'documents: scanned_at response Y-m-d H:i:s (detik)');
+
                 // dibaca superadmin 1 (sesi milik user lain bagi mereka): urutan sama
-                q26_with_user($t, ['role' => 1], function () use ($t, $s, $id, $full, $sortedUn) {
-                    $t->eq(q26r2_codes(q26_all_docs($t, $s, $id, 'all', 50)), array_merge($full, $sortedUn), 'superadmin 1 membaca sesi terkonfirmasi: urutan sama');
+                q26_with_user($t, ['role' => 1], function () use ($t, $s, $id, $expect, $sortedUn) {
+                    $t->eq(q26r2_codes(q26_all_docs($t, $s, $id, 'all', 50)), array_merge($expect, $sortedUn), 'superadmin 1 membaca sesi terkonfirmasi: urutan sama');
                 });
             } finally {
                 q26_cleanup($t);
@@ -320,7 +288,7 @@ return [
 
     [
         'id'    => 'R2-SCANVOL',
-        'title' => 'D-2 (volume): 100 scan beruntun dalam satu sesi: scanned_at naik ketat, urutan tabel benar, scan terakhir tidak melambat berarti',
+        'title' => 'D-2 (volume): 100 scan beruntun (POST opnames/scan) lalu satu Konfirmasi: scanned_at naik ketat, urutan tabel benar, scan terakhir tidak melambat berarti',
         'run'   => function ($t) {
             $s = $t->session();
             q26_baseline($t);
@@ -335,30 +303,32 @@ return [
                 }
                 mt_srand(7);
                 shuffle($codes);
-                $id = q26_session($t, $s, $F, []);
+                $sel = q26_selection($F);
+                $selected = q26_selected($t, $s, $F);
+                $before = q26_state($t);
                 $times = [];
+                $scans = [];
                 foreach ($codes as $c) {
                     $t0 = microtime(true);
-                    $r = q26_scan($t, $s, $id, $c);
+                    $r = q26_scan($t, $s, $sel, $c);
                     $times[] = microtime(true) - $t0;
                     if ($r[0] !== 200) {
                         $t->fail("scan $c: HTTP {$r[0]}");
                     }
+                    $scans[] = ['code' => $c, 'scanned_at' => $r[1]['result']['row']['scanned_at']];
                 }
                 $first = array_sum(array_slice($times, 0, 10)) / 10;
                 $last = array_sum(array_slice($times, -10)) / 10;
                 $t->note(sprintf('scan rata-rata 10 pertama %.2f dtk, 10 terakhir %.2f dtk, maks %.2f dtk', $first, $last, max($times)));
                 $t->true(max($times) < 10, 'tidak ada scan > 10 dtk (maks ' . round(max($times), 2) . ')');
+                $t->true(q26_same_state($before, q26_state($t)), '100 scan tanpa tulis');
+                $r = q26_store($t, $s, $sel, $scans, $selected);
+                $t->status($r, 200, 'Konfirmasi 100 scan');
+                $id = $r[1]['result']['id_archive_opname'];
                 $db = q26r2_rows_db($t, $id);
                 $t->eq(count($db), 100, 'DB: 100 baris scan');
-                $t->eq(array_map(function ($r) { return $r[0]; }, $db), $codes, 'DB: urutan scanned_at = urutan scan (100 scan)');
-                $strict = true;
-                for ($i = 1; $i < count($db); $i++) {
-                    if (strcmp($db[$i][1], $db[$i - 1][1]) <= 0) {
-                        $strict = false;
-                    }
-                }
-                $t->true($strict, 'DB: scanned_at naik ketat untuk 100 scan');
+                $t->eq(array_map(function ($r) { return $r[0]; }, $db), $codes, 'DB: urutan scanned_at = urutan scans (100 scan)');
+                $t->true(q26r2_strict($db), 'DB: scanned_at naik ketat untuk 100 scan');
                 $rows = q26_all_docs($t, $s, $id, 'scanned', 25);
                 $t->eq(q26r2_codes($rows), array_reverse($codes), 'documents?result=scanned: 100 baris urut scan terbaru dulu');
                 $show = q26_show($t, $s, $id);
@@ -371,61 +341,49 @@ return [
 
     [
         'id'    => 'R2-PARALLEL-DIFF',
-        'title' => 'D-2 (konkurensi): scan kode BERBEDA bersamaan dalam satu sesi: semua 200, scanned_at tidak kembar (monoton di bawah kunci sesi), urutan tabel = urutan scanned_at',
+        'title' => 'D-2 (konkurensi): scan kode BERBEDA bersamaan: semua 200, klasifikasi benar, tanpa tulis; Konfirmasi sesudahnya menyimpan scanned_at tidak kembar dan urutan tabel = urutan scans',
         'run'   => function ($t) {
             $s = $t->session();
             q26_baseline($t);
             try {
                 $F = q26_folder($t, 'F');
-                $id = q26_session($t, $s, $F, []);
-                $base = rtrim($t->conf('API_URL'), '/');
-                $token = $s->token;
+                $sel = q26_selection($F);
+                $selected = q26_selected($t, $s, $F);
+                $before = null;
                 $all = [];
+                $scans = [];
                 for ($round = 0; $round < 4; $round++) {
                     $codes = [];
                     for ($i = 0; $i < 8; $i++) {
                         $codes[] = q26_n($t, q26_doc($t, "P{$round}x{$i}", ['parent' => $F]));
                     }
-                    $mh = curl_multi_init();
-                    $handles = [];
+                    if ($before === null) {
+                        $before = q26_state($t);
+                    }
+                    $reqs = [];
                     foreach ($codes as $code) {
-                        $ch = curl_init($base . '/' . Q26_BASE . '/opnames/' . $id . '/scan');
-                        curl_setopt_array($ch, [
-                            CURLOPT_CUSTOMREQUEST => 'POST', CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 120,
-                            CURLOPT_POSTFIELDS => json_encode(['code' => $code]),
-                            CURLOPT_HTTPHEADER => ['Accept: application/json', 'Content-Type: application/json', 'Authorization: Bearer ' . $token],
-                        ]);
-                        curl_multi_add_handle($mh, $ch);
-                        $handles[] = $ch;
+                        $reqs[] = ['POST', Q26_BASE . '/opnames/scan', $sel + ['code' => $code]];
                     }
-                    do {
-                        $st = curl_multi_exec($mh, $running);
-                        if ($running) {
-                            curl_multi_select($mh, 0.05);
-                        }
-                    } while ($running && $st === CURLM_OK);
-                    $http = [];
-                    foreach ($handles as $ch) {
-                        $http[] = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                        curl_multi_remove_handle($mh, $ch);
-                        curl_close($ch);
+                    $res = q26c_parallel($t, $s, $reqs);
+                    $t->eq(array_column($res, 0), array_fill(0, 8, 200), "putaran $round: 8 scan berbeda bersamaan semua 200");
+                    foreach ($res as $i => $r) {
+                        $t->eq($r[1]['result']['row']['result'] ?? null, 'verified', "putaran $round: scan $i verified");
+                        $t->eq($r[1]['result']['row']['code'] ?? null, $codes[$i], "putaran $round: scan $i code");
+                        $scans[] = ['code' => $codes[$i], 'scanned_at' => $r[1]['result']['row']['scanned_at']];
                     }
-                    curl_multi_close($mh);
-                    $t->eq($http, array_fill(0, 8, 200), "putaran $round: 8 scan berbeda bersamaan semua 200");
                     $all = array_merge($all, $codes);
                 }
+                $t->eq(count($scans), 32, '32 scan terkumpul');
+                $r = q26_store($t, $s, $sel, $scans, $selected);
+                $t->status($r, 200, 'Konfirmasi sesudah scan bersamaan');
+                $id = $r[1]['result']['id_archive_opname'];
                 $db = q26r2_rows_db($t, $id);
                 $t->eq(count($db), 32, 'DB: 32 baris scan');
-                $dupTs = count($db) - count(array_unique(array_map(function ($r) { return $r[1]; }, $db)));
-                $t->eq($dupTs, 0, 'DB: scanned_at tidak ada yang kembar (urutan scan pasti)');
+                $t->eq(count($db) - count(array_unique(array_map(function ($r) { return $r[1]; }, $db))), 0, 'DB: scanned_at tidak ada yang kembar (urutan scan pasti)');
+                $t->eq(array_map(function ($r) { return $r[0]; }, $db), $all, 'DB: urutan scanned_at = urutan scans');
                 $rows = q26_all_docs($t, $s, $id, 'scanned', 9);
-                $dbDesc = array_reverse(array_map(function ($r) { return $r[0]; }, $db));
-                $t->eq(q26r2_codes($rows), $dbDesc, 'tabel = urutan scanned_at menurun (bersamaan)');
-                $t->eq(array_values(array_unique(array_map('strtolower', q26r2_codes($rows)))), array_map('strtolower', q26r2_codes($rows)), 'tidak ada baris ganda');
-                $t->eq(count(array_diff(array_map('strtolower', $all), array_map('strtolower', q26r2_codes($rows)))), 0, 'semua kode tercatat');
-                $r = q26_confirm($t, $s, $id);
-                $t->status($r, 200, 'confirm sesudah scan bersamaan');
-                $t->eq(q26r2_codes(q26_all_docs($t, $s, $id, 'scanned', 9)), $dbDesc, 'terkonfirmasi: urutan sama');
+                $t->eq(q26r2_codes($rows), array_reverse($all), 'tabel = urutan scans terbalik (scan terbaru dulu)');
+                $t->eq(count(array_unique(array_map('strtolower', q26r2_codes($rows)))), 32, 'tidak ada baris ganda');
             } finally {
                 q26_cleanup($t);
             }
