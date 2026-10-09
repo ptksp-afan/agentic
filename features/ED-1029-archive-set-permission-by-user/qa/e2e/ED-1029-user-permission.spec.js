@@ -2,15 +2,21 @@
 
 /**
  * ED-1029 - Archive: Set Permission by User (halaman "Archive Permission", item "+", route, simpan/reset/ganti user, jalur error).
+ * REVISI review 2026-10-08 (ED-1105): permission item "+", route, guard halaman dan endpoint = `Folder Permissions` (FB-4b, K-15 b);
+ * semua folder On bisa dicentang walau A tanpa View/Update di sana (Q, J-JB), hanya folder Off terkunci (K-12 a, FB-9); teks info baru;
+ * tanpa modal cabut-akses-sendiri (K-8 c); hak otomatis tab Izin tampil di halaman ini (FB-5).
  *
  * Data uji dibuat fixture (fixtures.json -> fixture.php) dan dibuang persis di teardown. Folder berawalan "0QA29-":
  *   0QA29-L On, di luar lokasi A         0QA29-P On (A penuh, B View) > 0QA29-P-C1 On (A penuh) | 0QA29-P-C2 Off (B View+Store)
  *   0QA29-Q On (A View saja, B View+Update)         0QA29-R Off > 0QA29-R-R1 On (A penuh)
- * Profil: [default] = A (QA_USER, role 3 non-bypass, employee dibatasi lokasi MGL, bahasa ID),
- *         [user2]   = E (QA_USER2, role 5 diganti sementara role 18 = tanpa Update Folder, bahasa EN).
+ *   0QA29-J On (A View saja) > J-JA On (A penuh) | J-JB On (tanpa baris A) | J-JC Off (B View+Store)       0QA29-F Off, tanpa baris
+ * Profil: [default] = A (QA_USER, role 3 non-bypass = Update Folder + Folder Permissions, employee dibatasi lokasi MGL, bahasa ID),
+ *         [user2]   = QA_USER2, bahasa EN: E (role 18, keadaan awal fixture, tanpa Update Folder dan tanpa Folder Permissions), lalu per test
+ *                     `fixture.php uprofile <M|D|E>`: M = Folder Permissions tanpa Update Folder, D = Update Folder tanpa Folder Permissions.
+ *                     FE membaca peran dari GET auth/info, jadi setiap tukar peran diikuti muat ulang penuh (app.open) dan dipulihkan di finally.
  * B dan B2 = dua user target hasil pilihan fixture (lihat `fixture.php ids`).
  *
- * Mutasi hanya pada data fixture: tiap test mutasi memulai dengan `fixture.php resetperm` (hak B kembali ke nilai awal, flag dan
+ * Mutasi hanya pada data fixture: tiap test mutasi memulai dengan `fixture.php resetperm` (hak B/A/E kembali ke nilai awal, flag dan
  * riwayat folder uji kembali). Baris archive_permissions folder nyata tidak pernah disentuh. Dijalankan berurutan (E2E_WORKERS=1).
  */
 
@@ -155,6 +161,11 @@ function trackCalls(page, monitor) {
   page.on('response', (r) => {
     if (/\/document-archive\/|\/select\/document-archive\//.test(r.url())) {
       monitor.note(`API ${r.status()} ${r.request().method()} ${decodeURIComponent(r.url().replace(/^https?:\/\/[^/]+\/(api\/v5\/)?/, '')).slice(0, 200)}`);
+      if (r.status() >= 400) {
+        r.text()
+          .then((t) => monitor.note(`  isi ${r.status()}: ${t.slice(0, 300)}`))
+          .catch(() => null);
+      }
     }
   });
   return calls;
@@ -264,14 +275,71 @@ async function selectAndLoad(app, page, root, user) {
 
 const fullName = (n) => `${P}${n}`;
 
+/** Nilai awal hak tersimpan B per folder uji (sama dengan `initialB()` di fixture.php). */
+const B0 = { P: [1, 0, 0, 0], 'P-C2': [1, 0, 0, 1], Q: [1, 1, 0, 0], 'J-JC': [1, 0, 0, 1] };
+
+const ITEM_RE = /Set Permission by User|Atur Izin per User/;
+const flagsOf = (p) => [p.is_view ?? p.isView, p.is_update ?? p.isUpdate, p.is_delete ?? p.isDelete, p.is_store ?? p.isStore];
+
+/** Jalankan $fn dengan role QA_USER2 = profil D|M; role E (role 18) selalu dipulihkan sesudahnya. */
+async function asProfile(profile, fn) {
+  fixture('uprofile', profile);
+  try {
+    return await fn();
+  } finally {
+    fixture('uprofile', 'E');
+  }
+}
+
+/** "+" tidak ada sama sekali (tanpa item apa pun) atau tidak memuat Set Permission by User. Mengembalikan teks item. */
+async function plusItemsOrNone(page) {
+  const plus = page.locator('.archive-page button.ant-btn-primary').filter({ has: page.locator('.anticon') }).first();
+  await page.waitForTimeout(800);
+  if ((await plus.count()) === 0 || !(await plus.isVisible())) return null;
+  await plus.click();
+  const menu = page.locator('.ant-dropdown:not(.ant-dropdown-hidden)').last();
+  await menu.waitFor({ state: 'visible', timeout: 10000 });
+  const items = await menuTexts(menu);
+  await closeMenu(page);
+  return items;
+}
+
+/** Masuk ke folder dari daftar Archive (klik sel nama) dan tunggu GET archives?id_archive. */
+async function enterFolder(app, page, name) {
+  const inFolder = page.waitForResponse((r) => r.request().method() === 'GET' && /\/document-archive\/archives\?/.test(r.url()) && /id_?[aA]rchive=/.test(decodeURIComponent(r.url())), { timeout: 45000 });
+  await archiveRow(page, name).locator('td.cursor-pointer').first().click();
+  const resp = await inFolder;
+  expect(resp.status(), `GET archives?id_archive (${name})`).toBe(200);
+  await app.settle();
+}
+
+/** Halaman Archive Permission ditolak (guard lokal): dialihkan ke /unathorized, 403 ter-render, halaman tidak pernah ter-render, 0 request. */
+async function expectPageDenied(app, page, monitor, label) {
+  const calls = trackCalls(page, monitor);
+  const usersCalls = trackUsersCalls(page);
+  const readNav = await trackNavigation(page);
+  await app.open(PERM_PATH);
+  await app.settle();
+  await page.waitForTimeout(800);
+  const finalPath = await app.currentPath();
+  const nav = await readNav();
+  monitor.note(`${label}: path akhir=${finalPath}; riwayat path tab aktif=${JSON.stringify(nav && nav.paths)}; Unauthorized tampil=${nav && nav.unauthorized}; kotak Search folder pernah tampil=${nav && nav.search}; request select user=${usersCalls.length}; request user-permissions=${calls.length}`);
+  expect(nav && nav.paths, `${label}: path tab aktif sempat menjadi /unathorized (pengalihan)`).toContain('/unathorized');
+  expect(nav && nav.unauthorized, `${label}: halaman Unauthorized (403) ter-render`).toBe(true);
+  expect(nav && nav.search, `${label}: halaman Archive Permission tidak pernah ter-render`).toBe(false);
+  expect(finalPath, `${label}: path akhir /unathorized`).toBe('/unathorized');
+  expect(await page.locator(SEARCH).count(), `${label}: tanpa kotak Search folder`).toBe(0);
+  expect(usersCalls, `${label}: tanpa request select user`).toHaveLength(0);
+  expect(calls, `${label}: tanpa request user-permissions`).toHaveLength(0);
+}
 test.describe('ED-1029 set permission by user', () => {
   test.describe.configure({ mode: 'default' }); // berurutan dalam satu worker, tanpa menghentikan sisanya bila satu gagal
 
   // ------------------------------------------------------------------------------------------------ AC-1, AC-2, AC-14 (A)
-  test('[default] ED-1029 AC-1 + AC-2 + AC-14 A: menu "+" (root & di dalam folder), halaman terbuka lewat "+", tabel sesudah pilih user', async ({ app, page, monitor, session }) => {
+  test('[default] ED-1029 AC-1 + AC-2 + AC-14 A (rev): menu "+" (root & di dalam folder), halaman terbuka lewat "+", sel aktif di semua folder On', async ({ app, page, monitor, session }) => {
     const calls = trackCalls(page, monitor);
     const fx = ids();
-    monitor.note(`DB sesi ${session.dbName}; A=${fx._userA.username} (role 3, non-superadmin, lokasi MGL); B=${fx._userB.username}`);
+    monitor.note(`DB sesi ${session.dbName}; A=${fx._userA.username} (role 3 = Update Folder + Folder Permissions, non-superadmin, lokasi MGL); B=${fx._userB.username}`);
     fixture('resetperm');
 
     // AC-1: root
@@ -328,6 +396,11 @@ test.describe('ED-1029 set permission by user', () => {
     expect(alertText).toContain('Checkbox hanya aktif pada folder yang');
     expect(alertText).toContain('On');
     expect(alertText, 'K-4 a: frasa "termasuk child" dibuang').not.toMatch(/termasuk child|including child/i);
+    // BR-9 (rev, FB-9): teks aturan induk baru (id-ID); frasa lama "dominan"/"induk On terdekat" dibuang
+    expect(alertText, 'BR-9 id: folder Off tidak membatasi').toContain('Folder Off tidak bisa dicentang dan tidak membatasi akses.');
+    expect(alertText, 'BR-9 id: hanya View induk yang berlaku').toContain('Hanya izin Lihat di folder induk yang berlaku: user tanpa izin Lihat di folder induk tidak bisa membuka subfoldernya walaupun dicentang di sini.');
+    expect(alertText, 'BR-9 id: U/D/S per folder').toContain('Ubah, Hapus, dan Letakkan dinilai di folder masing-masing.');
+    expect(alertText, 'BR-9 id: tanpa "dominan"/"induk On terdekat"').not.toMatch(/dominan|induk On terdekat/i);
     await expect.poll(() => monitor.responses.filter((r) => USERS_RE.test(r.url)).length, { timeout: 15000, message: 'dropdown User memanggil select/document-archive/archive/users' }).toBeGreaterThan(0);
     const usersReqs = monitor.responses.filter((r) => USERS_RE.test(r.url));
     expect(usersReqs.every((r) => !/excepts/.test(decodeURIComponent(r.url))), 'tanpa excepts').toBe(true);
@@ -349,7 +422,7 @@ test.describe('ED-1029 set permission by user', () => {
     expectTreeMatches(rows, loaded.body);
     monitor.note(`pohon: ${rows.length} baris; folder uji: ${rows.filter((r) => r.name.startsWith(P)).map((r) => `${'  '.repeat(r.level)}${r.name}[${r.perm}]`).join(' / ')}`);
 
-    // nilai pasti folder uji (AC-14: P, C1, R1 bisa dicentang; C2, R, Q terkunci; L tidak ada)
+    // nilai pasti folder uji (AC-14 rev: P, C1, Q, R1 bisa dicentang - Q walau A hanya View; hanya C2 dan R (Off) terkunci; L tidak ada)
     const pn = (n) => rowByName(rows, fullName(n));
     expect(pn('L'), 'L (di luar lokasi A) tidak tampil').toBeUndefined();
     ['P', 'P-C1', 'P-C2', 'Q', 'R', 'R-R1'].forEach((n) => expect(pn(n), `${fullName(n)} tampil`).toBeTruthy());
@@ -360,14 +433,17 @@ test.describe('ED-1029 set permission by user', () => {
     const idx = (n) => rows.indexOf(pn(n));
     expect(idx('P') < idx('P-C1') && idx('P-C1') < idx('P-C2') && idx('P-C2') < idx('Q') && idx('Q') < idx('R') && idx('R') < idx('R-R1'), 'urutan nama: P, C1, C2, Q, R, R1').toBe(true);
     const enabledOf = (n) => pn(n).boxes.map((b) => !b.disabled);
-    ['P', 'P-C1', 'R-R1'].forEach((n) => expect(enabledOf(n), `${fullName(n)} (On, A boleh mengelola): centang aktif`).toEqual([true, true, true, true]));
-    ['P-C2', 'Q', 'R'].forEach((n) => expect(enabledOf(n), `${fullName(n)}: terkunci`).toEqual([false, false, false, false]));
+    ['P', 'P-C1', 'Q', 'R-R1'].forEach((n) => expect(enabledOf(n), `${fullName(n)} (On): centang aktif`).toEqual([true, true, true, true]));
+    ['P-C2', 'R'].forEach((n) => expect(enabledOf(n), `${fullName(n)} (Off): terkunci`).toEqual([false, false, false, false]));
+    // A hanya View di Q: access.view true, update/delete/store false, tetapi manage_permission true (K-15 b)
+    const nodeQ = flatten(loaded.body.result.data).find((f) => f.node.name === fullName('Q')).node;
+    expect([nodeQ.access.view, nodeQ.access.update, nodeQ.access.delete, nodeQ.access.store, nodeQ.access.manage_permission], 'Q: A View saja, tetap bisa dikelola').toEqual([true, false, false, false, true]);
     expect(['P', 'P-C1', 'P-C2', 'Q', 'R', 'R-R1'].map((n) => pn(n).perm)).toEqual(['On', 'On', 'Off', 'On', 'Off', 'On']);
     const checkedOf = (n) => pn(n).boxes.map((b) => b.checked);
     expect(checkedOf('P'), 'P: nilai tersimpan B = View').toEqual([true, false, false, false]);
     expect(checkedOf('P-C1'), 'C1: kosong').toEqual([false, false, false, false]);
     expect(checkedOf('P-C2'), 'C2 (Off): nilai tersimpan View+Store tetap terlihat walau terkunci').toEqual([true, false, false, true]);
-    expect(checkedOf('Q'), 'Q (On, A tanpa Update): nilai tersimpan View+Update terlihat, terkunci').toEqual([true, true, false, false]);
+    expect(checkedOf('Q'), 'Q (On, A View saja): nilai tersimpan View+Update terlihat dan bisa diubah').toEqual([true, true, false, false]);
     expect(checkedOf('R-R1')).toEqual([false, false, false, false]);
     expect(await page.locator('.ant-notification-notice-description, .ant-message-error').count(), 'tanpa pesan error').toBe(0);
     noServerError(monitor);
@@ -493,8 +569,18 @@ test.describe('ED-1029 set permission by user', () => {
     await box(root, fullName('P'), 'Store').check();
     expect(await state('P')).toEqual([true, false, false, true]);
 
-    // sel terkunci (C2 Off, Q tanpa hak kelola, R Off) tidak bisa diubah walau diklik paksa
-    for (const [n, right] of [['P-C2', 'Update'], ['Q', 'Delete'], ['R', 'View'], ['Q', 'Store']]) {
+    // (rev) Q (On, A View saja) bisa diubah: Delete ikut mencentang View+Update tersimpan, lepas View melepas semuanya, lalu Reset
+    expect(await state('Q'), 'Q: nilai tersimpan B View+Update').toEqual([true, true, false, false]);
+    await box(root, fullName('Q'), 'Delete').check();
+    expect(await state('Q'), 'Q: centang Delete (A hanya View di Q, tetap bisa)').toEqual([true, true, true, false]);
+    await box(root, fullName('Q'), 'View').uncheck();
+    expect(await state('Q'), 'Q: lepas View melepas semuanya').toEqual([false, false, false, false]);
+    await box(root, fullName('Q'), 'View').check();
+    await box(root, fullName('Q'), 'Update').check();
+    expect(await state('Q'), 'Q: kembali ke nilai tersimpan').toEqual([true, true, false, false]);
+
+    // sel terkunci (hanya folder Off: C2 dan R) tidak bisa diubah walau diklik paksa
+    for (const [n, right] of [['P-C2', 'Update'], ['R', 'View'], ['P-C2', 'Store']]) {
       const before = (await tableRows(root)).find((r) => r.name === fullName(n)).boxes.map((b) => b.checked);
       await expect(box(root, fullName(n), right), `${n}/${right} disabled`).toBeDisabled();
       await box(root, fullName(n), right).click({ force: true, timeout: 5000 }).catch(() => null);
@@ -576,7 +662,7 @@ test.describe('ED-1029 set permission by user', () => {
     const fx = ids();
     fixture('resetperm');
     const before = dbState();
-    expect(before.rows.B, 'awal: hak B').toEqual({ P: [1, 0, 0, 0], 'P-C2': [1, 0, 0, 1], Q: [1, 1, 0, 0] });
+    expect(before.rows.B, 'awal: hak B').toEqual(B0);
     await openPermissionPage(app);
     const root = pageRoot(page);
     await selectAndLoad(app, page, root, fx._userB);
@@ -627,12 +713,12 @@ test.describe('ED-1029 set permission by user', () => {
 
     // DB: baris & riwayat (BR-11, BR-12)
     const after = dbState();
-    expect(after.rows.B, 'DB: B -> P V+S, C1 V; C2 dan Q tidak tersentuh').toEqual({ P: [1, 0, 0, 1], 'P-C1': [1, 0, 0, 0], 'P-C2': [1, 0, 0, 1], Q: [1, 1, 0, 0] });
+    expect(after.rows.B, 'DB: B -> P V+S, C1 V; C2, Q dan J-JC tidak tersentuh').toEqual({ ...B0, P: [1, 0, 0, 1], 'P-C1': [1, 0, 0, 0] });
     expect(after.rows.B2, 'DB: B2 tidak tersentuh').toEqual({});
     expect(after.history.P.count, 'riwayat permission P +1').toBe(1);
     expect(after.history['P-C1'].count, 'riwayat permission C1 +1').toBe(1);
     expect(after.history.P.last_by, 'pelaku riwayat = A').toBe(fx._userA.username);
-    ['P-C2', 'Q', 'R', 'R-R1', 'L'].forEach((n) => expect(after.history[n].count, `riwayat ${n} tidak bertambah`).toBe(0));
+    ['P-C2', 'Q', 'R', 'R-R1', 'L', 'J', 'J-JA', 'J-JB', 'J-JC', 'F'].forEach((n) => expect(after.history[n].count, `riwayat ${n} tidak bertambah`).toBe(0));
     expect(after.total_permissions - before.total_permissions, 'baris baru: C1 saja').toBe(1);
 
     // BR-16: data yang sama terlihat di tab Permission folder P (ED-1025)
@@ -651,7 +737,8 @@ test.describe('ED-1029 set permission by user', () => {
     await drawer.locator('.ant-switch').first().waitFor({ state: 'visible', timeout: 10000 });
     const bRow = drawer.locator('.ant-tabs-tabpane-active .ant-table-row').filter({ hasText: new RegExp(`(^|\\s)${esc(fx._userB.username)}(\\s|$)`) }).first();
     await expect(bRow, 'baris B ada di tab Permission P').toBeVisible();
-    expect(await bRow.locator('input[type="checkbox"]').evaluateAll((els) => els.map((e) => e.checked)), 'tab Permission P: B = View+Store').toEqual([true, false, false, true]);
+    // kolom pertama tab Izin = All (ED-1025 AC-32, rev); empat berikutnya View/Update/Delete/Store
+    expect((await bRow.locator('input[type="checkbox"]').evaluateAll((els) => els.map((e) => e.checked))).slice(-4), 'tab Permission P: B = View+Store').toEqual([true, false, false, true]);
     await app.screenshot('AC17-03-tab-permission-P-memuat-B');
     await page.keyboard.press('Escape');
     await page.locator('.ant-drawer-open .ant-drawer-close').last().click().catch(() => null);
@@ -679,6 +766,7 @@ test.describe('ED-1029 set permission by user', () => {
     const after2 = dbState();
     expect(after2.rows.B.P, 'DB: baris (P,B) terhapus').toBeUndefined();
     expect(after2.rows.B['P-C1'], 'C1 tetap').toEqual([1, 0, 0, 0]);
+    expect(after2.rows.B['J-JC'], 'J-JC tetap').toEqual([1, 0, 0, 1]);
     expect(after2.history.P.count, 'riwayat P +1 lagi').toBe(2);
     expect((await tableRows(root2)).find((r) => r.name === fullName('P')).boxes.map((b) => b.checked), 'sesudah muat ulang P kosong').toEqual([false, false, false, false]);
     await app.screenshot('AC17-04-baris-P-dihapus');
@@ -758,7 +846,7 @@ test.describe('ED-1029 set permission by user', () => {
     expect((await got3).status()).toBe(200);
     expect(await page.locator('.ant-modal-confirm').count(), 'tanpa perubahan: tanpa konfirmasi').toBe(0);
     expect(calls.filter((c) => c.method !== 'GET'), 'tidak ada PUT sama sekali').toHaveLength(0);
-    expect(dbState().rows.B, 'DB: hak B tidak berubah').toEqual({ P: [1, 0, 0, 0], 'P-C2': [1, 0, 0, 1], Q: [1, 1, 0, 0] });
+    expect(dbState().rows.B, 'DB: hak B tidak berubah').toEqual(B0);
     noServerError(monitor);
   });
 
@@ -795,7 +883,7 @@ test.describe('ED-1029 set permission by user', () => {
     expect(calls.filter((c) => c.method === 'GET').length, 'tanpa GET ulang sesudah gagal').toBe(nGet);
     // atomik: tidak ada yang tersimpan
     const st = dbState();
-    expect(st.rows.B, 'DB: tidak ada yang tersimpan (P tetap View saja)').toEqual({ P: [1, 0, 0, 0], 'P-C2': [1, 0, 0, 1], Q: [1, 1, 0, 0] });
+    expect(st.rows.B, 'DB: tidak ada yang tersimpan (P tetap View saja)').toEqual(B0);
     expect(st.history.P.count, 'tanpa riwayat P').toBe(0);
     expect(st.flags['P-C1'], 'C1 memang Off di DB').toBe(0);
 
@@ -867,76 +955,398 @@ test.describe('ED-1029 set permission by user', () => {
     noServerError(monitor);
   });
 
+  // ------------------------------------------------------------------------------------------------ AC-14 + AC-24 (A, data J)
+  test('[default] ED-1029 AC-14 + AC-24 A (data J): J, JA, JB bisa dicentang (JB: A tanpa View), JC (Off) terkunci dengan nilai tersimpan; ubah JB + Save', async ({ app, page, monitor }) => {
+    const calls = trackCalls(page, monitor);
+    const fx = ids();
+    fixture('resetperm');
+    await openPermissionPage(app);
+    const root = pageRoot(page);
+    const loaded = await selectAndLoad(app, page, root, fx._userB);
+    const rows = await tableRows(root);
+    expectTreeMatches(rows, loaded.body);
+    const pn = (n) => rowByName(rows, fullName(n));
+    ['J', 'J-JA', 'J-JB', 'J-JC'].forEach((n) => expect(pn(n), `${fullName(n)} tampil`).toBeTruthy());
+    expect(['J', 'J-JA', 'J-JB', 'J-JC'].map((n) => pn(n).level), 'JA, JB, JC di bawah J').toEqual([0, 1, 1, 1]);
+    expect(['J', 'J-JA', 'J-JB', 'J-JC'].map((n) => pn(n).perm)).toEqual(['On', 'On', 'On', 'Off']);
+    const enabledOf = (n) => pn(n).boxes.map((b) => !b.disabled);
+    ['J', 'J-JA', 'J-JB'].forEach((n) => expect(enabledOf(n), `${fullName(n)} (On): centang aktif`).toEqual([true, true, true, true]));
+    expect(enabledOf('J-JC'), `${fullName('J-JC')} (Off): terkunci`).toEqual([false, false, false, false]);
+    expect(pn('J-JC').boxes.map((b) => b.checked), 'JC: nilai tersimpan B View+Store tetap terlihat').toEqual([true, false, false, true]);
+    // access: J A View saja, JB tanpa baris A (view false) tetapi manage_permission true di keempatnya (K-15 b)
+    const node = (n) => flatten(loaded.body.result.data).find((f) => f.node.name === fullName(n)).node;
+    const acc = (n) => [node(n).access.view, node(n).access.update, node(n).access.delete, node(n).access.store, node(n).access.manage_permission];
+    expect(acc('J'), 'J: A View saja').toEqual([true, false, false, false, true]);
+    expect(acc('J-JA'), 'JA: A penuh').toEqual([true, true, true, true, true]);
+    expect(acc('J-JB'), 'JB: A tanpa View, tetap bisa dikelola').toEqual([false, false, false, false, true]);
+    expect(acc('J-JC')[4], 'JC: manage_permission true').toBe(true);
+    await app.screenshot('AC24-01-data-J-pohon');
+
+    // info BR-9 id-ID (A): tanpa "dominan"/"induk On terdekat"
+    const info = (await root.locator('.ant-alert-info').innerText()).replace(/\s+/g, ' ');
+    expect(info, 'AC-24 id: tanpa dominan / induk On terdekat').not.toMatch(/dominan|induk On terdekat/i);
+    expect(info).toContain('tidak membatasi akses');
+
+    // ubah JB (View) + Save -> body hanya JB, 200, toast sukses, riwayat JB oleh A
+    await box(root, fullName('J-JB'), 'View').check();
+    expect((await tableRows(root)).find((r) => r.name === fullName('J-JB')).boxes.map((b) => b.checked)).toEqual([true, false, false, false]);
+    const put = page.waitForResponse((r) => r.request().method() === 'PUT' && GET_RE.test(r.url()), { timeout: 45000 });
+    await saveBtn(root).click();
+    const pr = await put;
+    expect(pr.status(), 'PUT 200').toBe(200);
+    const sent = JSON.parse(calls.find((c) => c.method === 'PUT').body);
+    monitor.note(`PUT body: ${JSON.stringify(sent)}`);
+    expect(sent.permissions, 'body hanya JB').toHaveLength(1);
+    expect((sent.permissions[0].id_archive || sent.permissions[0].idArchive), 'body: JB').toBe(fx['J-JB']);
+    expect(flagsOf(sent.permissions[0]), 'JB: View').toEqual([1, 0, 0, 0]);
+    await waitToast(page, /.+/);
+    expect(await page.locator('.ant-notification-notice .anticon-check-circle, .ant-message-notice .anticon-check-circle').count(), 'toast sukses').toBeGreaterThan(0);
+    await app.settle();
+    await app.screenshot('AC24-02-sesudah-save-JB');
+    const st = dbState();
+    expect(st.rows.B['J-JB'], 'DB: (JB, B) = View').toEqual([1, 0, 0, 0]);
+    expect(st.rows.B['J-JC'], 'DB: JC tidak tersentuh').toEqual([1, 0, 0, 1]);
+    expect(st.history['J-JB'].count, 'riwayat JB +1').toBe(1);
+    expect(st.history['J-JB'].last_by, 'pelaku riwayat = A').toBe(fx._userA.username);
+    ['J', 'J-JA', 'J-JC'].forEach((n) => expect(st.history[n].count, `riwayat ${n} tidak bertambah`).toBe(0));
+    await expect(saveBtn(root), 'sesudah muat ulang Save mati').toBeDisabled();
+    fixture('resetperm');
+    noServerError(monitor);
+  });
+
+  // ------------------------------------------------------------------------------------------------ AC-26 (A memilih dirinya sendiri)
+  test('[default] ED-1029 AC-26 A: User = diri sendiri, lepas View di JA, Save -> tanpa modal, PUT langsung 200; sel JA tetap bisa dicentang', async ({ app, page, monitor }) => {
+    const calls = trackCalls(page, monitor);
+    const fx = ids();
+    fixture('resetperm');
+    expect(dbState().rows.A['J-JA'], 'awal: A punya JA 1111').toEqual([1, 1, 1, 1]);
+    await openPermissionPage(app);
+    const root = pageRoot(page);
+    const self = await pickUser(page, root, fx._userA);
+    expect(self.status, 'GET user-permissions/{A}').toBe(200);
+    expect(self.body.result.user.id_user, 'result.user = A').toBe(fx._userA.id_user);
+    await app.settle();
+    await expect(tableRowLocator(root, `${P}P`)).toBeVisible();
+    const jaBefore = (await tableRows(root)).find((r) => r.name === fullName('J-JA'));
+    expect(jaBefore.boxes.map((b) => b.checked), 'JA: nilai tersimpan A = V/U/D/S').toEqual([true, true, true, true]);
+    expect(jaBefore.boxes.map((b) => !b.disabled), 'JA: bisa dicentang').toEqual([true, true, true, true]);
+    await app.screenshot('AC26-01-A-memilih-diri-sendiri');
+
+    // lepas View -> semuanya lepas
+    await box(root, fullName('J-JA'), 'View').uncheck();
+    expect((await tableRows(root)).find((r) => r.name === fullName('J-JA')).boxes.map((b) => b.checked)).toEqual([false, false, false, false]);
+    const put = page.waitForResponse((r) => r.request().method() === 'PUT' && GET_RE.test(r.url()), { timeout: 45000 });
+    await saveBtn(root).click();
+    // K-8 c: tidak ada modal konfirmasi - PUT langsung
+    const pr = await put;
+    expect(pr.status(), 'PUT user-permissions/{A} langsung 200').toBe(200);
+    expect(await page.locator('.ant-modal-confirm').count(), 'tanpa modal konfirmasi cabut akses').toBe(0);
+    expect(await page.locator('.ant-modal-wrap:not([style*="display: none"])').count(), 'tanpa modal apa pun').toBe(0);
+    const putCall = calls.find((c) => c.method === 'PUT');
+    expect(putCall.url, 'PUT ke A sendiri').toContain(`/user-permissions/${fx._userA.id_user}`);
+    const sent = JSON.parse(putCall.body);
+    monitor.note(`PUT body: ${JSON.stringify(sent)}`);
+    expect(sent.permissions, 'body hanya JA').toHaveLength(1);
+    expect(sent.permissions[0].id_archive || sent.permissions[0].idArchive).toBe(fx['J-JA']);
+    expect(flagsOf(sent.permissions[0]), 'JA: 0/0/0/0').toEqual([0, 0, 0, 0]);
+    await waitToast(page, /.+/);
+    expect(await page.locator('.ant-notification-notice .anticon-check-circle, .ant-message-notice .anticon-check-circle').count(), 'toast sukses').toBeGreaterThan(0);
+
+    // sesudah dimuat ulang: JA kosong dan tetap bisa dicentang (manage_permission mengikuti role, bukan View)
+    await expect.poll(() => calls.filter((c) => c.method === 'GET').length, { timeout: 20000, message: 'GET dimuat ulang' }).toBeGreaterThanOrEqual(2);
+    await app.settle();
+    const jaAfter = (await tableRows(root)).find((r) => r.name === fullName('J-JA'));
+    expect(jaAfter.boxes.map((b) => b.checked), 'sesudah muat ulang JA kosong').toEqual([false, false, false, false]);
+    expect(jaAfter.boxes.map((b) => !b.disabled), 'sesudah muat ulang sel JA tetap bisa dicentang').toEqual([true, true, true, true]);
+    await box(root, fullName('J-JA'), 'View').check();
+    expect((await tableRows(root)).find((r) => r.name === fullName('J-JA')).boxes.map((b) => b.checked), 'bisa dicentang lagi').toEqual([true, false, false, false]);
+    await app.screenshot('AC26-02-sesudah-save-JA-tetap-aktif');
+    const st = dbState();
+    expect(st.rows.A['J-JA'], 'DB: baris (JA, A) terhapus').toBeUndefined();
+    expect(st.history['J-JA'].count, 'riwayat JA +1').toBe(1);
+    expect(st.history['J-JA'].last_by, 'pelaku riwayat = A sendiri').toBe(fx._userA.username);
+    expect(st.rows.A.J, 'A tidak kehilangan baris lain (J)').toEqual([1, 0, 0, 0]);
+    expect(st.rows.B, 'hak B tidak tersentuh').toEqual(B0);
+    // kembalikan: centang V/U/D/S JA lagi lewat halaman yang sama, Save (juga tanpa modal) -> DB = nilai awal
+    await box(root, fullName('J-JA'), 'Store').check();
+    await box(root, fullName('J-JA'), 'Delete').check();
+    await box(root, fullName('J-JA'), 'Update').check();
+    const put2 = page.waitForResponse((r) => r.request().method() === 'PUT' && GET_RE.test(r.url()), { timeout: 45000 });
+    await saveBtn(root).click();
+    expect((await put2).status(), 'PUT pemulihan 200').toBe(200);
+    expect(await page.locator('.ant-modal-confirm').count(), 'pemulihan: tanpa modal').toBe(0);
+    await app.settle();
+    expect(dbState().rows.A['J-JA'], 'DB: JA kembali 1111').toEqual([1, 1, 1, 1]);
+    fixture('resetperm');
+    noServerError(monitor);
+  });
+
+  // ------------------------------------------------------------------------------------------------ AC-25 ([BE+FE]) hak otomatis tab Izin -> halaman ini
+  test('[default] ED-1029 AC-25 A: Izin dinyalakan di tab Izin folder F (Off, tanpa baris A) -> halaman ini: A di F = V/U/D/S, bisa diubah; lepas Delete + Save -> tab Izin F memuat A View/Update/Store', async ({ app, page, monitor }) => {
+    const calls = trackCalls(page, monitor);
+    const fx = ids();
+    const A = fx._userA.username;
+    fixture('resetperm');
+    const st0 = dbState();
+    expect(st0.flags.F, 'awal: F Off').toBe(0);
+    expect(st0.rows.A.F, 'awal: A tanpa baris di F').toBeUndefined();
+
+    const drawerOf = () => page.locator('.ant-drawer-open').last();
+    const openDrawerF = async () => {
+      await app.open('/archives', { waitFor: '.archive-page .ant-table' });
+      const show = page.waitForResponse((r) => r.request().method() === 'GET' && /\/document-archive\/archives\/[^/?]+(\?|$)/.test(r.url()) && !/history|rename|delete|create/.test(r.url()), { timeout: 30000 });
+      await archiveRow(page, fullName('F')).locator('button.btn-action').click();
+      const menu = page.locator('.ant-dropdown:not(.ant-dropdown-hidden)').last();
+      await menu.waitFor({ state: 'visible', timeout: 10000 });
+      await menu.locator('li.ant-dropdown-menu-item', { hasText: /^(Lihat|View)$/ }).first().click();
+      await show;
+      await drawerOf().waitFor({ state: 'visible', timeout: 15000 });
+      await drawerOf().locator('.ant-skeleton').first().waitFor({ state: 'detached', timeout: 15000 }).catch(() => null);
+      const tabs = await drawerOf().locator('.ant-tabs-tab').allInnerTexts();
+      const idx = tabs.map((t) => t.trim()).findIndex((t) => /^(Permission|Izin)$/.test(t));
+      expect(idx, `tab Izin ada (tab: ${tabs.join(' | ')})`).toBeGreaterThanOrEqual(0);
+      await drawerOf().locator('.ant-tabs-tab').nth(idx).click();
+      await drawerOf().locator('.ant-switch').first().waitFor({ state: 'visible', timeout: 10000 });
+    };
+    const aRow = () => drawerOf().locator('.ant-tabs-tabpane-active .ant-table-row').filter({ hasText: new RegExp(`(^|\\s)${esc(A)}(\\s|$)`) }).first();
+    const aBoxes = async () => (await aRow().locator('input[type="checkbox"]').evaluateAll((els) => els.map((e) => e.checked))).slice(1); // kolom pertama = All
+
+    // (1) tab Izin F: nyalakan -> baris A otomatis (ED-1025 BR-19, hanya di tab Izin) -> Save
+    await openDrawerF();
+    await expect(drawerOf().locator('.ant-tabs-tabpane-active .ant-table-row'), 'F: tabel Izin kosong sebelum toggle').toHaveCount(0);
+    await drawerOf().locator('.ant-switch').first().click();
+    await expect(aRow(), 'baris A muncul otomatis sebelum Save').toBeVisible();
+    expect(await aBoxes(), 'baris otomatis A = V/U/D/S').toEqual([true, true, true, true]);
+    await app.screenshot('AC25-01-tab-Izin-F-baris-otomatis');
+    const putF = page.waitForResponse((r) => r.request().method() === 'PUT' && /\/document-archive\/archives\/[^/?]+(\?|$)/.test(r.url()), { timeout: 30000 });
+    await drawerOf().locator('.ant-drawer-extra button.ant-btn-primary').click();
+    expect((await putF).status(), 'PUT archives/{F} 200').toBe(200);
+    await expect(page.locator('.ant-drawer-open'), 'drawer menutup').toHaveCount(0, { timeout: 15000 });
+    const st1 = dbState();
+    expect(st1.flags.F, 'DB: F On').toBe(1);
+    expect(st1.rows.A.F, 'DB: (F, A) = 1/1/1/1 (baris otomatis disimpan sebagai baris biasa)').toEqual([1, 1, 1, 1]);
+
+    // (2) halaman by User, pilih A: F On, V/U/D/S tercentang dan bisa diubah
+    await openPermissionPage(app);
+    const root = pageRoot(page);
+    const self = await pickUser(page, root, fx._userA);
+    expect(self.status, 'GET user-permissions/{A}').toBe(200);
+    await app.settle();
+    await expect(tableRowLocator(root, fullName('F'))).toBeVisible();
+    const nodeF = flatten(self.body.result.data).find((f) => f.node.name === fullName('F')).node;
+    expect([nodeF.is_folder_permission, nodeF.is_view, nodeF.is_update, nodeF.is_delete, nodeF.is_store], 'GET user-permissions/{A}: F = On 1/1/1/1').toEqual([1, 1, 1, 1, 1]);
+    const rowF = (await tableRows(root)).find((r) => r.name === fullName('F'));
+    expect(rowF.perm, 'F: tag On').toBe('On');
+    expect(rowF.boxes.map((b) => b.checked), 'F: V/U/D/S tercentang').toEqual([true, true, true, true]);
+    expect(rowF.boxes.map((b) => !b.disabled), 'F: bisa diubah').toEqual([true, true, true, true]);
+    await app.screenshot('AC25-02-halaman-A-di-F');
+
+    // (3) lepas Delete F + Save
+    await box(root, fullName('F'), 'Delete').uncheck();
+    expect((await tableRows(root)).find((r) => r.name === fullName('F')).boxes.map((b) => b.checked)).toEqual([true, true, false, true]);
+    const put = page.waitForResponse((r) => r.request().method() === 'PUT' && GET_RE.test(r.url()), { timeout: 45000 });
+    await saveBtn(root).click();
+    expect((await put).status(), 'PUT user-permissions/{A} 200').toBe(200);
+    const sent = JSON.parse(calls.find((c) => c.method === 'PUT').body);
+    expect(sent.permissions, 'body hanya F').toHaveLength(1);
+    expect(sent.permissions[0].id_archive || sent.permissions[0].idArchive).toBe(fx.F);
+    expect(flagsOf(sent.permissions[0]), 'F: V/U/S').toEqual([1, 1, 0, 1]);
+    await app.settle();
+    expect(dbState().rows.A.F, 'DB: (F, A) = 1/1/0/1').toEqual([1, 1, 0, 1]);
+
+    // (4) tab Izin F memuat A View/Update/Store (tanpa Delete)
+    await openDrawerF();
+    await expect(aRow(), 'tab Izin F memuat baris A').toBeVisible();
+    expect(await aBoxes(), 'tab Izin F: A View/Update/Store, tanpa Delete').toEqual([true, true, false, true]);
+    await app.screenshot('AC25-03-tab-Izin-F-sesudah-lepas-Delete');
+    await page.keyboard.press('Escape');
+    await page.locator('.ant-drawer-open .ant-drawer-close').last().click().catch(() => null);
+    await page.waitForTimeout(500);
+    fixture('resetperm');
+    noServerError(monitor);
+  });
+
+  // ------------------------------------------------------------------------------------------------ AC-1, AC-3 (M: Folder Permissions tanpa Update Folder)
+  test('[user2] ED-1029 AC-1 + AC-3 + AC-14 M (Folder Permissions tanpa Update Folder): "+" memuat Set Permission by User (root & P), halaman terbuka tanpa kilasan Unauthorized, sel aktif termasuk folder tanpa View, Save; info EN', async ({ app, page, monitor, session }) => {
+    const fx = ids();
+    fixture('resetperm');
+    await asProfile('M', async () => {
+      monitor.note(`DB sesi ${session.dbName}; QA_USER2 sementara profil M = List Archive + View Folder + Folder Permissions (tanpa Update Folder), bahasa EN`);
+      const calls = trackCalls(page, monitor);
+      const readNav = await trackNavigation(page);
+
+      // AC-1: "+" di root dan di dalam P (M punya View di P lewat fixture)
+      await app.open('/archives', { waitFor: '.archive-page .ant-table' });
+      const rootItems = await menuTexts(await openPlus(page));
+      monitor.note(`"+" di root (M): ${rootItems.join(' | ')}`);
+      await app.screenshot('AC1-05-plus-root-M');
+      expect(rootItems, 'M: Set Permission by User ada di root').toContain('Set Permission by User');
+      expect(rootItems[rootItems.length - 1], 'paling akhir').toBe('Set Permission by User');
+      await closeMenu(page);
+      await enterFolder(app, page, `${P}P`);
+      const pItems = await menuTexts(await openPlus(page));
+      monitor.note(`"+" di P (M): ${pItems.join(' | ')}`);
+      await app.screenshot('AC1-06-plus-di-P-M');
+      expect(pItems[pItems.length - 1], 'di dalam P: paling akhir').toBe('Set Permission by User');
+      expect(pItems.filter((t) => ITEM_RE.test(t)), 'tepat satu').toHaveLength(1);
+      // klik item dari dalam folder -> halaman terbuka
+      await page.locator('.ant-dropdown:not(.ant-dropdown-hidden)').last().locator('li.ant-dropdown-menu-item', { hasText: /^Set Permission by User$/ }).click();
+      await page.locator(SEARCH).first().waitFor({ state: 'visible', timeout: 30000 });
+      await app.settle();
+      expect(await app.currentPath(), 'navigasi ke /archives/permissions').toBe(PERM_PATH);
+
+      // AC-3: URL langsung (hard load) dan F5: tanpa pengalihan, tanpa kilasan Unauthorized
+      await openPermissionPage(app);
+      for (let i = 1; i <= 2; i += 1) {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.locator(SEARCH).first().waitFor({ state: 'visible', timeout: 30000 });
+        await app.settle();
+        await page.waitForTimeout(1000);
+      }
+      const nav = await readNav();
+      monitor.note(`M: paths=${JSON.stringify(nav.paths)} unauthorized=${nav.unauthorized} search=${nav.search}`);
+      expect(nav.search, 'halaman Archive Permission ter-render').toBe(true);
+      expect(nav.unauthorized, 'M: tanpa kilasan Unauthorized').toBe(false);
+      expect(nav.paths, 'M: tidak pernah ke /unathorized').not.toContain('/unathorized');
+      expect(await page.locator('.ant-result-403').count(), 'tanpa Result 403').toBe(0);
+      expect(await app.currentPath(), 'path tab tetap').toBe(PERM_PATH);
+
+      // bahasa EN: info BR-9 (en) tanpa "dominant" / "nearest On parent"; judul, placeholder
+      const root = pageRoot(page);
+      await expect(searchInput(root)).toHaveAttribute('placeholder', 'Search folder');
+      await expect(root.getByText('Select a user to see their folder permissions')).toBeVisible();
+      const info = (await root.locator('.ant-alert-info').innerText()).replace(/\s+/g, ' ');
+      monitor.note(`info EN: ${info}`);
+      expect(info, 'BR-9 en').toContain('Checkboxes are only active on folders whose Enable Folder Permission is On. Off folders cannot be checked and do not restrict access.');
+      expect(info, 'BR-9 en: View induk').toContain('Only View on parent folders applies: a user without View on a parent folder cannot open its subfolders even if checked here.');
+      expect(info, 'BR-9 en: U/D/S').toContain('Update, Delete and Store are judged on each folder.');
+      expect(info, 'AC-24 en: tanpa dominant / nearest On parent').not.toMatch(/dominant|nearest On parent/i);
+
+      // AC-14 sisi M: pilih B -> sel aktif di semua folder On termasuk J-JB / Q tanpa View M; Off terkunci
+      const loaded = await selectAndLoad(app, page, root, fx._userB);
+      const rows = await tableRows(root);
+      expectTreeMatches(rows, loaded.body);
+      const pn = (n) => rowByName(rows, fullName(n));
+      ['P', 'P-C1', 'Q', 'R-R1', 'J', 'J-JA', 'J-JB'].forEach((n) => expect(pn(n).boxes.map((b) => !b.disabled), `${fullName(n)} (On): aktif untuk M`).toEqual([true, true, true, true]));
+      ['P-C2', 'R', 'J-JC'].forEach((n) => expect(pn(n).boxes.map((b) => !b.disabled), `${fullName(n)} (Off): terkunci`).toEqual([false, false, false, false]));
+      const node = (n) => flatten(loaded.body.result.data).find((f) => f.node.name === fullName(n)).node;
+      expect(node('J-JB').access.view, 'M tanpa View di JB').toBe(false);
+      expect(node('J-JB').access.manage_permission, 'tetap bisa dikelola').toBe(true);
+      await app.screenshot('AC14-02-pohon-user-B-sebagai-M');
+
+      // Save oleh M (tanpa Update Folder): JB View -> 200, riwayat oleh M
+      await box(root, fullName('J-JB'), 'View').check();
+      const put = page.waitForResponse((r) => r.request().method() === 'PUT' && GET_RE.test(r.url()), { timeout: 45000 });
+      await saveBtn(root).click();
+      expect((await put).status(), 'PUT oleh M: 200').toBe(200);
+      await waitToast(page, /.+/);
+      expect(await page.locator('.ant-notification-notice .anticon-check-circle, .ant-message-notice .anticon-check-circle').count(), 'toast sukses').toBeGreaterThan(0);
+      await app.settle();
+      const st = dbState();
+      expect(st.rows.B['J-JB'], 'DB: (JB, B) = View').toEqual([1, 0, 0, 0]);
+      expect(st.history['J-JB'].count, 'riwayat JB +1').toBe(1);
+      expect(st.history['J-JB'].last_by, 'pelaku riwayat = M (QA_USER2)').toBe(fx._userE.username);
+      expect(calls.filter((c) => c.method === 'PUT'), 'tepat satu PUT').toHaveLength(1);
+    });
+    fixture('resetperm');
+    noServerError(monitor);
+  });
+
+  // ------------------------------------------------------------------------------------------------ jalur error M (daftar UI 015 butir 10)
+  test('[user2] ED-1029 jalur error M: Folder Permissions dicabut sesudah halaman dibuka -> Save 403 GE0114 (toast), perubahan tetap; muat ulang -> Unauthorized', async ({ app, page, monitor }) => {
+    const fx = ids();
+    fixture('resetperm');
+    await asProfile('M', async () => {
+      const calls = trackCalls(page, monitor);
+      await openPermissionPage(app);
+      const root = pageRoot(page);
+      await selectAndLoad(app, page, root, fx._userB);
+      await box(root, fullName('P-C1'), 'View').check();
+      const dirty = (await tableRows(root)).map((r) => r.boxes.map((b) => b.checked));
+
+      // di antara buka dan Save: role pengguna diganti ke role tanpa Folder Permissions (role E = role 18)
+      fixture('uprofile', 'E');
+      const put = page.waitForResponse((r) => r.request().method() === 'PUT' && GET_RE.test(r.url()), { timeout: 45000 });
+      const nGet = calls.filter((c) => c.method === 'GET').length;
+      await saveBtn(root).click();
+      const resp = await put;
+      const body = await resp.json();
+      monitor.note(`PUT ditolak: ${resp.status()} ${body.code || body.msg_code} parameter=${JSON.stringify(body.parameter)}`);
+      expect(resp.status(), 'PUT ditolak').toBe(403);
+      expect(body.code || body.msg_code, 'kode GE0114').toBe('GE0114');
+      expect(JSON.stringify(body.parameter), 'parameter = Folder Permissions').toContain('Folder Permissions');
+      const toast = await waitToast(page, /Folder Permissions/);
+      monitor.note(`toast error: ${toast}`);
+      expect(await page.locator('.ant-notification-notice .anticon-close-circle, .ant-message-notice .anticon-close-circle').count(), 'toast error (ikon silang)').toBeGreaterThan(0);
+      await app.screenshot('ERR-01-M-dicabut-save-403');
+      expect((await tableRows(root)).map((r) => r.boxes.map((b) => b.checked)), 'centang di layar tidak hilang').toEqual(dirty);
+      await expect(saveBtn(root), 'Save tetap hidup').toBeEnabled();
+      expect(calls.filter((c) => c.method === 'GET').length, 'tanpa GET ulang sesudah gagal').toBe(nGet);
+      const st = dbState();
+      expect(st.rows.B, 'DB: tidak ada yang tersimpan').toEqual(B0);
+      expect(st.history['P-C1'].count, 'tanpa riwayat C1').toBe(0);
+
+      // 403 PUT dan log konsol axios yang diharapkan dikeluarkan dari pemeriksaan error
+      const expected = (e) => (e.kind === 'response' && e.status === 403 && e.method === 'PUT' && GET_RE.test(e.url)) || (e.kind === 'console' && /status code 403|GE0114|AxiosError/.test(e.text || ''));
+      const dropped = monitor.errors.filter(expected);
+      expect(dropped.filter((e) => e.kind === 'response').length, '403 PUT tercatat (diharapkan)').toBeGreaterThanOrEqual(1);
+      monitor.errors = monitor.errors.filter((e) => !expected(e));
+      monitor.note(`error yang diharapkan dikeluarkan dari pemeriksaan: ${dropped.length} entri`);
+
+      // muat ulang (role baru terbaca dari auth/info) -> Unauthorized tanpa request
+      await expectPageDenied(app, page, monitor, 'M setelah dicabut');
+    });
+    fixture('resetperm');
+    noServerError(monitor);
+  });
+
+  // ------------------------------------------------------------------------------------------------ AC-1, AC-3 (D: Update Folder tanpa Folder Permissions)
+  test('[user2] ED-1029 AC-1 + AC-3 D (Update Folder tanpa Folder Permissions): "+" tanpa Set Permission by User (root & P); /archives/permissions -> Unauthorized, tanpa request', async ({ app, page, monitor, session }) => {
+    await asProfile('D', async () => {
+      monitor.note(`DB sesi ${session.dbName}; QA_USER2 sementara profil D = role A tanpa Folder Permissions (masih Update Folder), bahasa EN`);
+      await app.open('/archives', { waitFor: '.archive-page .ant-table' });
+      const rootItems = await plusItemsOrNone(page);
+      monitor.note(`"+" di root (D): ${rootItems === null ? '(tombol "+" tidak ada)' : rootItems.join(' | ')}`);
+      await app.screenshot('AC1-07-plus-root-D');
+      expect((rootItems || []).filter((t) => ITEM_RE.test(t)), 'D: tanpa Set Permission by User di root').toHaveLength(0);
+      expect(rootItems && rootItems.length, 'D tetap melihat item "+" lain (bukti menu ada, hanya item itu yang hilang)').toBeGreaterThan(0);
+      await enterFolder(app, page, `${P}P`);
+      const pItems = await plusItemsOrNone(page);
+      monitor.note(`"+" di P (D): ${pItems === null ? '(tombol "+" tidak ada)' : pItems.join(' | ')}`);
+      await app.screenshot('AC1-08-plus-di-P-D');
+      expect((pItems || []).filter((t) => ITEM_RE.test(t)), 'D: tanpa Set Permission by User di dalam P').toHaveLength(0);
+      await expectPageDenied(app, page, monitor, 'D');
+      await app.screenshot('AC3-03-D-buka-URL');
+    });
+    noServerError(monitor);
+  });
+
   // ------------------------------------------------------------------------------------------------ AC-1, AC-3 (E)
   test('[user2] ED-1029 AC-1 E: menu "+" tanpa Set Permission by User (di root dan di dalam folder)', async ({ app, page, monitor, session }) => {
-    monitor.note(`DB sesi ${session.dbName}; E=QA_USER2 sementara role 18 (List Archive + Handover/Receive/Add Document, tanpa Update Folder)`);
+    monitor.note(`DB sesi ${session.dbName}; E=QA_USER2 sementara role 18 (List Archive + Handover/Receive/Add Document, tanpa Update Folder dan tanpa Folder Permissions)`);
     await app.open('/archives', { waitFor: '.archive-page .ant-table' });
     const items = await menuTexts(await openPlus(page));
     monitor.note(`"+" di root (E): ${items.join(' | ')}`);
     await app.screenshot('AC1-03-plus-root-E');
     expect(items.length, 'E tetap melihat item "+" lain').toBeGreaterThan(0);
-    expect(items.filter((t) => /Set Permission by User|Atur Izin per User/.test(t)), 'tanpa Set Permission by User').toHaveLength(0);
+    expect(items.filter((t) => ITEM_RE.test(t)), 'tanpa Set Permission by User').toHaveLength(0);
     await closeMenu(page);
 
     // E tidak punya hak folder P (On, tanpa baris): buka folder R (Off) yang terbuka bagi semua
-    const inR = page.waitForResponse((r) => r.request().method() === 'GET' && /\/document-archive\/archives\?/.test(r.url()) && /id_?[aA]rchive=/.test(decodeURIComponent(r.url())), { timeout: 45000 });
-    await archiveRow(page, `${P}R`).locator('td.cursor-pointer').first().click();
-    expect((await inR).status(), 'GET archives?id_archive=R').toBe(200);
-    await app.settle();
+    await enterFolder(app, page, `${P}R`);
     await expect(archiveRow(page, `${P}R-R1`), 'R memuat R1').toBeVisible();
     const inItems = await menuTexts(await openPlus(page));
     monitor.note(`"+" di R (E): ${inItems.join(' | ')}`);
     await app.screenshot('AC1-04-plus-di-R-E');
     expect(inItems.length, 'di dalam folder E tetap melihat item "+" lain').toBeGreaterThan(0);
-    expect(inItems.filter((t) => /Set Permission by User|Atur Izin per User/.test(t)), 'di dalam folder pun tanpa item itu').toHaveLength(0);
+    expect(inItems.filter((t) => ITEM_RE.test(t)), 'di dalam folder pun tanpa item itu').toHaveLength(0);
     await closeMenu(page);
     noServerError(monitor);
   });
 
-  test('[user2] ED-1029 AC-3 E: /archives/permissions lewat URL -> Unauthorized, tanpa request user-permissions', async ({ app, page, monitor }) => {
-    const calls = trackCalls(page, monitor);
-    const usersCalls = trackUsersCalls(page);
-    const readNav = await trackNavigation(page);
-    const fx = ids();
-    await app.open(PERM_PATH);
-    await app.settle();
-    const finalPath = await app.currentPath();
-    monitor.note(`path akhir: ${finalPath}; pengalihan: ${app.redirectOf(PERM_PATH)}`);
+  test('[user2] ED-1029 AC-3 E: /archives/permissions lewat URL -> Unauthorized, tanpa request user-permissions maupun select user', async ({ app, page, monitor }) => {
+    await expectPageDenied(app, page, monitor, 'E');
     await app.screenshot('AC3-01-E-buka-URL');
-    const nav = await readNav();
-    monitor.note(`riwayat path tab aktif: ${JSON.stringify(nav && nav.paths)}; Unauthorized tampil=${nav && nav.unauthorized}; kotak Search folder pernah tampil=${nav && nav.search}; request select user=${usersCalls.length}`);
-    expect.soft(nav && nav.paths, 'AC-3: path tab aktif sempat menjadi /unathorized (pengalihan)').toContain('/unathorized');
-    expect.soft(nav && nav.unauthorized, 'AC-3: halaman Unauthorized (403) benar-benar ter-render').toBe(true);
-    expect.soft(nav && nav.search, 'AC-3: halaman Archive Permission tidak sempat ter-render untuk E').toBe(false);
-    expect.soft(usersCalls, 'AC-3: tidak ada request select user (halaman tidak di-mount)').toHaveLength(0);
-    // AC-3 apa adanya (spec): halaman Unauthorized. Soft: sisanya tetap dijalankan sebagai karakterisasi
-    expect.soft(finalPath, 'AC-3: dialihkan ke halaman Unauthorized (PrivateRoute permission Update Folder)').toBe('/unathorized');
-    expect.soft(await page.locator(SEARCH).count(), 'AC-3: halaman Archive Permission tidak boleh tampil untuk E').toBe(0);
-    expect(calls, 'AC-3: sebelum user dipilih tidak ada request user-permissions').toHaveLength(0);
-
-    // karakterisasi bila halaman tetap tampil (guard route FE inert, ED-1024 F-1): BE tetap menolak, tanpa data dan tanpa 5xx
-    if ((await page.locator(SEARCH).count()) > 0) {
-      const root = pageRoot(page);
-      // bahasa EN (user2): semua teks halaman ada di en-US (tanpa "Missing message" - console error dicek otomatis)
-      await expect(root.getByText('Select a user to see their folder permissions'), 'EN: teks kosong').toBeVisible();
-      await expect(root.locator('.ant-alert-info')).toContainText('Checkboxes are only active on folders whose');
-      await expect(root.locator('.ant-alert-info')).toContainText('Enable Folder Permission');
-      await expect(searchInput(root)).toHaveAttribute('placeholder', 'Search folder');
-      await expect(saveBtn(root)).toHaveText(/Save Permission/);
-      expect(await page.evaluate(() => [...document.querySelectorAll('*')].filter((el) => !el.children.length && el.textContent.trim() === 'Archive Permission' && el.offsetParent !== null).length), 'EN: judul "Archive Permission"').toBeGreaterThan(0);
-      const got = await pickUser(page, root, fx._userB);
-      monitor.note(`karakterisasi: E memilih ${fx._userB.username} -> GET user-permissions ${got.status} ${got.body && (got.body.code || got.body.msg_code)}`);
-      expect(got.status, 'BE menolak E: 403').toBe(403);
-      expect(got.body.code || got.body.msg_code, 'GE0114').toBe('GE0114');
-      await page.waitForTimeout(800);
-      expect((await tableRows(root)).length, 'tanpa data folder di layar').toBe(0);
-      await app.screenshot('AC3-02-E-pilih-user-ditolak-BE');
-      const expected = (e) => (e.kind === 'response' && e.status === 403 && GET_RE.test(e.url)) || (e.kind === 'console' && /status code 403/.test(e.text || ''));
-      const dropped = monitor.errors.filter(expected);
-      expect(dropped.filter((e) => e.kind === 'response').length, '403 GET user-permissions tercatat (diharapkan)').toBe(1);
-      monitor.errors = monitor.errors.filter((e) => !expected(e));
-      monitor.note(`403 yang diharapkan dikeluarkan dari pemeriksaan error: ${dropped.length} entri`);
-    }
     noServerError(monitor);
   });
 });

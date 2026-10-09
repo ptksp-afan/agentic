@@ -10,26 +10,39 @@
  *                                    archive_permissions total
  *   "$PHP_BIN" fixture.php flag <nama> <0|1>   set is_folder_permission satu folder uji (nama tanpa awalan; AC-19)
  *   "$PHP_BIN" fixture.php role <id|restore>   role A sementara (mis. 1 = superadmin); restore = role asli dari jurnal
- *   "$PHP_BIN" fixture.php resetperm           hapus semua baris archive_permissions folder uji milik B dan B2, lalu pasang
- *                                              lagi nilai awal (supaya tiap test mulai dari keadaan yang sama), riwayat dikosongkan
+ *   "$PHP_BIN" fixture.php uprofile <D|M|E>    (rev) role E (QA_USER2) sementara menurut profil spec §6: D = role A tanpa Folder Permissions
+ *                                              (masih Update Folder), M = List Archive + View Folder + Folder Permissions saja,
+ *                                              E = role 18 (tanpa keduanya, keadaan awal fixture). Role D/M dibuat lazim dengan nama
+ *                                              QA29F-ROLE-<D|M> dan dibuang `down`. FE membaca peran dari GET auth/info: muat ulang penuh.
+ *   "$PHP_BIN" fixture.php resetperm           hapus SEMUA baris archive_permissions folder uji berawalan 0QA29- (semua user), lalu
+ *                                              pasang lagi nilai awal (supaya tiap test mulai dari keadaan yang sama), flag dan riwayat
+ *                                              folder uji dikembalikan
  *
- * Pelaku: A = QA_USER (profil default; role 3 = Super Admin non-bypass, employee DIUBAH sementara jadi lokasi MGL saja supaya folder
- * L (JOG) di luar scope-nya), E = QA_USER2 (profil user2; role 5 DIGANTI sementara jadi role 18 "Pusat - Admin Sales": List Archive +
- * Handover/Receive/Add Document, TANPA Update Folder, supaya "+" masih tampil tetapi tanpa Set Permission by User). B dan B2 = dua
- * user target (aktif, ber-List Archive, bukan superadmin 1/2, bukan customer, bukan A/E) yang dipilih urut username.
+ * Pelaku: A = QA_USER (profil default; role 3 = Super Admin non-bypass, ber-Update Folder + Folder Permissions = profil A spec; employee
+ * DIUBAH sementara jadi lokasi MGL saja supaya folder L (JOG) di luar scope-nya), E = QA_USER2 (profil user2; role 5 DIGANTI sementara jadi
+ * role 18 "Pusat - Admin Sales": List Archive + Handover/Receive/Add Document, TANPA Update Folder dan TANPA Folder Permissions, supaya "+"
+ * masih tampil tetapi tanpa Set Permission by User; `uprofile` menukarnya ke D atau M). B dan B2 = dua user target (aktif, ber-List Archive,
+ * bukan superadmin 1/2, bukan customer, bukan A/E) yang dipilih urut username.
  *
  * Folder uji (semua is_all_location=1 kecuali L; dibuat oleh 'QA29E2E', bukan A, jadi hak pembuat tidak berlaku):
  *   0QA29-L        On   root, hanya lokasi JOG -> di luar scope A
- *   0QA29-P        On   root; A V+U+D+S;  B View
+ *   0QA29-P        On   root; A V+U+D+S;  B View;  E View (supaya D/M/E bisa membuka P)
  *     0QA29-P-C1   On   A V+U+D+S;  B kosong
  *     0QA29-P-C2   Off  A kosong (diwarisi P);  B View+Store (nilai tersimpan, terkunci karena Off)
- *   0QA29-Q        On   root; A View saja -> manage_permission false;  B View+Update
+ *   0QA29-Q        On   root; A View saja (rev: tetap bisa dikelola, K-15 b);  B View+Update
  *   0QA29-R        Off  root; A kosong
  *     0QA29-R-R1   On   A V+U+D+S;  B kosong
- * Nilai awal B (resetperm): P=1000, C2=1001, Q=1100; B2: tanpa baris.
+ *   0QA29-J        On   root; A View saja            (data FB-9 pola ED-1025, dibuat user lain)
+ *     0QA29-J-JA   On   A V+U+D+S;  B kosong
+ *     0QA29-J-JB   On   tanpa baris A (A tanpa View); B kosong
+ *     0QA29-J-JC   Off  tanpa baris A;  B View+Store (nilai tersimpan, terkunci karena Off)
+ *   0QA29-F        Off  root; tanpa baris siapa pun (AC-25: A menyalakan Izin di tab Izin)
+ * Nilai awal (initialRows): A: J=1000, J-JA=1111, P=1111, P-C1=1111, Q=1000, R-R1=1111; B: P=1000, C2=1001, Q=1100, J-JC=1001; E: P=1000;
+ * B2: tanpa baris.
  *
  * Yang ditulis: archives, archive_documents(0), archive_locations, archive_permissions (hanya baris folder berawalan 0QA29-),
- * user_roles (E), employees.is_all_location (A). Semuanya dipulihkan persis di `down` (jurnal qa/e2e/.fixture-journal.json).
+ * user_roles (E), employees.is_all_location (A), roles + role_permissions (hanya QA29F-ROLE-*). Semuanya dipulihkan persis di `down`
+ * (jurnal qa/e2e/.fixture-journal.json; checksum 6 tabel (archive, roles) dibandingkan).
  */
 
 namespace QaHttp;
@@ -43,7 +56,8 @@ require QA_AGENTIC . '/scripts/qa-http/lib/Laravel.php';
 use Illuminate\Support\Facades\DB;
 
 const PREFIX = '0QA29-';
-const TABLES = ['archives', 'archive_documents', 'archive_locations', 'archive_permissions'];
+const ROLE_PREFIX = 'QA29F-ROLE-';
+const TABLES = ['archives', 'archive_documents', 'archive_locations', 'archive_permissions', 'roles', 'role_permissions'];
 const E_ROLE = 18;
 
 function say($line)
@@ -137,6 +151,61 @@ function purge($c)
     return count($ids);
 }
 
+/** Buang role fixture QA29F-ROLE-* (user_roles yang menunjuknya, role_permissions, role). Idempoten; role lain tidak tersentuh. */
+function purgeRoles($c)
+{
+    $ids = $c->table('roles')->where('role_name', 'like', ROLE_PREFIX . '%')->pluck('id_role')->all();
+    if ($ids) {
+        $c->table('user_roles')->whereIn('id_role', $ids)->delete();
+        $c->table('role_permissions')->whereIn('id_role', $ids)->delete();
+        $c->table('roles')->whereIn('id_role', $ids)->delete();
+    }
+
+    return count($ids);
+}
+
+/** id_permission menurut nama (gagal bila tidak ada: seed ulang ED-1025 belum diterapkan). */
+function permIds($c, array $names)
+{
+    $out = [];
+    foreach ($names as $permName) {
+        $perm = $c->table('permissions')->where('permission_name', $permName)->first();
+        if (!$perm) {
+            fail("permission '$permName' tidak ada di DB uji (seed ulang ED-1025 belum diterapkan?)");
+        }
+        $out[] = (int) $perm->id_permission;
+    }
+
+    return $out;
+}
+
+/**
+ * Role fixture QA29F-ROLE-<label> dengan permission $idPermissions (id_permission; role_permissions.permission_name di baris lama
+ * bisa kosong, jadi role disusun lewat id). Dibuat sekali, dipakai ulang.
+ */
+function ensureRole($c, $label, array $idPermissions)
+{
+    $name = ROLE_PREFIX . $label;
+    $row = $c->table('roles')->where('role_name', $name)->first();
+    if ($row) {
+        return (int) $row->id_role;
+    }
+    $now = date('Y-m-d H:i:s');
+    $id = $c->table('roles')->insertGetId([
+        'role_name' => $name, 'description' => 'QA ED-1029 e2e fixture', 'is_superadmin' => 4,
+        'is_active' => 1, 'is_used' => 1, 'created_by' => 'QA29F', 'created_at' => $now, 'updated_by' => 'QA29F', 'updated_at' => $now,
+    ]);
+    foreach (array_values(array_unique($idPermissions)) as $idPermission) {
+        $perm = $c->table('permissions')->where('id_permission', $idPermission)->first();
+        $c->table('role_permissions')->insert([
+            'id_role' => $id, 'id_permission' => $idPermission, 'permission_name' => $perm ? $perm->permission_name : null,
+            'created_at' => $now, 'updated_at' => $now, 'created_by' => 'QA29F', 'updated_by' => 'QA29F',
+        ]);
+    }
+
+    return (int) $id;
+}
+
 function jsonLast($v)
 {
     echo json_encode($v) . "\n";
@@ -163,7 +232,26 @@ function insertPerm($c, $idArchive, $idUser, array $r)
 /** Nilai awal B (nama tanpa awalan => [V,U,D,S]); B2 tanpa baris. */
 function initialB()
 {
-    return ['P' => [1, 0, 0, 0], 'P-C2' => [1, 0, 0, 1], 'Q' => [1, 1, 0, 0]];
+    return ['P' => [1, 0, 0, 0], 'P-C2' => [1, 0, 0, 1], 'Q' => [1, 1, 0, 0], 'J-JC' => [1, 0, 0, 1]];
+}
+
+/** Nilai awal A (login) dan E (QA_USER2, apa pun role sementaranya). */
+function initialA()
+{
+    $full = [1, 1, 1, 1];
+
+    return ['J' => [1, 0, 0, 0], 'J-JA' => $full, 'P' => $full, 'P-C1' => $full, 'Q' => [1, 0, 0, 0], 'R-R1' => $full];
+}
+
+function initialE()
+{
+    return ['P' => [1, 0, 0, 0]];
+}
+
+/** Flag Izin Folder awal semua folder uji. */
+function initialFlags()
+{
+    return ['L' => 1, 'P' => 1, 'P-C1' => 1, 'P-C2' => 0, 'Q' => 1, 'R' => 0, 'R-R1' => 1, 'J' => 1, 'J-JA' => 1, 'J-JB' => 1, 'J-JC' => 0, 'F' => 0];
 }
 
 if ($cmd === 'up') {
@@ -173,6 +261,7 @@ if ($cmd === 'up') {
         if (!empty($old['users'])) {
             userRestore($c, $old['users']);
         }
+        purgeRoles($c);
         $now = tableState($c);
         if (!empty($old['tables']) && $old['tables'] !== $now) {
             fail('sisa jurnal run lama: keadaan setelah pemulihan tidak sama dengan baseline lama');
@@ -182,6 +271,7 @@ if ($cmd === 'up') {
     if ($c->table('archives')->where('name', 'like', PREFIX . '%')->count() > 0) {
         purge($c);
     }
+    purgeRoles($c);
 
     $userA = $c->table('users')->where('username', Config::get('QA_USER'))->first();
     $userE = Config::get('QA_USER2') ? $c->table('users')->where('username', Config::get('QA_USER2'))->first() : null;
@@ -284,6 +374,12 @@ if ($cmd === 'up') {
         $R = $add('R', null, 0);
         $R1 = $add('R-R1', $R, 1);
         insertPerm($c, $R1, $userA->id_user, $full);
+        // (rev) data FB-9 pola ED-1025: J (A View saja) > JA (A penuh), JB (tanpa baris A), JC (Off); F = Off tanpa baris (AC-25)
+        $J = $add('J', null, 1);
+        $add('J-JA', $J, 1);
+        $add('J-JB', $J, 1);
+        $add('J-JC', $J, 0);
+        $add('F', null, 0);
     });
 
     $ids['_userA'] = ['id_user' => $userA->id_user, 'username' => $userA->username];
@@ -292,9 +388,15 @@ if ($cmd === 'up') {
     $ids['_userB2'] = ['id_user' => $userB2->id_user, 'username' => $userB2->username];
     file_put_contents($idsFile, json_encode($ids));
 
-    // nilai awal B
+    // nilai awal B, A (hanya yang belum ditulis di transaksi di atas: J, J-JA) dan E
     foreach (initialB() as $suffix => $r) {
         insertPerm($c, $ids[$suffix], $userB->id_user, $r);
+    }
+    foreach (['J', 'J-JA'] as $suffix) {
+        insertPerm($c, $ids[$suffix], $userA->id_user, initialA()[$suffix]);
+    }
+    foreach (initialE() as $suffix => $r) {
+        insertPerm($c, $ids[$suffix], $userE->id_user, $r);
     }
 
     say('fixture up: folder uji=' . (count($ids) - 4) . '; B=' . $userB->username . ' B2=' . $userB2->username . '; baseline archives=' . $before['tables']['archives']['count'] . ' archive_permissions=' . $before['tables']['archive_permissions']['count']);
@@ -308,6 +410,10 @@ if ($cmd === 'down') {
         $before = json_decode(file_get_contents($journal), true);
         if (!empty($before['users'])) {
             userRestore($c, $before['users']);
+            $nr = purgeRoles($c); // role D/M sementara (user_roles E sudah dipulihkan di atas)
+            if ($nr > 0) {
+                say("role fixture " . ROLE_PREFIX . "* dibuang: $nr");
+            }
             $afterUsers = userState($c, $before['users']['idA'], $before['users']['idE']);
             if (json_encode($afterUsers) !== json_encode($before['users'])) {
                 $ok = false;
@@ -328,7 +434,7 @@ if ($cmd === 'down') {
         say('tidak ada jurnal baseline (down tanpa up?)');
     }
     @unlink($idsFile);
-    say("fixture down: $n folder berawalan " . PREFIX . ' dibuang; user A/E dipulihkan; ' . ($ok ? 'keadaan = baseline (4 tabel archive* count + CHECKSUM, user_roles/employees/employee_locations A dan E baris persis)' : 'KEADAAN TIDAK SAMA DENGAN BASELINE'));
+    say("fixture down: $n folder berawalan " . PREFIX . ' dibuang; user A/E dipulihkan; ' . ($ok ? 'keadaan = baseline (6 tabel archive/roles/role_permissions count + CHECKSUM, user_roles/employees/employee_locations A dan E baris persis)' : 'KEADAAN TIDAK SAMA DENGAN BASELINE'));
     exit($ok ? 0 : 1);
 }
 
@@ -345,8 +451,8 @@ if ($cmd === 'state') {
             $byId[$v] = $k;
         }
     }
-    $out = ['rows' => ['B' => [], 'B2' => []], 'history' => [], 'flags' => [], 'total_permissions' => (int) $c->table('archive_permissions')->count()];
-    foreach (['B' => '_userB', 'B2' => '_userB2'] as $label => $key) {
+    $out = ['rows' => ['A' => [], 'B' => [], 'B2' => []], 'history' => [], 'flags' => [], 'total_permissions' => (int) $c->table('archive_permissions')->count()];
+    foreach (['A' => '_userA', 'B' => '_userB', 'B2' => '_userB2'] as $label => $key) {
         foreach ($c->table('archive_permissions')->where('id_user', $ids[$key]['id_user'])->whereIn('id_archive', array_keys($byId))->get() as $r) {
             $out['rows'][$label][$byId[$r->id_archive]] = [(int) $r->is_view, (int) $r->is_update, (int) $r->is_delete, (int) $r->is_store];
         }
@@ -387,14 +493,57 @@ if ($cmd === 'resetperm') {
             $prefixIds[] = $v;
         }
     }
-    foreach (['L' => 1, 'P' => 1, 'P-C1' => 1, 'P-C2' => 0, 'Q' => 1, 'R' => 0, 'R-R1' => 1] as $suffix => $perm) {
+    foreach (initialFlags() as $suffix => $perm) {
         $c->table('archives')->where('id_archive', $ids[$suffix])->update(['is_folder_permission' => $perm, 'history' => null]);
     }
-    $c->table('archive_permissions')->whereIn('id_archive', $prefixIds)->whereIn('id_user', [$ids['_userB']['id_user'], $ids['_userB2']['id_user']])->delete();
+    // semua baris folder uji (user mana pun: B, B2, A, E) dibuang lalu nilai awal dipasang lagi
+    $c->table('archive_permissions')->whereIn('id_archive', $prefixIds)->delete();
     foreach (initialB() as $suffix => $r) {
         insertPerm($c, $ids[$suffix], $ids['_userB']['id_user'], $r);
     }
-    say('resetperm: hak B kembali ke nilai awal, B2 kosong, flag dan riwayat folder uji kembali');
+    foreach (initialA() as $suffix => $r) {
+        insertPerm($c, $ids[$suffix], $ids['_userA']['id_user'], $r);
+    }
+    foreach (initialE() as $suffix => $r) {
+        insertPerm($c, $ids[$suffix], $ids['_userE']['id_user'], $r);
+    }
+    say('resetperm: hak B, A dan E kembali ke nilai awal, B2 kosong, flag dan riwayat folder uji kembali');
+    exit(0);
+}
+
+if ($cmd === 'uprofile') { // role E (QA_USER2) sementara menurut profil spec: D, M, atau E (role 18 awal fixture)
+    $arg = strtoupper($argv[2] ?? '');
+    if (!is_file($journal)) {
+        fail('tanpa jurnal (jalankan up dulu)');
+    }
+    $j = json_decode(file_get_contents($journal), true);
+    $idE = $j['users']['idE'];
+    if ($arg === 'E') {
+        $roleId = E_ROLE;
+    } elseif ($arg === 'M') {
+        // M = List Archive + View Folder + Folder Permissions saja (profil D ED-1025); 'Allow Access Website' hanya syarat teknis login
+        // web bagi QA_USER2 (employee_type bukan 0: tanpa itu permission_v5 mencabut tokennya), bukan permission fitur
+        $roleId = ensureRole($c, 'M', permIds($c, ['List Archive', 'View Folder', 'Folder Permissions', 'Allow Access Website']));
+    } elseif ($arg === 'D') {
+        // D = semua permission role A (jurnal, disalin lewat id_permission) tanpa Folder Permissions: tetap ber-Update Folder dan item "+" lain
+        $roleA = $j['users']['rolesA'][0]['id_role'] ?? null;
+        $have = $roleA ? array_map('intval', $c->table('role_permissions')->where('id_role', $roleA)->pluck('id_permission')->all()) : [];
+        $fp = permIds($c, ['Folder Permissions'])[0];
+        $uf = permIds($c, ['Update Folder'])[0];
+        $have = array_values(array_filter($have, function ($id) use ($fp) {
+            return $id !== $fp;
+        }));
+        if (!in_array($uf, $have, true)) {
+            fail('role A tidak memuat Update Folder: profil D tidak bisa dibentuk');
+        }
+        $roleId = ensureRole($c, 'D', $have);
+    } else {
+        fail('profil tidak dikenal: ' . $arg . ' (D|M|E)');
+    }
+    $now = date('Y-m-d H:i:s');
+    $c->table('user_roles')->where('id_user', $idE)->delete();
+    $c->table('user_roles')->insert(['id_user' => $idE, 'id_role' => $roleId, 'is_all_location' => 1, 'id_location' => null, 'created_at' => $now, 'updated_at' => $now]);
+    say("role E (QA_USER2) = profil $arg (id_role $roleId, sementara)");
     exit(0);
 }
 
@@ -420,4 +569,4 @@ if ($cmd === 'role') { // role A sementara (1 = superadmin EQUAL); 'restore' = k
     exit(0);
 }
 
-fail('pakai: up | down | ids | state | flag <nama> <0|1> | resetperm | role <id|restore>');
+fail('pakai: up | down | ids | state | flag <nama> <0|1> | resetperm | role <id|restore> | uprofile <D|M|E>');

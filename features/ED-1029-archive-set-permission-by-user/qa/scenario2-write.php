@@ -328,8 +328,7 @@ return [
 
                 // folder Off diaktifkan -> sah (parameter 441 berlaku per saat PUT)
                 q9_set_archive($t, $f['C2'], ['is_folder_permission' => 1]);
-                // C2 On: A butuh hak sendiri di C2 (induk P sudah V+U) supaya boleh mengelola
-                q9_perm($t, $f['C2'], $me, 1, 1);
+                // C2 On: A (pemegang Folder Permissions) mengelola tanpa baris sendiri di C2 (rev K-15 b)
                 $r = q9_put($t, $s, $b[0], ['permissions' => [q9_row_body($f['C2'], 1, 0, 0, 1)]]);
                 $t->status($r, 200, 'C2 diaktifkan: PUT sah');
                 $t->eq(json_encode(q9_user_map($t, $b[0], [$f['C2']])[$f['C2']] ?? null), '[1,0,0,1]', 'C2 diaktifkan: baris tersimpan');
@@ -400,7 +399,7 @@ return [
 
     [
         'id'    => 'AC-11',
-        'title' => 'A PUT baris Q: 403 ARCHIVE408 (mendahului 422 walau body lain tidak valid; parameter = nama folder penolak, bisa induk); baris L (di luar lokasi) 403 ARCHIVE407; dokumen/tidak ada/folder nonaktif 404 ARCHIVE400; id_archive ganda atau flag kosong/di luar 0,1 = 422; data tidak berubah',
+        'title' => '(rev K-15 b) A PUT baris Q (View saja), N (tanpa baris/View), QCh (induk Q hanya View) = 200 dan tersimpan, tanpa ARCHIVE408 di kasus mana pun; baris L (di luar lokasi) 403 ARCHIVE407 (sebelum 422, juga bila body lain tidak sah); dokumen/tidak ada/folder nonaktif 404 ARCHIVE400; id_archive ganda atau flag kosong/di luar 0,1 = 422; data tidak berubah pada penolakan',
         'run'   => function ($t) {
             q9_recover($t);
             $s = $t->session();
@@ -420,26 +419,31 @@ return [
                 $qName = q9_row($t, $f['Q'])['name'];
                 $nName = q9_row($t, $f['N'])['name'];
                 $valid = q9_row_body($f['P'], 1, 1, 1, 1);
-                $unchanged = function ($label) use ($t, $ids, $before, $permBefore) {
+                $unchanged = function ($label) use ($t, $ids, &$before, &$permBefore) {
                     $t->true(q9_same($before, q9_snap($t, $ids)), "$label: data tidak berubah");
                     $t->eq(q9_perm_total($t), $permBefore, "$label: jumlah baris tetap");
                 };
+                // sesudah PUT sukses + pemulihan baris lewat DB, riwayat/updated_at folder berubah: ambil acuan baru
+                $rebase = function () use ($t, $ids, &$before, &$permBefore) {
+                    $before = q9_snap($t, $ids);
+                    $permBefore = q9_perm_total($t);
+                };
 
-                q9_with_user($t, ['emp' => ['SMR']], function ($set) use ($t, $s, $b, $f, $qName, $nName, $valid, $unchanged) {
-                    // 408
-                    $r = q9_put($t, $s, $b[0], ['permissions' => [q9_row_body($f['Q'], 1)]]);
-                    q9_deny($t, $r, 403, 'ARCHIVE408', 'Q (A tanpa Update)', $qName);
-                    $unchanged('Q');
+                q9_codes_reset();
+                q9_with_user($t, ['emp' => ['SMR']], function ($set) use ($t, $s, $b, $f, $ids, $qName, $nName, $valid, $unchanged, $rebase) {
+                    // K-15 b: folder tanpa hak A (Q View saja, N tanpa baris, QCh induk Q membatasi) = 200 dan tersimpan
+                    foreach (['Q' => $f['Q'], 'N' => $f['N'], 'QCh' => $f['QCh']] as $label => $id) {
+                        $hist0 = q9_hist_count($t, $id);
+                        $r = q9_put($t, $s, $b[0], ['permissions' => [q9_row_body($id, 1, 0, 0, 1)]]);
+                        $t->status($r, 200, "$label (A tanpa Update/View): PUT sah");
+                        $t->eq(q9_code($r), 'ARCHIVE207', "$label: code");
+                        $t->eq(json_encode(q9_user_map($t, $b[0], [$id])[$id] ?? null), '[1,0,0,1]', "$label: baris (folder,B) tersimpan");
+                        $t->eq(q9_hist_count($t, $id), $hist0 + 1, "$label: riwayat permission +1");
+                        q9_perm_restore_row($t, $id, $b[0], null);
+                    }
+                    $rebase();
 
-                    $r = q9_put($t, $s, $b[0], ['permissions' => [q9_row_body($f['N'], 1)]]);
-                    q9_deny($t, $r, 403, 'ARCHIVE408', 'N (On, A tanpa baris/View)', $nName);
-                    $unchanged('N');
-
-                    $r = q9_put($t, $s, $b[0], ['permissions' => [q9_row_body($f['QCh'], 1)]]);
-                    q9_deny($t, $r, 403, 'ARCHIVE408', 'QCh (induk Q membatasi)', $qName);
-                    $unchanged('QCh');
-
-                    // 408 mendahului 422 (body lain tidak valid)
+                    // body lain tidak sah: sekarang 422 (bukan 408 lagi)
                     foreach ([
                         'flag salah'        => [q9_row_body($f['Q'], 1), ['id_archive' => $f['P'], 'is_view' => 7, 'is_update' => 'x', 'is_delete' => null]],
                         'id ganda'          => [q9_row_body($f['Q'], 1), $valid, $valid],
@@ -447,16 +451,23 @@ return [
                         'baris bukan array' => [q9_row_body($f['Q'], 1), 'x'],
                     ] as $label => $rows) {
                         $r = q9_put($t, $s, $b[0], ['permissions' => $rows]);
-                        q9_deny($t, $r, 403, 'ARCHIVE408', "408 sebelum 422 ($label)", $qName);
-                        $unchanged("408 sebelum 422 ($label)");
+                        q9_no500($t, $r, "Q + body tidak sah ($label)");
+                        $t->status($r, 422, "Q + body tidak sah ($label): 422, bukan 408");
+                        $unchanged("Q + body tidak sah ($label)");
                     }
 
-                    // P sah bersama Q: P pun tidak tersimpan
+                    // P sah bersama Q: dua-duanya tersimpan (atomik, sukses)
                     $r = q9_put($t, $s, $b[0], ['permissions' => [$valid, q9_row_body($f['Q'], 1)]]);
-                    q9_deny($t, $r, 403, 'ARCHIVE408', 'P sah + Q', $qName);
-                    $unchanged('P sah + Q');
+                    $t->status($r, 200, 'P sah + Q');
+                    $map = q9_user_map($t, $b[0], [$f['P'], $f['Q']]);
+                    $t->eq(json_encode($map[$f['P']] ?? null), '[1,1,1,1]', 'P sah + Q: (P,B) tersimpan');
+                    $t->eq(json_encode($map[$f['Q']] ?? null), '[1,0,0,0]', 'P sah + Q: (Q,B) tersimpan');
+                    // pulihkan keadaan fixture: (P,B) V+S, Q tanpa baris
+                    q9_perm_restore_row($t, $f['P'], $b[0], [1, 0, 0, 1]);
+                    q9_perm_restore_row($t, $f['Q'], $b[0], null);
+                    $rebase();
 
-                    // 407: L di luar lokasi (A juga tidak punya hak di L, 407 mendahului 408)
+                    // 407: L di luar lokasi (407 mendahului 422 dan 400/441)
                     $r = q9_put($t, $s, $b[0], ['permissions' => [q9_row_body($f['L'], 1)]]);
                     $t->status($r, 403, 'L (di luar lokasi)');
                     $t->eq(q9_code($r), 'ARCHIVE407', 'L: code');
@@ -469,11 +480,14 @@ return [
                     $r = q9_put($t, $s, $b[0], ['permissions' => [$valid, q9_row_body($f['L'], 1)]]);
                     $t->eq(q9_code($r), 'ARCHIVE407', 'P sah + L: 407');
                     $unchanged('P sah + L');
-                    // 407 dan 408 bersamaan: yang tampil satu dari keduanya, tanpa tersimpan
+                    // Q + L: sekarang pasti 407 (408 tidak ada lagi)
                     $r = q9_put($t, $s, $b[0], ['permissions' => [q9_row_body($f['Q'], 1), q9_row_body($f['L'], 1)]]);
                     $t->status($r, 403, 'Q + L');
-                    $t->true(in_array(q9_code($r), ['ARCHIVE407', 'ARCHIVE408']), 'Q + L: 407/408 (' . q9_code($r) . ')');
+                    $t->eq(q9_code($r), 'ARCHIVE407', 'Q + L: 407 pasti');
                     $unchanged('Q + L');
+                    $r = q9_put($t, $s, $b[0], ['permissions' => [q9_row_body($f['L'], 1), q9_row_body(Q9_RANDOM_ID, 1)]]);
+                    $t->eq(q9_code($r), 'ARCHIVE407', 'L + id tidak ada: 407 (authorize) mendahului 404');
+                    $unchanged('L + id tidak ada');
 
                     // 404: dokumen, tidak ada, folder nonaktif
                     foreach (['dokumen' => $f['DP'], 'tidak ada' => Q9_RANDOM_ID, 'folder nonaktif' => $f['PX']] as $label => $id) {
@@ -518,6 +532,7 @@ return [
                         $unchanged("422: $label");
                     }
                 });
+                q9_assert_no408($t, 'AC-11 (seluruh kasus)');
             } finally {
                 q9_purge($t);
             }

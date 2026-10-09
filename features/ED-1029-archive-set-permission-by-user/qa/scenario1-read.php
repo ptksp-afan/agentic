@@ -12,7 +12,7 @@ return [
 
     [
         'id'    => 'AC-4',
-        'title' => 'GET user-permissions/{B} oleh A (lokasi SMR): 200 ARCHIVE200, user.username = B, pohon folder aktif dalam scope (L tidak ada, LC di level teratas dengan id_archive_parent = L), urut nama, R1 di bawah R, nilai B tersimpan (0 tanpa baris; baris folder Off tetap tampil), access A (P true, Q false, QC pembuat, N tanpa hak), dokumen/nonaktif tidak tampil, bentuk node sesuai kontrak',
+        'title' => 'GET user-permissions/{B} oleh A (lokasi SMR): 200 ARCHIVE200, user.username = B, pohon folder aktif dalam scope (L tidak ada, LC di level teratas dengan id_archive_parent = L, folder tanpa View A tetap ada), urut nama, R1 di bawah R, nilai B tersimpan (0 tanpa baris; baris folder Off tetap tampil), access A menurut ED-1025 BR-4 (rev K-12 a: C2 Off di bawah P semua true; Q, N tanpa hak) dan manage_permission true di SEMUA node termasuk Q (rev K-15 b), dokumen/nonaktif tidak tampil, bentuk node sesuai kontrak',
         'run'   => function ($t) {
             q9_recover($t);
             $s = $t->session();
@@ -121,15 +121,18 @@ return [
                 $acc = function ($k) use ($flat, $f) { return $flat[$f[$k]]['access']; };
                 q9_access_is($t, $acc('P'), [1, 1, 0, 0], 'P (A: V+U)');
                 q9_access_is($t, $acc('C1'), [1, 1, 0, 0], 'C1 (A: V+U, induk V+U)');
-                q9_access_is($t, $acc('C2'), [1, 1, 0, 0], 'C2 (Off, induk P V+U)');
-                q9_access_is($t, $acc('Q'), [1, 0, 0, 0], 'Q (A: V saja) -> manage false');
+                q9_access_is($t, $acc('C2'), [1, 1, 1, 1], 'C2 (Off di bawah P V+U: tidak dibatasi induk, rev K-12 a)');
+                q9_access_is($t, $acc('Q'), [1, 0, 0, 0], 'Q (A: V saja) -> manage true (rev K-15 b)');
                 q9_access_is($t, $acc('R'), [1, 1, 1, 1], 'R (Off, tanpa induk)');
                 q9_access_is($t, $acc('R1'), [1, 1, 0, 0], 'R1 (On di bawah R Off, A: V+U)');
                 q9_access_is($t, $acc('QC'), [1, 1, 1, 1], 'QC (A pembuat)');
                 q9_access_is($t, $acc('N'), [0, 0, 0, 0], 'N (On, A tanpa baris)');
                 q9_access_is($t, $acc('LC'), [0, 0, 0, 0], 'LC (On, A tanpa baris; induk L Off tidak membatasi)');
                 q9_access_is($t, $acc('M'), [0, 0, 0, 0], 'M (On, A tanpa baris)');
-                $t->true($acc('P')['manage_permission'] === true && $acc('Q')['manage_permission'] === false, 'AC-4: P manage true, Q manage false');
+                $t->true($acc('P')['manage_permission'] === true && $acc('Q')['manage_permission'] === true, 'AC-4: P dan Q (A View saja) manage true');
+                foreach ($flat as $id => $n) {
+                    $t->true($n['access']['manage_permission'] === true, 'manage_permission true di semua node (' . $n['name'] . ')');
+                }
 
                 // --- B lain tanpa baris: semua nol; data tidak berubah oleh GET
                 $r2 = null;

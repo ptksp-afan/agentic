@@ -3,24 +3,26 @@ key: ED-1029
 epic: ED-1022
 title: Archive - Set Permission by User
 slug: archive-set-permission-by-user
-phase: ba
-qa_round: 2
+phase: gate2
+qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
 agents:
   analyst: {id: a7cec837dd161c8fe, at: 2026-10-06 16:52}
-  be_dev: {id: a6b71ff590be412e2, at: 2026-10-07 16:24}
-  qa_fe: {id: ad839e2fce1f61fd2, at: 2026-10-07 19:43}
-  fe_reviewer: {id: a78666e9b42860a83, at: 2026-10-07 17:50}
-  fe_dev: {id: a69dda4c655949c47, at: 2026-10-07 18:58}
-  digest: {id: a78a6761e2ccd0e65, at: 2026-10-07 17:13}
-  qa_be: {id: a4d5582dc8f978f82, at: 2026-10-07 17:03}
-  be_reviewer: {id: ab58ba4d602c34067, at: 2026-10-07 15:34}
+  be_dev: {id: a3c13cd7a4f8b56cc, at: 2026-10-08 22:44}
+  qa_fe: {id: aeeed430321012622, at: 2026-10-09 02:10}
+  fe_reviewer: {id: ae92098d755e5363c, at: 2026-10-09 01:25}
+  fe_dev: {id: ae3d54f63683bc23a, at: 2026-10-09 00:04}
+  digest: {id: ab30d69cca31cb12d, at: 2026-10-08 23:42}
+  qa_be: {id: af87fa20190baaeae, at: 2026-10-08 23:34}
+  be_reviewer: {id: a57dcc6d9948d8e94, at: 2026-10-08 22:47}
 ---
 ## Status ringkas
-**Minta perbaikan (review batch ED-1022, 2026-10-08 09:25).** Feedback developer untuk item ini: `epics/ED-1022-review-feedback.md` § ED-1029. Developer minta **BA revisi + Gate 1 dulu**, lalu menunggu instruksinya sebelum dikerjakan (bukan langsung be/fe). Commit lama tetap; perbaikan nanti jadi commit baru di atasnya.
-Jira: In Progress, label ai-review dilepas, komentar minta perbaikan. Spec `status: draft` sampai Gate 1 revisi.
-
+**Revisi selesai, commit lokal, menunggu review batch (long run ED-1022).** QA BE rev r1 PASS (AC [BE] 17 PASS / 2 not_verifiable; 29 PASS / 1 SKIP), QA FE rev r1 PASS (13 PASS / 0 FAIL / 1 MANUAL AC-20; e2e 22/22).
+Commit perbaikan: BE 33f1feeb3, FE 442ae9851 (di atas 8ea8ebcf2 / e5355a9c6, tanpa amend); agentic: commit `[DOC] ED-1029 - revisi review` sesudah baris ini. Jira ED-1029 In Progress + label ai-review + komentar siap review (11454); subtask ED-1103/1104/1105 In Progress.
+Untuk review batch: BE review Perlu dikonfirmasi 4 rendah (log 22:47); digest #23 GET customer (log 23:44); tes UI manual task 015 10 butir + task 012 butir 3-9; skenario e2e usang item lain (ED-1025 item "+", ED-1026, ED-1027, ED-1028) dicatat di qa-fe.md § Galeri; jest ArchiveVerificationModal usang sejak commit developer 7fa63869d (bukan diff ini).
+Data uji: QA FE memulihkan persis (hitungan + CHECKSUM 9 tabel), 0 sisa 0QA29-/QA29F-, tidak ada data lain dihapus. Updater/seed: tidak ada yang dijalankan.
+Berikutnya: `/v5-epic review ED-1022` (developer menyetujui -> Done; minta perbaikan -> run revisi lagi).
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -29,6 +31,9 @@ Jira: In Progress, label ai-review dilepas, komentar minta perbaikan. Spec `stat
 | ED-1041 | [BE] Simpan hak folder per user (validasi, atomik, riwayat, kode pesan ARCHIVE440-441) | BE | In Progress |
 | ED-1047 | [FE] Archive - Halaman Set Permission by User + menu "+" + route | FE | In Progress |
 | ED-1053 | [QA] Skenario Set Permission by User | QA | In Progress |
+| ED-1103 | [BE] (rev) user-permissions per Folder Permissions, kelola semua folder dalam scope lokasi | BE | In Progress |
+| ED-1104 | [FE] (rev) halaman by User: permission Perizinan Folder, sel aktif, teks aturan induk | FE | In Progress |
+| ED-1105 | [QA] (rev) skenario revisi, skenario usang, regresi ED-1025 | QA | In Progress |
 
 ## Keputusan developer
 - G1 (gabungan ED-1022, 19:24): semua rekomendasi diterima - EPIC K-1 a, EPIC K-2 b, grup G-1..G-7 (epics/ED-1022-gate1.md §6), K-n lain = rekomendasi analyst; jawaban tertulis di spec § Keputusan
@@ -42,22 +47,16 @@ Jira: In Progress, label ai-review dilepas, komentar minta perbaikan. Spec `stat
 - 2026-10-07 15:23 orkestrator: classifier auto mode menolak satu perintah Bash baca-saja (ls/wc/head definisi agen BE+FE, head scripts/be-reload.sh, grep judul spec) dengan alasan "External System Writes". Tidak diulang dalam bentuk lain; orkestrator tidak membaca berkas-berkas itu sendiri.
 
 ## Log
-- 2026-10-06 16:09 start: baseline BE 42f3e07cb (0 berkas kotor), FE 6afd19054 (0 berkas kotor)
-- 2026-10-06 16:52 ba: selesai, 17 BR / 20 AC / 4 subtask / 7 K (spec.md, contract.md)
-- 2026-10-06 19:50 gate1: disetujui (gabungan); Jira ED-1029 + 4 subtask dibuat, sprint 46
-- 2026-10-07 15:23 long-run: mulai fase be; preflight OK; rebaseline BE dc052a4bc / FE b7e08edcb (0 kotor) karena HEAD bergeser oleh commit ED-1024..ED-1028; ED-1029 + 4 subtask -> In Progress
-- 2026-10-07 15:30 be: v5-be-dev (a6b71ff590be412e2, opus, fallback general-purpose) ED-1035 + ED-1041 selesai; 4 M + 3 baru di BE; php -l 7/7, route OK; smoke qa-http SMOKE-1 PASS (41 asersi) di folder sekali-pakai scratchpad, data QA29S-* dihapus; kontrak §2 + spec Catatan implementasi diperbarui (407 hanya di luar scope, tanpa View efektif -> 408; 440 juga di authorize()); 2 Perlu dikonfirmasi; 0 BLOCKED; 0 ditolak
-- 2026-10-07 15:34 be-review: v5-be-reviewer (ab58ba4d602c34067, sonnet, fallback general-purpose) Harus diperbaiki 0, Perlu dikonfirmasi 2 (404 ARCHIVE440 di authorize(); target user tidak dipersempit seperti select BR-3); -> QA BE r1
-- 2026-10-07 16:13 qa-be r1: v5-qa (a79bde798bc0dcd2d, sonnet) FAIL: 9/10 AC BE PASS, AC-6 FAIL; 21 skenario (18 PASS, 2 FAIL X-1/X-5, 1 SKIP X-ISO); D-1 low (id non-latin1 -> 500 collation; akar sistemik = ED-1071), D-2 medium-low (PUT paralel -> 500 1062 di saveUserRow); regresi ED-1024 26/26, ED-1025 30+1 usang, ED-1026 34+3 usang/digantikan, ED-1027 20+1 SKIP, ED-1028 22/22; DB dipulihkan; 0 ditolak
-- 2026-10-07 16:17 triase: D-1 dilacak di ED-1071 (preseden ED-1025 D-4; arah perbaikan = keputusan developer), komentar di ED-1071; D-2 diperbaiki di item ini (saveUserRow bersama ED-1025); komentar defect di ED-1041 dan ED-1035; fix round 1 -> v5-be-dev (SendMessage, a6b71ff590be412e2)
-- 2026-10-07 16:24 be-fix D-2: v5-be-dev (a6b71ff590be412e2, SendMessage) lockFolders (FOR UPDATE per id PK, urut stabil, query pertama transaksi) di UserPermissionService::update dan ArchiveService::update (tab Permission ED-1025); 3 M (+ArchiveService.php); php -l 3/3; smoke 2x PASS: SMOKE-1 39, CONC-1 30 asersi/64 req, CONC-2 32 asersi/72 req, 0 x 5xx; kontrol negatif (tanpa kunci) reproduksi 500; data QA29F-* dihapus; kontrak §2 + spec Catatan diperbarui; D-1 tidak disentuh; 0 ditolak
-- 2026-10-07 17:03 qa-be r2: v5-qa (a4d5582dc8f978f82, sonnet) PASS 10/10 AC BE; 22 PASS / 1 SKIP (X-ISO); D-2 fixed (~4.030 req paralel, 0 x 5xx, 0 deadlock; scenario5-concurrency.php baru); D-1 -> Dilacak di luar item ED-1071 (X-1 karakterisasi); regresi ED-1024 26/26, ED-1025 30+1 usang, ED-1026 34+3 usang/digantikan, ED-1027 20+1 SKIP, ED-1028 22/22; DB identik sebelum/sesudah; 0 ditolak; -> fe
-- 2026-10-07 17:16 fe digest: api-contract-analyst (a78a6761e2ccd0e65, sonnet, fallback general-purpose) ksp-react docs/specs/Archive/_api.md: +2 endpoint (#25-#26), 1 berubah (#3 lockFolders), 10 jawaban dari kode BE; 4 Perlu dikonfirmasi (18-21) dijawab orkestrator dari spec (BR-7/BR-16, BR-3, BR-11/K-7 a + K-6 a, BR-4/BR-10), dicatat untuk review batch; 0 blocker; -> FE dev
-- 2026-10-07 17:46 fe: FE dev (a2bd645d9f3242b48, general-purpose) ui-plan/slice/logic -> task 012 (ED-1047) logic-done, ui_review gate-2; 11 M + 3 baru (+ _api.md orkestrator: catatan 'belum ada di endpoints.js' diperbarui); eslint bersih, prettier OK (routes.js/ArchiveSelection gagal --check sejak HEAD), build staging OK x3, test Archive 11 suite 259/259, full suite 10 suite gagal = 4 baseline + 6 timeout beban (lulus runInBand); 22 butir Daftar tes UI; 8 Beda dari desain; 0 BLOCKED; 0 ditolak; -> convention-reviewer
-- 2026-10-07 17:50 fe-review: convention-reviewer (a78666e9b42860a83, sonnet, fallback general-purpose) Harus diperbaiki 0, Perlu dikonfirmasi 0, 3 catatan ringan (gerbang lisensi route = pola /archives; urutan import test; tanpa test komponen tersendiri, sudah begitu sebelumnya); -> QA FE r1
-- 2026-10-07 18:46 qa-fe r1: v5-qa (ac9da66d890edfc6d, sonnet) FAIL: AC FE 8 PASS / 1 FAIL (AC-3) / 1 MANUAL (AC-20); D-1 AC-3 PrivateRoute tidak mengalihkan (pra-ada global, ED-1024 F-1/ED-967); F-1 dok butir AC-20 tidak di Daftar tes UI; build OK, jest Archive 259/259, full 10 gagal = 4 baseline + 6 timeout (hijau runInBand); e2e 13 OK / 2 GAGAL (AC-3); regresi BE ED-1024..1029 tanpa regresi (usang yang dikenal); e2e ED-1025 4 OK + 3 usang (salinan disesuaikan 7/7); DB dipulihkan; 0 ditolak
-- 2026-10-07 18:50 triase: D-1 diperbaiki di ED-1047 dengan guard lokal halaman (opsi c; memenuhi AC-3 yang disetujui tanpa mengubah route lain; global tetap ED-967); F-1 butir AC-20 ditambahkan ke Daftar tes UI; komentar di ED-1047; FE dev lama > 1 jam -> agen FE baru
-- 2026-10-07 18:58 fe-fix D-1/F-1: FE dev (a69dda4c655949c47, general-purpose, agen baru) guard lokal di ArchivePermissionPage (usePermission UpdateFolder; dimuat = app.user tidak null; tanpa hak -> navigate replace /unathorized, halaman null, 0 request select/user-permissions); task 012 Daftar tes UI butir 10 diperbarui + butir 23 AC-20 manual; eslint 0, prettier OK, jest Archive runInBand 262/262 (halaman 13/13), build staging OK; PrivateRoute/routes.js tidak disentuh; 0 BLOCKED; 0 ditolak; -> QA FE r2
-- 2026-10-07 19:43 qa-fe r2: v5-qa (ad839e2fce1f61fd2, sonnet) PASS: AC FE 9 PASS / 1 MANUAL (AC-20); D-1/F-1 tertutup (E -> /unathorized, 0 request; A tanpa kilasan, 2x hard reload); build OK, jest Archive 262/262, full 12 gagal = 4 baseline + 8 timeout (hijau runInBand); e2e 16/16; regresi BE ED-1024 26, ED-1025 30+1 usang, ED-1026 34+3 usang, ED-1027 20+1 SKIP, ED-1028 22, ED-1029 22+1 SKIP; galeri work/e2e/ED-1029-archive-set-permission-by-user-20261007-190206/; DB identik; 0 ditolak
-- 2026-10-07 19:43 commit: BE 44bea5136 (8 berkas NEW), FE 916dd5770 (15 berkas NEW), agentic 1e12524; Jira ED-1029 label ai-review + komentar siap review; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
-- 2026-10-08 09:25 review batch: Minta perbaikan → phase: ba (BA revisi menunggu instruksi developer); feedback di epics/ED-1022-review-feedback.md § ED-1029; label ai-review dilepas
+- 2026-10-06..07 (diringkas; rinci di git 1e12524): baseline BE 42f3e07cb/FE 6afd19054; BA 17 BR/20 AC/4 subtask/7 K; Gate 1 gabungan 19:50, Jira ED-1029 + ED-1035/1041/1047/1053 sprint 46; be (a6b71ff590be412e2) + review; QA BE r1 FAIL (D-1 non-latin1 -> ED-1071, D-2 PUT paralel 500 -> lockFolders), r2 PASS 22+1 SKIP; digest; FE (task 012) + review; QA FE r1 FAIL (AC-3 PrivateRoute inert -> guard lokal), r2 PASS e2e 16/16; commit BE 44bea5136, FE 916dd5770, agentic 1e12524; label ai-review
+- 2026-10-08 09:25..15:39 revisi BA (diringkas; rinci di git): review batch Minta perbaikan (epics/ED-1022-review-feedback.md § ED-1029, label ai-review dilepas); BA rev FB-4b/FB-9/FB-5, 20 BR / 28 AC / 3 subtask (rev), K-8; Gate 1 rev: K-8 c, ED-1025 K-15 b/K-12 a/K-16 b/K-14 a, EPIC K-4 a, ED-1070/1071 ditunda; Jira subtask ED-1103 [BE] / ED-1104 [FE] / ED-1105 [QA] sprint 46; spec approved; phase: be
+- 2026-10-08 22:40 long-run (rev): preflight OK; rebaseline BE 8ea8ebcf2 / FE e5355a9c6 (0 kotor; HEAD bergeser oleh revisi ED-1025 + UI/UX ED-1022); ED-1103 -> In Progress
+- 2026-10-08 22:44 be (rev): v5-be-dev (a3c13cd7a4f8b56cc, opus, fallback general-purpose) ED-1103: 3 M (route permission_v5 Folder Permissions; assertCanManage = assertCanManagePermission GE0114 + assertVisible 407, tanpa 408; UpdateRequest::authorize urutan GE0114->440->407); show()/access tidak diubah (sudah K-12 a dari ED-1025); seed BR-18 sudah benar; php -l 3/3, route OK; smoke PASS 3 skenario (79 asersi) di scratchpad, data QA29R-* + role sementara dihapus, user_roles/is_all_location QA dipulihkan; efek samping force_login=1 mencabut token lain user QA; spec Catatan +2, kontrak §2 GE0114; 1 Perlu dikonfirmasi (GET customer lolos permission_v5, sama dengan route Archive lain); 0 BLOCKED; 0 ditolak
+- 2026-10-08 22:47 be-review (rev): v5-be-reviewer (a57dcc6d9948d8e94, sonnet, fallback general-purpose) Harus diperbaiki 0, Perlu dikonfirmasi 4 rendah (GET customer lolos permission_v5; context() dimuat di authorize() tiap PUT; assertCanManagePermission 2x; cutover bergantung seed ED-1025) -> review batch; ED-1105 -> In Progress; qa_round direset 1 (ronde revisi) -> QA BE
+- 2026-10-08 23:34 qa-be (rev r1): v5-qa (af87fa20190baaeae, sonnet) PASS: AC [BE] 17 PASS / 2 not_verifiable (isolasi tenant, customer); 30 skenario 29 PASS / 1 SKIP, 2066 asersi; scenario6-rev.php baru + 7 skenario usang milik sendiri diperbarui (tanpa id permission literal); 0 defect; regresi ED-1024 26/26, ED-1025 40/40, ED-1026 31+6 usang/data developer (dicatat), ED-1027 19+1 usang (updater_logs tidak idempoten)+1 SKIP, ED-1028 22/22; data: dihapus 3 baris yatim archive_documents QA01-R2-DD/DA/DS milik QA ED-1024 (work/qa29rev-deleted-rows.json); updater_logs id 197 executed_at tergeser; 0 ditolak; e2e ED-1029 masih 'Update Folder' (tahap fe)
+- 2026-10-08 23:44 fe digest (rev): api-contract-analyst (ab30d69cca31cb12d, sonnet, fallback general-purpose) _api.md #25/#26 + catatan permission ED-1029 digabung dengan revisi (Folder Permissions, managePermission true semua node, tanpa 408, urutan GE0114->440->407->422); 1 Perlu dikonfirmasi baru (23: GET customer lolos permission_v5) dijawab orkestrator dari kode (PermissionVersion5.php:29, perilaku Archive yang ada; FE tanpa penanganan khusus; dicatat untuk review batch); orkestrator membetulkan 2 kalimat basi 'FolderPermissions belum ada di permissions.js' (kini :339); ED-1104 -> In Progress
+- 2026-10-09 00:04 fe (rev): FE dev (ae3d54f63683bc23a, general-purpose) ED-1104 task 015-enh-archive-permission-page-rev.md logic-done (ui_review gate-2); 9 M + 1 baru (+ _api.md orkestrator): FolderPermissions di '+'/route/guard halaman, teks info BR-9, tanpa modal (K-8 c), test diperbarui; eslint bersih, prettier OK (routes.js gagal sejak HEAD), build staging OK x2, jest Archive 323/325 (2 gagal pra-ada), full 6 gagal pra-ada + 7 flaky beban (lulus diulang); 10 butir Daftar tes UI; 0 Beda dari desain; 0 BLOCKED; 0 ditolak; usulan: timeout pickUser 3000; butir 6/10 task 012 usang (diganti 015)
+- 2026-10-09 00:04 pause: atas permintaan developer (berangkat kantor 06:45 WIB); agen FE sudah selesai sebelum pause diproses, tidak ada agen/perintah yang terputus; berikutnya convention-reviewer (fase fe)
+- 2026-10-09 01:22 resume (rev): preflight OK; kode tak berubah sejak pause (BE 3 M, FE 10 M + 1 baru = changed.txt, HEAD BE 8ea8ebcf2 / FE e5355a9c6); mulai convention-reviewer
+- 2026-10-09 01:25 fe-review (rev): convention-reviewer (ae92098d755e5363c, sonnet, fallback general-purpose) Harus diperbaiki 0, Perlu dikonfirmasi 2 (1: 2 kalimat basi 'kode FE masih UpdateFolder' di _api.md:1140/:1366 -> dibetulkan orkestrator; 2: ArchivePage canUpdate=UpdateFolder untuk drawer ubah folder, benar, tanpa gating lain); eslint bersih; prettier gagal hanya pra-ada/pola spec -> QA FE r1
+- 2026-10-09 02:10 qa-fe (rev r1): v5-qa (aeeed430321012622, sonnet) PASS 13 / FAIL 0 / MANUAL 1 (AC-20 lisensi); build staging OK; jest Archive 323/325 (2 bukan dari diff: tooltip timeout beban, ArchiveVerificationModal usang sejak 7fa63869d); e2e ED-1029 22/22 (qa/e2e diperbarui ke Folder Permissions + profil M/D, AC-25/26, 403 GE0114); regresi BE 29 PASS / 1 SKIP; regresi e2e item lain: skenario usang ED-1025/1026/1027/1028 dicatat saja; data dipulihkan persis (checksum 9 tabel), 0 dihapus; 0 penolakan; galeri work/e2e/ED-1029-archive-set-permission-by-user-20261009-020703/
+- 2026-10-09 02:14 commit (rev): BE 33f1feeb3, FE 442ae9851 (commit baru di atas HEAD, tanpa amend; changed.sh semua NEW); FE publish build/ tidak dilakukan (long run); Jira ED-1029 label ai-review + komentar siap review 11454; phase: gate2 (menunggu review batch)

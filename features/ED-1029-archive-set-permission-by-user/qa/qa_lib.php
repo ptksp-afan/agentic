@@ -408,14 +408,34 @@ if (!function_exists('q9_dbname')) {
 
     // ------------------------------------------------------------------ request & asersi
 
+    /** Semua msg_code yang dilihat q9_get/q9_put sejak q9_codes_reset() (untuk asersi "tanpa ARCHIVE408", rev K-15 b). */
+    function q9_codes_reset()
+    {
+        $GLOBALS['q9_codes_seen'] = [];
+    }
+
+    function q9_codes_note($r)
+    {
+        $GLOBALS['q9_codes_seen'][] = $r[1]['code'] ?? $r[1]['msg_code'] ?? ('HTTP' . $r[0]);
+
+        return $r;
+    }
+
+    /** ARCHIVE408 tidak pernah dikirim endpoint user-permissions (rev). */
+    function q9_assert_no408($t, $label)
+    {
+        $seen = $GLOBALS['q9_codes_seen'] ?? [];
+        $t->true(!in_array('ARCHIVE408', $seen, true), $label . ': tidak ada ARCHIVE408 di ' . count($seen) . ' respons');
+    }
+
     function q9_get($t, $s, $idUser)
     {
-        return $t->call($s, 'GET', 'api/v5/document-archive/user-permissions/' . rawurlencode($idUser));
+        return q9_codes_note($t->call($s, 'GET', 'api/v5/document-archive/user-permissions/' . rawurlencode($idUser)));
     }
 
     function q9_put($t, $s, $idUser, $body)
     {
-        return $t->call($s, 'PUT', 'api/v5/document-archive/user-permissions/' . rawurlencode($idUser), $body);
+        return q9_codes_note($t->call($s, 'PUT', 'api/v5/document-archive/user-permissions/' . rawurlencode($idUser), $body));
     }
 
     /** Satu baris body permissions. */
@@ -461,15 +481,18 @@ if (!function_exists('q9_dbname')) {
         return $flat;
     }
 
-    /** access = objek 5 kunci [view, update, delete, store], manage_permission = update. */
-    function q9_access_is($t, $access, array $rights, $label)
+    /**
+     * access = objek 5 kunci [view, update, delete, store] + manage_permission. Rev (ED-1025 K-15 b): manage_permission =
+     * role pemanggil memegang Folder Permissions, sama di semua folder; di endpoint ini selalu true (default $manage).
+     */
+    function q9_access_is($t, $access, array $rights, $label, $manage = true)
     {
         $expected = [
             'view'              => (bool) $rights[0],
             'update'            => (bool) $rights[1],
             'delete'            => (bool) $rights[2],
             'store'             => (bool) $rights[3],
-            'manage_permission' => (bool) $rights[1],
+            'manage_permission' => (bool) $manage,
         ];
         $t->eq(json_encode($access), json_encode($expected), $label . ': access');
     }
@@ -566,6 +589,137 @@ if (!function_exists('q9_dbname')) {
             q9_perm($t, $idArchive, $idUser, $flags[0], $flags[1], $flags[2], $flags[3]);
         }
     }
+
+    // ------------------------------------------------------------------ role fixture & data J (rev 2026-10-08)
+
+    define('Q9_ROLE_PREFIX', 'QA29-ROLE-');
+
+    /** Nama permission per profil uji spec § 6 (nama persis di tabel permissions; tanpa id literal). */
+    function q9_perms_profile($profile)
+    {
+        $p = [
+            'A' => ['List Archive', 'View Folder', 'Update Folder', 'Folder Permissions'],
+            'M' => ['List Archive', 'View Folder', 'Folder Permissions'],
+            'D' => ['List Archive', 'View Folder', 'Update Folder'],
+            'E' => ['List Archive', 'View Folder'],
+        ];
+
+        return $p[$profile];
+    }
+
+    /**
+     * Buat role fixture QA29-ROLE-<label> (bukan superadmin, aktif) dengan permission bernama $names. Dibuang q9_role_purge().
+     * @return int id_role
+     */
+    function q9_role($t, $label, array $names)
+    {
+        return q9_w($t, function ($c) use ($label, $names) {
+            $now = date('Y-m-d H:i:s');
+            $id = $c->table('roles')->insertGetId([
+                'role_name' => Q9_ROLE_PREFIX . $label, 'description' => 'QA ED-1029 fixture', 'is_superadmin' => 4,
+                'is_active' => 1, 'is_used' => 1, 'created_by' => 'QA29', 'created_at' => $now, 'updated_by' => 'QA29', 'updated_at' => $now,
+            ]);
+            foreach ($names as $name) {
+                $perm = $c->table('permissions')->where('permission_name', $name)->first();
+                if (!$perm) {
+                    throw new \RuntimeException("prasyarat: permission '$name' tidak ada di DB uji (seed ulang ED-1025 belum diterapkan?)");
+                }
+                $c->table('role_permissions')->insert([
+                    'id_role' => $id, 'id_permission' => $perm->id_permission, 'permission_name' => $perm->permission_name,
+                    'created_at' => $now, 'updated_at' => $now, 'created_by' => 'QA29', 'updated_by' => 'QA29',
+                ]);
+            }
+
+            return (int) $id;
+        });
+    }
+
+    /** Hapus semua role fixture QA29-ROLE- (user_roles yang menunjuknya, role_permissions, lalu role). Idempoten. */
+    function q9_role_purge($t)
+    {
+        q9_w($t, function ($c) {
+            $ids = $c->table('roles')->where('role_name', 'like', Q9_ROLE_PREFIX . '%')->pluck('id_role')->all();
+            if ($ids) {
+                $c->table('user_roles')->whereIn('id_role', $ids)->delete();
+                $c->table('role_permissions')->whereIn('id_role', $ids)->delete();
+                $c->table('roles')->whereIn('id_role', $ids)->delete();
+            }
+        });
+    }
+
+    /** Buat keempat role profil spec: ['A' => id, 'M' => id, 'D' => id, 'E' => id]. */
+    function q9_roles_profile($t)
+    {
+        $out = [];
+        foreach (['A', 'M', 'D', 'E'] as $p) {
+            $out[$p] = q9_role($t, $p, q9_perms_profile($p));
+        }
+
+        return $out;
+    }
+
+    /** id_role yang memegang (atau tidak) permission bernama $name, di antara $candidates (tanpa id permission literal). */
+    function q9_roles_by_permission($t, $name, array $candidates, $holds)
+    {
+        $with = $t->db()->table('role_permissions')->join('permissions', 'permissions.id_permission', '=', 'role_permissions.id_permission')
+            ->where('permissions.permission_name', $name)->pluck('role_permissions.id_role')->all();
+        $out = [];
+        foreach ($candidates as $r) {
+            if (in_array($r, $with) === $holds && $t->db()->table('roles')->where('id_role', $r)->exists()) {
+                $out[] = $r;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Tambah satu role ke user LAIN (bukan QA_USER) selama $fn, lalu hapus baris user_roles yang ditambahkan itu. Role asli
+     * user itu tidak disentuh. Hanya untuk user nyata kedua (QA_USER2).
+     */
+    function q9_with_extra_role($t, $idUser, $idRole, callable $fn)
+    {
+        $before = $t->db()->table('user_roles')->where('id_user', $idUser)->count();
+        q9_w($t, function ($c) use ($idUser, $idRole) {
+            $now = date('Y-m-d H:i:s');
+            $c->table('user_roles')->insert([
+                'id_user' => $idUser, 'id_role' => $idRole, 'is_all_location' => 1, 'id_location' => null,
+                'created_at' => $now, 'updated_at' => $now,
+            ]);
+        });
+        try {
+            return $fn();
+        } finally {
+            q9_w($t, function ($c) use ($idUser, $idRole) {
+                $c->table('user_roles')->where('id_user', $idUser)->where('id_role', $idRole)->delete();
+            });
+            $t->eq($t->db()->table('user_roles')->where('id_user', $idUser)->count(), $before, 'user_roles user kedua kembali ke jumlah awal');
+        }
+    }
+
+    /**
+     * Data FB-9 (pola ED-1025, dibuat user lain 'QA29'): J (On, A View saja) dengan anak JA (On, A V/U/D/S), JB (On, tanpa baris A),
+     * JC (Off). $meId = pemanggil A.
+     */
+    function q9_fixture_j($t, $meId)
+    {
+        $f = [];
+        $f['J'] = q9_folder($t, 'J', ['perm' => 1]);
+        $f['JA'] = q9_folder($t, 'JA', ['perm' => 1, 'parent' => $f['J']]);
+        $f['JB'] = q9_folder($t, 'JB', ['perm' => 1, 'parent' => $f['J']]);
+        $f['JC'] = q9_folder($t, 'JC', ['perm' => 0, 'parent' => $f['J']]);
+        q9_perm($t, $f['J'], $meId, 1);
+        q9_perm($t, $f['JA'], $meId, 1, 1, 1, 1);
+
+        return $f;
+    }
+
+    /** Nilai tersimpan satu node (is_view..is_store) sebagai JSON [v,u,d,s]. */
+    function q9_node_vals($n)
+    {
+        return json_encode([$n['is_view'], $n['is_update'], $n['is_delete'], $n['is_store']]);
+    }
+
 
     define('Q9_RANDOM_ID', '999999999999999999999999999999');
 }
