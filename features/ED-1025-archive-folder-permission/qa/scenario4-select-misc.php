@@ -470,7 +470,7 @@ return [
 
     [
         'id'    => 'X-8',
-        'title' => 'D-2 diperbaiki: name bertipe array pada PUT archives/{id}, rename, create-folder = 422 (data tidak berubah). ED-1070 (karakterisasi perilaku pra-ada): search list bukan JSON objek = 500; PUT id_archive_parent = diri sendiri = 200 + siklus',
+        'title' => 'D-2 diperbaiki: name bertipe array pada PUT archives/{id}, rename, create-folder = 422 (data tidak berubah). ED-1069 (diperbaiki, dibalik oleh QA ED-1069 AC-12): PUT id_archive_parent = diri sendiri = 400 ARCHIVE404, induk tetap. ED-1070 (karakterisasi perilaku pra-ada): search list bukan JSON objek = 500',
         'run'   => function ($t) {
             q2_recover($t);
             $s = $t->session();
@@ -517,13 +517,15 @@ return [
                     $drift[] = 'ED-1070 berubah: GET search + id_archive bukan JSON kini HTTP ' . $r[0] . ' (sebelumnya 500)';
                 }
 
-                // PUT id_archive_parent = diri sendiri (O-3): 200 dan folder menjadi induk dirinya (siklus); dipulihkan
+                // PUT id_archive_parent = diri sendiri (O-3): DIPERBAIKI oleh ED-1069 (K-3 a; AC-4/AC-12). Dulu karakterisasi
+                // "200 + folder menjadi induk dirinya (siklus)" (ED-1070 butir 2); kini ASERSI: 400 ARCHIVE404 dan induk tetap.
+                // Pemulihan defensif tetap dijalankan agar siklus tidak tertinggal bila asersi gagal.
                 $r = q2_put($t, $s, $P, q2_body($pName, ['id_archive_parent' => $P]));
-                $selfParent = q2_row($t, $P)['id_archive_parent'] === $P;
+                $parentAfter = q2_row($t, $P)['id_archive_parent'];
                 q2_set_archive($t, $P, ['id_archive_parent' => null]);
-                if ($r[0] !== 200 || !$selfParent) {
-                    $drift[] = 'ED-1070 berubah: PUT id_archive_parent = diri sendiri kini HTTP ' . $r[0] . ', induk = diri sendiri: ' . var_export($selfParent, true) . ' (sebelumnya 200 + siklus)';
-                }
+                $t->status($r, 400, 'PUT id_archive_parent = diri sendiri (ED-1069 AC-12)');
+                $t->code($r, 'ARCHIVE404', 'PUT id_archive_parent = diri sendiri (ED-1069 AC-12)');
+                $t->eq($parentAfter, null, 'induk P tetap root (tidak menjadi induk dirinya)');
                 $t->eq($drift, [], 'karakterisasi ED-1070 sama dengan perilaku pra-ada (bila gagal: ED-1070 telah mengubah perilaku, perbarui skenario)');
             } finally {
                 q2_purge($t);
