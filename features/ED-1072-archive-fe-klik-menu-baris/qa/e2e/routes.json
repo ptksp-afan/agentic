@@ -1,0 +1,6 @@
+{
+  "feature": "ED-1072",
+  "routes": [
+    { "name": "Archive (QA_USER) - layar terbuka tanpa error", "path": "/archives", "profiles": ["default"], "waitFor": ".archive-page .ant-table", "ref": "AC-1" }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "fixtures": [
+    {
+      "name": "cell-click-data",
+      "reason": "AC-2..9 butuh dokumen D di dalam folder F dengan `breadcrumbs` terisi (fixture ED-1025/1027 tanpa breadcrumbs menyamarkan gejala), nama D = nomor transaksi bertautan (Delivery Order), folder ber-perisai, folder V/T, dan pencarian root yang menemukan D: dibuat langsung di DB (folder/dokumen berawalan 0QA72-, satu archive_permissions untuk QA_USER); teardown membuang HANYA baris yang dicatat jurnal (+ sapu berawalan 0QA72-), tidak menyentuh tabel opname, folder developer, role, atau user.",
+      "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" up",
+      "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" down",
+      "profiles": ["default"],
+      "timeout_s": 180
+    }
+  ]
+}

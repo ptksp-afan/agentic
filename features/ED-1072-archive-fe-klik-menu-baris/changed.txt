@@ -1,0 +1,6 @@
+fe	NEW	.M	docs/specs/Archive/_module.md
+fe	NEW	.M	src/containers/Archive/ArchivePage/index.js
+fe	NEW	.M	src/containers/Archive/ArchivePage/index.test.js
+fe	NEW	.M	src/containers/Archive/archive.function.js
+fe	NEW	.M	src/containers/Archive/archive.function.test.js
+fe	NEW	??	docs/specs/Archive/021-fix-cell-action-click.md
