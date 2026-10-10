@@ -9,6 +9,14 @@
  *   "$PHP_BIN" fixture.php ids       cetak peta nama -> id_archive + angka harapan (JSON, tanpa rahasia)
  *   "$PHP_BIN" fixture.php inspect   cetak keadaan DB: is_verified per dokumen uji + sesi opname milik fixture (JSON, baca saja)
  *   "$PHP_BIN" fixture.php display   cetak baris display setting documentArchive (kolom aktif; JSON, baca saja)
+ *   "$PHP_BIN" fixture.php grant-od  (rev) beri role(s) QA_USER2 permission `Opname Document` (per NAMA) SEMENTARA: hanya baris
+ *                                    role_permissions yang dibuat (created_by QA27E2E, id di .grant-journal.json); role yang sudah
+ *                                    memegangnya tidak disentuh. Dipakai satu test [user2] (EN + lokasi terbatas), selalu dicabut lagi.
+ *   "$PHP_BIN" fixture.php set-folder-active <nama 0QA27-...> <0|1>  (QA FE rev r2) nonaktifkan/aktifkan lagi SATU folder milik fixture
+ *                                    (hanya berawalan PREFIX dan hanya selama fixture up): jalur error NYATA modal folder (folder
+ *                                    hilang sesudah list dimuat -> BE 404 ARCHIVE400 asli). `down` membuang barisnya apa pun nilainya.
+ *   "$PHP_BIN" fixture.php revoke-od hapus PERSIS baris yang dibuat grant-od; ringkasan (jumlah+CRC) role_permissions harus sama
+ *                                    dengan sebelum grant, bila beda exit 1. `down` ikut mencabut sisa grant.
  *
  * Jurnal (.fixture-journal.json, ditulis up SEBELUM baris pertama): id sesi opname yang sudah ada sebelum up, snapshot kolom
  * verifikasi archives yang tak-bawaan, id archive dan id sesi yang disisipkan fixture. Milik fixture = archives berawalan
@@ -27,8 +35,9 @@
  *   0QA27-NOVIEW  ND1(6,V); folder permission aktif tanpa baris user QA   => "-" (tak ikut angka)
  *   dokumen root  0QA27-RD-V (6, V), 0QA27-RD-U (7)                      => 1/2 di root
  *   Kontribusi fixture ke ringkasan All Archive (user QA): verified 7, total 17.
- * Sesi terkonfirmasi (terbaru dulu): S4 ALPHA (scope "ALPHA-S1 + 1 subfolder"), S3 root, S2 GAMMA, S1 BETA (tidak tampil: batas 3);
- * satu draft (status 1) tidak pernah tampil.
+ * Sesi terkonfirmasi (terbaru dulu): S4 ALPHA (scope ED-1026 rev "0QA27-ALPHA + 2 subfolder": folder opname ALPHA, 2 subfolder
+ * dicentang di Step 1), S3 root ("Semua Arsip · root" / "All Archive · root"), S2 GAMMA (tanpa subfolder: nama folder saja),
+ * S1 BETA (tidak tampil: batas 3). (rev, ED-1026 FB-3) DB hanya berisi sesi terkonfirmasi (status 2): tanpa draft.
  */
 
 namespace QaHttp;
@@ -62,6 +71,7 @@ function fail($line)
 $cmd = $argv[1] ?? '';
 $journal = __DIR__ . '/.fixture-journal.json';
 $idsFile = __DIR__ . '/.fixture-ids.json';
+$grantJournal = __DIR__ . '/.grant-journal.json';
 
 Laravel::boot();
 $db = Config::defaultDb();
@@ -287,7 +297,51 @@ function compare($before, $after, &$lines)
     return $ok;
 }
 
+// ------------------------------------------------------------------ grant sementara `Opname Document` (rev, test [user2] EN)
+
+const GRANT_BY = 'QA27E2E';
+const GRANT_PERMISSION = 'Opname Document';
+
+/** [jumlah baris, jumlah CRC32 per baris] role_permissions: bukti pemulihan persis. */
+function rpSum($c)
+{
+    $cols = array_map(function ($r) {
+        return $r->Field;
+    }, $c->select('SHOW COLUMNS FROM `role_permissions`'));
+    $parts = array_map(function ($x) {
+        return "IFNULL(CAST(`$x` AS CHAR),'~')";
+    }, $cols);
+    $r = $c->selectOne("SELECT COUNT(*) n, IFNULL(SUM(CRC32(CONCAT_WS('|'," . implode(',', $parts) . '))),0) h FROM `role_permissions`');
+
+    return [(int) $r->n, (string) $r->h];
+}
+
+/** Cabut baris grant yang tercatat di jurnal (hanya id jurnal + created_by GRANT_BY). Mengembalikan baris pesan masalah. */
+function grantRevoke($c, $file)
+{
+    $j = journalRead($file);
+    if ($j === null) {
+        return [];
+    }
+    $ids = $j['ids'] ?? [];
+    if ($ids) {
+        $c->table('role_permissions')->whereIn('id_role_permission', $ids)->where('created_by', GRANT_BY)->delete();
+    }
+    $lines = [];
+    if (rpSum($c) !== ($j['before'] ?? null)) {
+        $lines[] = 'BEDA role_permissions sesudah grant dicabut: sebelum=' . json_encode($j['before'] ?? null) . ' sesudah=' . json_encode(rpSum($c));
+    } else {
+        @unlink($file);
+    }
+
+    return $lines;
+}
+
 if ($cmd === 'up') {
+    $gl = grantRevoke($c, $grantJournal); // sisa grant run yang mati
+    if ($gl) {
+        fail('sisa grant run lama tidak bisa dibereskan: ' . implode('; ', $gl));
+    }
     $old = journalRead($journal);
     if ($old !== null) { // run sebelumnya mati: bereskan dulu, hanya data yang tercatat jurnal itu
         if (($old['v'] ?? 0) !== JOURNAL_V) {
@@ -411,7 +465,8 @@ if ($cmd === 'up') {
 
     // sesi opname terkonfirmasi (snapshot angka; dibuat langsung di DB)
     $sessions = [];
-    $session = function ($key, $idArchive, $scopeName, $scopeCount, $confirmedAt, $createdBy, $nums, $status = 2) use ($c, $gen, &$sessions, $journal) {
+    $session = function ($key, $idArchive, $scopeName, $scopeCount, $confirmedAt, $createdBy, $nums) use ($c, $gen, &$sessions, $journal) {
+        $status = 2; // hanya sesi terkonfirmasi (ED-1026 FB-3)
         $sid = $gen();
         journalAdd($journal, 'sessions', [$sid]); // dicatat dulu: sesi root (S3) tidak bisa dikenali dari foldernya
         $c->table('archive_opnames')->insert([
@@ -458,8 +513,6 @@ if ($cmd === 'up') {
         $folderRow($s, 1, $P . 'ALPHA-S1', $ids[$P . 'ALPHA-S1'], $ids[$P . 'ALPHA'], 2, 1, $at);
         $folderRow($s, 1, $P . 'ALPHA-S2', $ids[$P . 'ALPHA-S2'], $ids[$P . 'ALPHA'], 1, 0, $at);
         $folderRow($s, 2, $P . 'ALPHA-S1-X', $ids[$P . 'ALPHA-S1-X'], $ids[$P . 'ALPHA-S1'], 1, 1, $at);
-        // draft (tidak pernah tampil)
-        $session('DRAFT', $ids[$P . 'GAMMA'], $P . 'GAMMA', 0, '2026-10-07 07:00:00', 'qa27draft', [3, 0, 0, 0], 1);
     });
 
     $ids['_sessions'] = $sessions;
@@ -469,18 +522,22 @@ if ($cmd === 'up') {
     $ids['_expect'] = ['summary_verified' => $baselineVerified + 7, 'summary_total' => $baselineTotal + 17];
     $ids['_user'] = ['id_user' => $user->id_user, 'username' => $user->username];
     file_put_contents($idsFile, json_encode($ids));
-    say('fixture up: ' . (count($ids) - 5) . ' entri archive, 5 sesi (4 terkonfirmasi + 1 draft); baseline dokumen aktif=' . $baselineTotal
+    say('fixture up: ' . (count($ids) - 5) . ' entri archive, 4 sesi terkonfirmasi; baseline dokumen aktif=' . $baselineTotal
         . ' verified=' . $baselineVerified . '; archives=' . $before['archives']['count'] . ' opname=' . $before['archive_opnames']['count']);
     exit(0);
 }
 
 if ($cmd === 'down') {
+    $gl = grantRevoke($c, $grantJournal);
+    foreach ($gl as $l) {
+        say($l);
+    }
     $old = journalRead($journal);
     if ($old === null) { // tanpa jurnal tidak ada bukti baris mana milik fixture: jangan sentuh apa pun
         $orphans = count(prefixArchiveIds($c));
         say('fixture down: tidak ada jurnal (down tanpa up yang lulus?) -> TIDAK ADA yang dihapus atau dipulihkan'
             . ($orphans ? "; PERIKSA: $orphans baris archives berawalan " . PREFIX . ' tanpa jurnal (bereskan manual)' : ''));
-        exit($orphans ? 1 : 0);
+        exit(($orphans || $gl) ? 1 : 0);
     }
     if (($old['v'] ?? 0) !== JOURNAL_V) {
         say('fixture down: jurnal format lama -> TIDAK ADA yang dihapus; bereskan manual');
@@ -500,6 +557,7 @@ if ($cmd === 'down') {
     foreach ($lines as $l) {
         say($l);
     }
+    $lines = array_merge($lines, $gl);
     if (!$lines) {
         @unlink($journal);
     }
@@ -550,4 +608,60 @@ if ($cmd === 'inspect') {
     exit(0);
 }
 
-fail('pakai: up | down | ids | inspect | display');
+if ($cmd === 'grant-od') {
+    $stale = grantRevoke($c, $grantJournal);
+    if ($stale) {
+        fail('sisa grant sebelumnya tidak bisa dibereskan: ' . implode('; ', $stale));
+    }
+    $uid = $c->table('users')->where('username', Config::get('QA_USER2'))->value('id_user');
+    if (!$uid) {
+        fail('QA_USER2 tidak ditemukan di DB');
+    }
+    $pid = $c->table('permissions')->where('permission_name', GRANT_PERMISSION)->value('id_permission');
+    if ($pid === null) {
+        fail('permission ' . GRANT_PERMISSION . ' tidak ada (dicari per nama)');
+    }
+    $roles = $c->table('user_roles')->where('id_user', $uid)->pluck('id_role')->all();
+    $before = rpSum($c);
+    journalWrite($grantJournal, ['v' => 1, 'ids' => [], 'before' => $before, 'roles' => $roles]);
+    $made = [];
+    foreach ($roles as $role) {
+        $has = $c->table('role_permissions')->where('id_role', $role)->where('id_permission', $pid)->exists();
+        if ($has) {
+            continue;
+        }
+        $made[] = $c->table('role_permissions')->insertGetId([
+            'id_role' => $role, 'id_permission' => $pid, 'permission_name' => GRANT_PERMISSION,
+            'created_at' => date('Y-m-d H:i:s'), 'created_by' => GRANT_BY,
+        ]);
+        journalAdd($grantJournal, 'ids', [end($made)]);
+    }
+    $users = [];
+    foreach ($roles as $role) {
+        $users[$role] = (int) $c->table('user_roles')->where('id_role', $role)->count();
+    }
+    say(json_encode(['roles' => $roles, 'made' => $made, 'users_per_role' => $users]));
+    exit(0);
+}
+
+if ($cmd === 'revoke-od') {
+    $lines = grantRevoke($c, $grantJournal);
+    foreach ($lines as $l) {
+        say($l);
+    }
+    say($lines ? 'revoke-od: GAGAL' : 'revoke-od: grant dicabut, role_permissions identik dengan sebelum grant');
+    exit($lines ? 1 : 0);
+}
+
+if ($cmd === 'set-folder-active') {
+    $name = (string) ($argv[2] ?? '');
+    $to = ($argv[3] ?? '') === '0' ? 0 : 1;
+    if (strpos($name, PREFIX) !== 0 || journalRead($journal) === null) {
+        fail('hanya folder berawalan ' . PREFIX . ' dan hanya selama fixture up (jurnal ada)');
+    }
+    $n = $c->table('archives')->whereRaw('`name` LIKE BINARY ?', [$name])->where('type', 1)->update(['is_active' => $to]);
+    say(json_encode(['name' => $name, 'is_active' => $to, 'rows' => $n]));
+    exit($n === 1 ? 0 : 1);
+}
+
+fail('pakai: up | down | ids | inspect | display | grant-od | revoke-od | set-folder-active');

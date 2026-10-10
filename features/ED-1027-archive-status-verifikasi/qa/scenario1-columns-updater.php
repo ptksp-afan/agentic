@@ -23,7 +23,7 @@ return [
 
     [
         'id'    => 'AC-1',
-        'title' => 'list: result.columns memuat documentVerified tepat sesudah document.relatedEmployeeName dan sebelum history (sort=false, tipe string, judul en/id); column_display_settings documentArchive (current & available) sama dengan config; Updater terdaftar (kunci terbesar, berkas ada) & tercatat sukses',
+        'title' => 'list: result.columns memuat documentVerified tepat sesudah document.relatedEmployeeName dan sebelum history (sort=false, tipe string, judul en/id); column_display_settings documentArchive (current & available) sama dengan config; Updater terdaftar (berkas ada, kunci konsisten) & tercatat sukses',
         'run'   => function ($t) use ($q27_seq, $q27_settings, $q27_updater) {
             $s = $t->session();
             $r = q27_list($t, $s);
@@ -60,13 +60,15 @@ return [
                 $t->eq($list[$i], $config['current_columns'][array_search('documentVerified', $q27_seq($config['current_columns']), true)], "DB $name: objek kolom = config");
             }
 
-            // --- Updater: terdaftar, berkas ada, kunci terbesar, tercatat sukses
+            // --- Updater: terdaftar, berkas ada, kunci konsisten dengan nama berkas, tercatat sukses
             $be = rtrim($t->conf('BE_DIR'), '/');
             $conf = require $be . '/Modules/UpdateVersion/Updaters/config.php';
             $file = 'Modules\\UpdateVersion\\Updaters\\2026_10_07_14_13_16_AddDocumentVerifiedColumnArchive';
             $key = array_search($file, $conf, true);
             $t->true($key !== false, 'Updater terdaftar di Updaters/config.php');
-            $t->eq(max(array_keys($conf)), $key, 'kunci Updater = kunci terbesar di config.php (urutan jalan terakhir)');
+            // (rev 2026-10-09, gate1 §5) asersi "kunci terbesar" usang: Updater item lain (mis. DeleteArchiveOpnameDraft) kini lebih besar
+            $t->true(is_int($key) && $key > 0, 'kunci Updater bilangan bulat positif: ' . $key);
+            $t->note('Updater ED-1027 terdaftar; kunci terbesar di config.php sekarang ' . max(array_keys($conf)) . ($key === max(array_keys($conf)) ? ' (= ED-1027)' : ' (milik Updater lain, bukan masalah)'));
             $t->eq(count($conf), count(array_unique($conf)), 'tidak ada Updater terdaftar ganda');
             $t->eq(count(array_keys($conf)), count(array_unique(array_keys($conf))), 'kunci unik');
             $t->true(is_file($be . '/' . $q27_updater), 'berkas Updater ada');
@@ -87,7 +89,11 @@ return [
             $snapshot = $q27_settings($t);
             $t->eq(count($snapshot), 1, 'prasyarat: 1 baris documentArchive');
             $othersBefore = md5(json_encode(q27_rows($c->table('column_display_settings')->where('module_name', '!=', 'documentArchive')->orderBy('module_name')->get())));
-            $logBefore = md5(json_encode(q27_rows($c->table('updater_logs')->orderBy('key_id')->get())));
+            $logBefore = md5(json_encode(q27_rows($c->table('updater_logs')->orderBy('id')->get())));
+            // (rev 2026-10-09, gate1 §5) baris updater_logs milik Updater ini sudah ada (dijalankan developer): executeUpdater
+            // menimpanya -> cadangkan SELURUH baris key_id ini (termasuk id & executed_at) dan kembalikan persis di finally
+            $logKey = null;
+            $logSnapshot = [];
 
             $restore = function () use ($t, $snapshot) {
                 q27_w($t, function ($w) use ($snapshot) {
@@ -142,6 +148,8 @@ return [
                 $file = 'Modules\\UpdateVersion\\Updaters\\2026_10_07_14_13_16_AddDocumentVerifiedColumnArchive';
                 $key = array_search($file, $conf, true);
                 $hadLog = $c->table('updater_logs')->where('key_id', $key)->count();
+                $logKey = $key;
+                $logSnapshot = q27_rows($c->table('updater_logs')->where('key_id', $key)->orderBy('id')->get());
                 q27_w($t, function ($w) use ($be, $key, $file) {
                     $w->table('column_display_settings')->where('module_name', 'documentArchive')->delete();
                     $ctl = new \Modules\UpdateVersion\Http\Controllers\UpdateVersionController();
@@ -157,16 +165,20 @@ return [
                 $t->eq($rows[0]['current_columns'], $first, 'runner nyata: isi sama dengan hasil run langsung');
             } finally {
                 $restore();
-                if (isset($key) && empty($hadLog)) {
-                    q27_w($t, function ($w) use ($key) {
-                        $w->table('updater_logs')->where('key_id', $key)->delete();
+                if ($logKey !== null) {
+                    // hapus baris key_id ini (baris asli yang ditimpa maupun baris baru), lalu masukkan lagi cadangan persis
+                    q27_w($t, function ($w) use ($logKey, $logSnapshot) {
+                        $w->table('updater_logs')->where('key_id', $logKey)->delete();
+                        if ($logSnapshot) {
+                            $w->table('updater_logs')->insert($logSnapshot);
+                        }
                     });
                 }
             }
             $after = $q27_settings($t);
             $t->eq(json_encode($after), json_encode($snapshot), 'baris documentArchive dipulihkan persis');
             $t->eq(md5(json_encode(q27_rows($c->table('column_display_settings')->where('module_name', '!=', 'documentArchive')->orderBy('module_name')->get()))), $othersBefore, 'modul lain utuh sesudah pemulihan');
-            $t->eq(md5(json_encode(q27_rows($c->table('updater_logs')->orderBy('key_id')->get()))), $logBefore, 'updater_logs dipulihkan persis (baris log uji dihapus)');
+            $t->eq(md5(json_encode(q27_rows($c->table('updater_logs')->orderBy('id')->get()))), $logBefore, 'updater_logs dipulihkan persis (baris asli id/executed_at kembali, baris log uji dihapus)');
         },
     ],
 ];

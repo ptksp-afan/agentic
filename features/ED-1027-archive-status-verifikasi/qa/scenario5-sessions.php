@@ -2,21 +2,30 @@
 /**
  * ED-1027 - sesi opname & status verified dari opname ED-1026: AC-10 (last_sessions All Archive: 3 terbaru terkonfirmasi,
  * terlihat sesuai K-4 + EPIC K-1 a), AC-11 (per folder: sesi yang mencakup folder / subfolder terlihat, potongan snapshot),
- * AC-12 (Confirm Opname menaikkan / menurunkan angka). Sesi dibuat lewat API opname 03; "user lain" = created_by diubah
- * di DB. Semua data uji dipulihkan di finally (q27_cleanup: hapus 3 tabel opname sesi tercatat + reset kolom verifikasi).
+ * AC-12 (Confirm Opname menaikkan / menurunkan angka). (rev 2026-10-09) Sesi dibuat lewat API opname 03 REV (stateless: satu
+ * POST opnames = Konfirmasi; tanpa draft/batal, ED-1026 FB-3); "user lain" = created_by diubah di DB; scope = 3 kunci (AC-28 BE).
+ * Semua data uji dipulihkan di finally (q27_cleanup: hapus baris opname sesi tercatat + kembalikan kolom verifikasi ke nilai sebelumnya).
  */
 require_once __DIR__ . '/qa_lib.php';
 
-/** Jam server dengan selisih (mis. '-5 days'). */
+/** Jam server dengan selisih (mis. '-5 days'): jam nyata (AC-12: "3 hari lalu" harus benar-benar lampau). */
 $q27_ts = function ($modify) {
     return date('Y-m-d H:i:s', strtotime($modify));
+};
+
+/** (rev 2026-10-09) Idem, tetapi di atas semua sesi yang sudah ada (data developer): sesi QA selalu masuk 3 terbaru (AC-10). */
+$q27_fut = function ($modify) {
+    return q27_ts($modify);
 };
 
 /** Kunci ringkas id sesi dari respons last_sessions. */
 $q27_ids = function ($res, array $names) {
     $out = [];
     foreach ($res['last_sessions'] ?? [] as $row) {
-        $out[] = array_search($row['id_archive_opname'], $names, true);
+        $k = array_search($row['id_archive_opname'], $names, true);
+        if ($k !== false) { // sesi developer (bukan milik QA) tidak ikut asersi, tetapi tetap dihitung dalam batas 3
+            $out[] = $k;
+        }
     }
 
     return $out;
@@ -26,12 +35,12 @@ return [
 
     [
         'id'    => 'AC-10',
-        'title' => 'GET verifications last_sessions: maks 3 sesi terkonfirmasi terbaru, urut waktu turun, field sesuai kontrak dan = angka tersimpan saat Confirm (tak dihitung ulang); draft/batal tak ikut; visibilitas K-4 + EPIC K-1 a (root semua; folder terlihat; pembuat; superadmin semua; folder dihapus/tak terlihat hanya superadmin & pembuat)',
-        'run'   => function ($t) use ($q27_ts, $q27_ids) {
+        'title' => 'GET verifications last_sessions: maks 3 sesi terkonfirmasi terbaru, urut waktu turun, field sesuai kontrak dan = angka tersimpan saat Confirm (tak dihitung ulang); hanya sesi terkonfirmasi di DB; scope 3 kunci; visibilitas K-4 + EPIC K-1 a (root semua; folder terlihat; pembuat; superadmin semua; folder dihapus/tak terlihat hanya superadmin & pembuat)',
+        'run'   => function ($t) use ($q27_fut, $q27_ids) {
             $s = $t->session();
             q27_baseline($t);
             try {
-                q27_with_user($t, ['role' => 1], function ($set) use ($t, $s, $q27_ts, $q27_ids) {
+                q27_with_user($t, ['role' => 1], function ($set) use ($t, $s, $q27_fut, $q27_ids) {
                     $x = q27_tree($t);
                     $uname = q27_uname($t);
                     $N = function ($k) use ($t, $x) {
@@ -48,27 +57,22 @@ return [
                     $ids['E'] = q27_run($t, $s, $x['SP'], [], [$N('dsp1')]);
                     $ids['G'] = q27_run($t, $s, $x['SJ'], [], []);
                     $ids['Z'] = q27_run($t, $s, $x['OTH'], [], [$N('dO1')]);
-                    // draft (belum dikonfirmasi) dan sesi batal
-                    $ids['H'] = q27_session($t, $s, $x['F'], q27_sel([$x['S2']]));
-                    $ids['K'] = q27_session($t, $s, $x['S1a']);
-                    $t->status($t->call($s, 'DELETE', Q27_BASE . '/opnames/' . $ids['K']), 200, 'batalkan sesi K');
-                    $t->true(q27_opname($t, $ids['H'])['status'] != 2 && q27_opname($t, $ids['K'])['status'] != 2, 'H draft dan K batal: status bukan terkonfirmasi');
+                    // (rev ED-1026 FB-3) DB hanya berisi sesi terkonfirmasi: semua sesi yang dibuat di atas status 2, tidak ada draft/batal
+                    $t->eq(array_unique(array_map(function ($id) use ($t) {
+                        return (int) q27_opname($t, $id)['status'];
+                    }, array_values($ids))), [2], 'semua sesi uji berstatus 2 (terkonfirmasi) di DB');
 
                     foreach (['A' => '-5 days', 'B' => '-4 days', 'C' => '-3 days', 'D' => '-2 days', 'E' => '-1 day', 'G' => '-12 hours', 'Z' => '-1 hour'] as $k => $when) {
-                        q27_set_opname($t, $ids[$k], ['confirmed_at' => $q27_ts($when)]);
+                        q27_set_opname($t, $ids[$k], ['confirmed_at' => $q27_fut($when)]);
                     }
                     foreach (['A', 'B', 'C', 'D', 'E', 'Z'] as $k) {
                         q27_set_owner($t, $ids[$k], $other);
                     }
                     // G tetap milik user uji (pembuat sesi di folder yang tak terlihat user Semarang)
-                    q27_set_owner($t, $ids['H'], $other);
 
                     // scope tiap sesi menurut GET opnames/{id} (superadmin boleh membaca sesi terkonfirmasi)
                     $scopes = [];
                     foreach ($ids as $k => $id) {
-                        if (in_array($k, ['H', 'K'], true)) {
-                            continue;
-                        }
                         $show = $t->call($s, 'GET', Q27_BASE . '/opnames/' . $id);
                         $t->status($show, 200, "GET opnames/$k");
                         $scopes[$id] = $show[1]['result']['scope'];
@@ -79,8 +83,9 @@ return [
                         $res = $r[1]['result'];
                         $t->true(count($res['last_sessions']) <= 3, "$label: maksimal 3 sesi");
                         $t->eq($q27_ids($res, $ids), $expect, "$label: last_sessions = " . implode(',', $expect));
-                        foreach (['H', 'K'] as $bad) {
-                            $t->true(!in_array($ids[$bad], array_column($res['last_sessions'], 'id_archive_opname'), true), "$label: sesi $bad (draft/batal) tidak muncul");
+                        // (rev) tidak ada draft/batal: setiap id di last_sessions berstatus 2 di DB
+                        foreach ($res['last_sessions'] as $row) {
+                            $t->eq((int) q27_opname($t, $row['id_archive_opname'])['status'], 2, "$label: sesi " . array_search($row['id_archive_opname'], $ids, true) . ' status 2');
                         }
 
                         return $res;
@@ -94,13 +99,20 @@ return [
                     $shape = function ($label, $res) use ($t, $ids, $keys, $scopes) {
                         foreach ($res['last_sessions'] as $row) {
                             $k = array_search($row['id_archive_opname'], $ids, true);
+                            if ($k === false) { // sesi developer: hanya bentuknya yang diperiksa
+                                $t->eq(array_keys($row['scope']), ['is_root', 'folder_name', 'subfolder_count'], "$label sesi developer: kunci scope");
+                                continue;
+                            }
                             $db = q27_opname($t, $row['id_archive_opname']);
                             $sortedKeys = array_keys($row);
                             sort($sortedKeys);
                             $want = $keys;
                             sort($want);
                             $t->eq($sortedKeys, $want, "$label sesi $k: kunci sesuai kontrak (tanpa id_user/username)");
-                            $t->eq(array_keys($row['scope']), ['is_root', 'folder_name', 'first_name', 'other_count'], "$label sesi $k: kunci scope");
+                            // (rev Gate 1, ED-1028 K-10 b, AC-28 BE) tepat tiga kunci; first_name / other_count dihapus
+                            $t->eq(array_keys($row['scope']), ['is_root', 'folder_name', 'subfolder_count'], "$label sesi $k: kunci scope = is_root, folder_name, subfolder_count");
+                            $t->true(!array_key_exists('first_name', $row['scope']) && !array_key_exists('other_count', $row['scope']), "$label sesi $k: scope tanpa first_name/other_count");
+                            $t->true(is_int($row['scope']['subfolder_count']) && is_bool($row['scope']['is_root']), "$label sesi $k: subfolder_count integer, is_root boolean");
                             $t->eq($row['scope'], $scopes[$row['id_archive_opname']], "$label sesi $k: scope = scope GET opnames/{id}");
                             $t->true(preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $row['confirmed_at']) === 1, "$label sesi $k: confirmed_at format Y-m-d H:i:s");
                             $t->eq($row['confirmed_at'], $db['confirmed_at'], "$label sesi $k: confirmed_at = DB");
@@ -113,10 +125,11 @@ return [
                     };
                     $shape('superadmin', $res);
 
-                    // contoh sesi A: F + S1 -> folder_name F, first_name S1, other_count 0; sesi C root; angka A
+                    // contoh sesi A: F + S1 -> folder_name F, subfolder_count 1; sesi C root + OTH -> is_root true, folder_name null, 1; B: S2 saja -> 0
                     $dbA = q27_opname($t, $ids['A']);
-                    $t->eq($scopes[$ids['A']], ['is_root' => false, 'folder_name' => q27_n($t, $x['F']), 'first_name' => q27_n($t, $x['S1']), 'other_count' => 0], 'sesi A: scope F + S1');
-                    $t->eq($scopes[$ids['C']]['is_root'], true, 'sesi C: scope root');
+                    $t->eq($scopes[$ids['A']], ['is_root' => false, 'folder_name' => q27_n($t, $x['F']), 'subfolder_count' => 1], 'sesi A: scope F + 1 subfolder');
+                    $t->eq($scopes[$ids['B']], ['is_root' => false, 'folder_name' => q27_n($t, $x['S2']), 'subfolder_count' => 0], 'sesi B: scope S2 + 0 subfolder');
+                    $t->eq($scopes[$ids['C']], ['is_root' => true, 'folder_name' => null, 'subfolder_count' => 1], 'sesi C: scope root + 1 subfolder (OTH)');
                     $t->true((int) $dbA['not_found_count'] >= 1 && (int) $dbA['invalid_count'] >= 1 && (int) $dbA['verified_count'] >= 2, 'sesi A: ada Verified, Not found, Invalid (' . json_encode(array_intersect_key($dbA, array_flip(['total_documents', 'verified_count', 'not_found_count', 'invalid_count']))) . ')');
 
                     // sesi dengan tiga sesi lain dikecualikan: periksa scope untuk A,B,C,D,E lewat set per user di bawah
@@ -137,11 +150,17 @@ return [
                     $set(['role' => 2]);
                     $get('superadmin role 2', ['Z', 'G', 'E']);
 
-                    // --- role List Archive saja (lokasi asli QA_USER) tidak 500, sesi root & buatan sendiri tetap
+                    // --- (rev EPIC K-3 a) role List Archive saja (lokasi asli QA_USER): verifications 403 GE0114 (tanpa Opname Document);
+                    //     dengan Opname Document (grant sementara role 29): 200, sesi root & buatan sendiri tetap terlihat, tidak 500
                     $set(['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']]);
                     $r = q27_verif($t, $s);
-                    $t->status($r, 200, 'role List Archive saja (SMR)');
-                    $t->true(in_array('G', $q27_ids($r[1]['result'], $ids), true) && in_array('Z', $q27_ids($r[1]['result'], $ids), true), 'role List Archive saja: sesi Z (OTH) dan G (sendiri) terlihat');
+                    q27_deny($t, $r, 403, 'GE0114', 'role List Archive saja (SMR) tanpa Opname Document');
+                    $t->true(empty($r[1]['result']), 'role List Archive saja: tanpa result');
+                    q27_with_grant($t, Q27_ROLE_LIST_ONLY, Q27_OD, function () use ($t, $s, $ids, $q27_ids) {
+                        $r = q27_verif($t, $s);
+                        $t->status($r, 200, 'role List Archive saja + Opname Document (SMR)');
+                        $t->true(in_array('G', $q27_ids($r[1]['result'], $ids), true) && in_array('Z', $q27_ids($r[1]['result'], $ids), true), 'role List Archive saja + Opname Document: sesi Z (OTH) dan G (sendiri) terlihat');
+                    });
 
                     // --- folder dihapus/tak terlihat: SJ dinonaktifkan -> D tak terlihat user JOG; G tetap (pembuat); superadmin tetap
                     $set(q27_opts('jog'));
@@ -164,11 +183,11 @@ return [
 
                     // --- urutan sama waktu: id sesi turun
                     $set(['role' => 1]);
-                    $same = $q27_ts('-30 minutes');
+                    $same = $q27_fut('-30 minutes');
                     q27_set_opname($t, $ids['A'], ['confirmed_at' => $same]);
                     q27_set_opname($t, $ids['B'], ['confirmed_at' => $same]);
-                    q27_set_opname($t, $ids['Z'], ['confirmed_at' => $q27_ts('-40 minutes')]);
-                    q27_set_opname($t, $ids['G'], ['confirmed_at' => $q27_ts('-50 minutes')]);
+                    q27_set_opname($t, $ids['Z'], ['confirmed_at' => $q27_fut('-40 minutes')]);
+                    q27_set_opname($t, $ids['G'], ['confirmed_at' => $q27_fut('-50 minutes')]);
                     $expectOrder = strcmp($ids['A'], $ids['B']) > 0 ? ['A', 'B', 'Z'] : ['B', 'A', 'Z'];
                     $get('urutan waktu sama', $expectOrder);
 
@@ -201,7 +220,10 @@ return [
                     });
                     $r = q27_verif($t, $s);
                     $t->status($r, 200, 'tanpa sesi');
-                    $t->eq($r[1]['result']['last_sessions'], [], 'tanpa sesi: last_sessions = []');
+                    $t->eq($q27_ids($r[1]['result'], $ids), [], 'tanpa sesi QA: tak ada sesi QA di last_sessions');
+                    if ($GLOBALS['q27_base']['opnames'][0] === 0) {
+                        $t->eq($r[1]['result']['last_sessions'], [], 'tanpa sesi sama sekali (tabel opname kosong): last_sessions = []');
+                    }
                 });
             } finally {
                 q27_cleanup($t);
@@ -370,8 +392,9 @@ return [
                     foreach ([$N('dF1'), $N('dF2'), $N('dF3'), 'QA27-TIDAK-ADA-' . uniqid(), $N('dO1')] as $code) {
                         $t->status(q27_scan($t, $s, $a, $code), 200, "scan $code");
                     }
-                    $tScan = $snap('draft (sebelum Confirm)');
-                    $t->eq($tScan['F'], $t0['F'], 'sebelum Confirm angka F tidak berubah (scan belum menulis status)');
+                    $tScan = $snap('sesudah scan, sebelum Confirm');
+                    $t->eq($tScan['F'], $t0['F'], 'sebelum Confirm angka F tidak berubah (POST opnames/scan stateless, tidak menulis status)');
+                    $t->eq(q27_devstate($t), $GLOBALS['q27_base'], 'sebelum Confirm: POST opnames/scan tidak menulis apa pun (opname & verifikasi sama persis)');
                     $t->status(q27_confirm($t, $s, $a), 200, 'confirm A');
                     sleep(1);
                     $t1 = $snap('sesudah sesi A');
@@ -391,7 +414,7 @@ return [
                     $t->eq((int) q27_row($t, $x['d11'])['is_verified'], 1, 'sesudah A: d11 (subfolder S1 tak dicentang, verified) tetap verified');
 
                     // ---- ganti hari tidak me-reset (K-1 a): geser waktu sesi & verified_at ke 3 hari lalu
-                    q27_set_opname($t, $a, ['confirmed_at' => $q27_ts('-3 days'), 'created_at' => $q27_ts('-3 days')]);
+                    q27_set_opname($t, $a->id, ['confirmed_at' => $q27_ts('-3 days'), 'created_at' => $q27_ts('-3 days')]);
                     q27_set_archive($t, $x['dF2'], ['verified_at' => $q27_ts('-3 days')]);
                     $tDay = $snap('3 hari kemudian');
                     $t->eq($tDay['F'], $t1['F'], 'ganti hari: angka F tidak di-reset');
@@ -429,12 +452,12 @@ return [
                     $rv = q27_verif($t, $s);
                     $row = null;
                     foreach ($rv[1]['result']['last_sessions'] as $r) {
-                        if ($r['id_archive_opname'] === $c) {
+                        if ($r['id_archive_opname'] === $c->id) {
                             $row = $r;
                         }
                     }
                     $t->true($row !== null, 'sesi C muncul di last_sessions All (sesi terbaru)');
-                    $dbc = q27_opname($t, $c);
+                    $dbc = q27_opname($t, $c->id);
                     $t->eq([$row['total_documents'], $row['verified_count']], [(int) $dbc['total_documents'], (int) $dbc['verified_count']], 'angka sesi C = angka tersimpan saat Confirm');
                 });
             } finally {

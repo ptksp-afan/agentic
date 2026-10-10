@@ -1,7 +1,7 @@
 {
   "feature": "ED-1027",
   "routes": [
-    { "name": "Archive A (QA_USER) - list + kolom Document Verified + ringkasan terbuka tanpa error", "path": "/archives", "profiles": ["default"], "waitFor": ".archive-page .ant-table", "ref": "AC-13" },
-    { "name": "Archive B (QA_USER2) - list + kolom Document Verified + ringkasan terbuka tanpa error", "path": "/archives", "profiles": ["user2"], "waitFor": ".archive-page .ant-table", "ref": "AC-13" }
+    { "name": "Archive A (QA_USER, pemegang Opname Document) - list + kolom Document Verified + ringkasan terbuka tanpa error", "path": "/archives", "profiles": ["default"], "waitFor": ".archive-page .ant-table", "ref": "AC-13" },
+    { "name": "Archive B (QA_USER2, tanpa Opname Document) - list terbuka tanpa error, tanpa tampilan verifikasi, tanpa request verifications*", "path": "/archives", "profiles": ["user2"], "waitFor": ".archive-page .ant-table", "forbidApi": "document-archive/verifications", "ref": "AC-25" }
   ]
 }

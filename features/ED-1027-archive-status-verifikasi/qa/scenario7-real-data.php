@@ -107,7 +107,9 @@ return [
                 asort($counts);
                 $folder = null;
                 foreach ($counts as $id => $n) {
-                    if ($n >= 30 && $n <= 2000 && (int) $c->table('archives')->where('id_archive', $id)->where('type', 1)->where('is_active', '>', 0)->count() === 1) {
+                    // (rev 2026-10-09) data developer: folder tanpa dokumen verified sama sekali, supaya timpa (is_continue false) tak mengubah verified developer
+                    if ($n >= 30 && $n <= 2000 && (int) $c->table('archives')->where('id_archive', $id)->where('type', 1)->where('is_active', '>', 0)->count() === 1
+                        && (int) $c->table('archives')->where('id_archive_parent', $id)->where('type', 2)->where('is_verified', '!=', 0)->count() === 0) {
                         $folder = $id;
                         $direct = $n;
                         break;
@@ -147,13 +149,14 @@ return [
                     $rp = q27_list($t, $s, $parent === null ? ['pagination' => 100] : ['id_archive' => $parent, 'pagination' => 100]);
                     $apiBefore = q27_api_vt(q27_map($rp)[$folder]['document_verified'] ?? null);
                     $t->eq($apiBefore, $b['folder'], 'sebelum: baris folder = oracle');
-                    $t->eq($b['folder'][0], 0, 'sebelum: folder nyata belum ada yang verified');
+                    $t->note('sebelum: folder nyata ' . json_encode($b['folder']) . ' (verified/total; folder tanpa dokumen langsung verified dipilih)');
 
-                    $id = q27_session($t, $s, $folder, []);
+                    $h = q27_session($t, $s, $folder, []);
                     foreach ($pick as $d) {
-                        $t->status(q27_scan($t, $s, $id, $d->name), 200, 'scan ' . $d->name);
+                        $t->status(q27_scan($t, $s, $h, $d->name), 200, 'scan ' . $d->name);
                     }
-                    $t->status(q27_confirm($t, $s, $id), 200, 'confirm sesi nyata');
+                    $t->status(q27_confirm($t, $s, $h), 200, 'confirm sesi nyata');
+                    $id = $h->id;
                     $db = q27_opname($t, $id);
                     $t->eq((int) $db['verified_count'], 25, 'sesi: verified_count = 25 discan');
                     $t->eq((int) $db['total_documents'], $direct, "sesi: total_documents = $direct dokumen langsung folder");

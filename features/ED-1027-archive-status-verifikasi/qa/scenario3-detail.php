@@ -282,7 +282,7 @@ return [
 
     [
         'id'    => 'AC-9',
-        'title' => 'permission List Archive: role List Archive saja 200 untuk kedua endpoint baru; role tanpa permission Archive 403 GE0114 tanpa data; tanpa token 401; superadmin 200',
+        'title' => '(rev) permission: GET archives = List Archive (role tanpa List Archive 403 GE0114 tanpa data, tukar lisensi sungguhan manual Gate 2); verifications* = Opname Document (role List Archive saja: list 200, verifications 403 GE0114 parameter Opname Document); superadmin 200; tanpa token 401; seed SQL tidak diubah item ini',
         'run'   => function ($t) {
             $s = $t->session();
             q27_baseline($t);
@@ -297,16 +297,22 @@ return [
                     ];
                 };
 
-                // role bawaan (3): 200
+                // role bawaan (3, punya List Archive + Opname Document): 200
                 foreach ($calls() as $label => $r) {
                     $t->status($r, 200, "role bawaan: $label");
                 }
 
-                // role 29: hanya List Archive -> 200
+                // role 29: hanya List Archive -> list 200 (tanpa data verifikasi), verifications* 403 GE0114 parameter Opname Document
                 q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY], function () use ($t, $calls) {
                     foreach ($calls() as $label => $r) {
-                        $t->status($r, 200, "role List Archive saja: $label");
-                        $t->true(isset($r[1]['result']), "role List Archive saja: $label memuat result");
+                        if ($label === 'GET archives (list)') {
+                            $t->status($r, 200, "role List Archive saja: $label");
+                            $t->true(isset($r[1]['result']), "role List Archive saja: $label memuat result");
+                        } else {
+                            q27_deny($t, $r, 403, 'GE0114', "role List Archive saja: $label");
+                            $t->true(!isset($r[1]['result']) || empty($r[1]['result']), "role List Archive saja: $label tanpa data");
+                            $t->true(strpos(json_encode($r[1]), Q27_OD) !== false, "role List Archive saja: $label: parameter pesan = Opname Document");
+                        }
                     }
                 });
 
@@ -333,6 +339,13 @@ return [
                     $t->eq($r[0], 401, "tanpa token $path: 401");
                 }
                 $t->eq($t->raw('GET', Q27_BASE . '/archives')[0], 401, 'tanpa token archives: 401 (kontrol)');
+
+                // seed permission tidak diubah item ini (diff kerja BE tidak menyentuh app/Sql)
+                $be = rtrim($t->conf('BE_DIR'), '/');
+                $dirty = trim((string) shell_exec('git -C ' . escapeshellarg($be) . ' status --porcelain -- app/Sql 2>&1'));
+                $t->eq($dirty, '', 'working tree BE: app/Sql (seed permission) tidak diubah');
+                $seed = file_get_contents($be . '/app/Sql/data/permission_salesman.sql');
+                $t->true(strpos($seed, 'Opname Document') !== false && strpos($seed, 'List Archive') !== false, 'seed permission_salesman.sql memuat Opname Document dan List Archive');
             } finally {
                 q27_cleanup($t);
             }
