@@ -5,14 +5,23 @@
  *
  * Aturan pakai:
  * - Data uji archive berawalan "QA28-" (folder, dokumen, lokasi, archive_documents, archive_permissions). Dibuat lewat
- *   q28_add(), dibuang lewat q28_purge(). Sesi opname dibuat lewat API opname ED-1026 (bukan insert manual) dan dicatat
- *   di jurnal (.sessions-journal-q28.json); q28_cleanup() menghapus baris archive_opname* sesi itu dan mengembalikan
- *   kolom verifikasi `archives` ke default untuk baris yang ditandai id_archive_opname sesi itu.
- *   Prasyarat run: tabel opname kosong dan semua kolom verifikasi `archives` default (q28_baseline()).
- * - QA_USER2 tidak bisa login di api_sidomaju: "user lokasi terbatas / tanpa hak / superadmin" = QA_USER sendiri dengan
- *   keadaan sementara (role, lokasi employee, bahasa) lewat q28_with_user(); jurnal pemulihan di .restore-journal-q28.json.
- *   Role bawaan QA_USER = 3 (is_superadmin 3: TIDAK bypass lokasi/hak folder). Bypass (superadmin 1/2) = role 1 dan 2.
- *   Role 29 = hanya List Archive. Role 6 = tanpa permission Archive.
+ *   q28_add(), dibuang lewat q28_purge(). Sesi opname dibuat lewat API opname ED-1026 REV (stateless: GET opnames/folders ->
+ *   POST opnames/scan -> SATU POST opnames dengan `scans` + `selected_at` = Konfirmasi; tidak ada draft/batal/confirm/DELETE) dan
+ *   dicatat di jurnal (.sessions-journal-q28.json).
+ * - (rev 2026-10-10, gate1 ba2-notes "Pengaman data uji") Tabel opname TIDAK harus kosong dan kolom verifikasi `archives` TIDAK
+ *   harus default: data developer boleh ada. q28_baseline() mencatat pra-citra kolom verifikasi baris non-QA28 yang tidak default
+ *   (.verif-journal-q28.json) dan keadaan developer (jumlah + CRC tiga tabel opname + archives non-QA28); q28_sweep() menghapus
+ *   hanya baris opname milik sesi di jurnal dan mengembalikan kolom verifikasi baris yang ditandai sesi itu ke NILAI SEBELUMNYA
+ *   (bukan default); q28_cleanup() membuktikan keadaan developer sama persis. Semua asersi dilingkup ke sesi QA sendiri
+ *   (q28_hkeys membuang sesi asing); sesi QA diberi confirmed_at DI ATAS semua sesi developer (q28_times/q28_day) supaya
+ *   urutan/halaman deterministik, dan SEMUA sesi yang saling beririsan dibuat SEBELUM confirmed_at digeser ke depan (bentrok
+ *   ARCHIVE414 membandingkan confirmed_at >= selected_at).
+ * - Permission sementara (mis. Opname Document untuk role user2) lewat q28_grant()/q28_with_grant(): baris role_permissions dibuat
+ *   dengan created_by QA28, id di jurnal (.grant-journal-q28.json), dihapus persis di finally; permission dicari per NAMA.
+ * - QA_USER2 (adi, role asli 5 = List Archive TANPA Opname Document, lokasi SMR) = user2 sungguhan (qa_hist.php); QA_USER
+ *   (role 3, TIDAK bypass lokasi/hak folder) juga dipakai dengan keadaan sementara (role, lokasi employee, bahasa) lewat
+ *   q28_with_user(); jurnal pemulihan di .restore-journal-q28.json. Bypass (superadmin 1/2) = role 1 dan 2.
+ *   Role 29 = hanya List Archive. Role 6 / 22 = tanpa permission Archive.
  * - Tulis lewat koneksi default non-read-only di dalam $t->probe(); baca lewat $t->db() (read-only).
  * - Oracle (q28_oracle) menghitung angka verifikasi dari tabel mentah, tanpa kode BE, untuk satu keadaan user.
  */
@@ -24,6 +33,8 @@ if (!function_exists('q28_dbname')) {
     define('Q28_ROLE_LIST_ONLY', 29);
     define('Q28_ROLE_NONE', 6);
     define('Q28_RANDOM_ID', '999999999999999999999999999999');
+    define('Q28_OD', 'Opname Document'); // permission riwayat & data opname (id 1139, dicari per NAMA)
+    define('Q28_LA', 'List Archive');
 
     function q28_dbname($t)
     {
@@ -396,10 +407,16 @@ if (!function_exists('q28_dbname')) {
         return $x;
     }
 
-    // ------------------------------------------------------------------ sesi opname (API 03) & pembersihan
+    // ------------------------------------------------------------------ jurnal sesi, pra-citra verifikasi, keadaan developer
+    // (rev 2026-10-10, gate1 §5 / ba2-notes "Pengaman data uji"): tabel opname TIDAK harus kosong dan kolom verifikasi `archives`
+    // TIDAK harus default. Sebelum AC jalan dicatat nilai asli kolom verifikasi SEMUA baris non-QA28 yang tidak default (pra-citra);
+    // sesudahnya baris yang ditandai sesi QA dikembalikan ke nilai itu (bukan ke default) dan keadaan developer dibuktikan sama persis.
 
     function q28_track($id)
     {
+        if (!$id) {
+            return;
+        }
         $ids = is_file(q28_sjournal()) ? (json_decode(file_get_contents(q28_sjournal()), true) ?: []) : [];
         $ids[] = $id;
         file_put_contents(q28_sjournal(), json_encode(array_values(array_unique($ids))));
@@ -410,16 +427,61 @@ if (!function_exists('q28_dbname')) {
         return is_file(q28_sjournal()) ? (json_decode(file_get_contents(q28_sjournal()), true) ?: []) : [];
     }
 
-    /** Hapus data opname sesi tercatat dan kembalikan kolom verifikasi archives yang ditandai sesi itu. */
+    function q28_vjournal()
+    {
+        return __DIR__ . '/.verif-journal-q28.json';
+    }
+
+    /** Baris archives non-QA28 dengan kolom verifikasi tidak default (builder baca saja). */
+    function q28_nondefault($t)
+    {
+        return $t->db()->table('archives')->where('name', 'not like', Q28_PREFIX . '%')->where(function ($q) {
+            $q->whereNull('is_verified')->orWhere('is_verified', '!=', 0)->orWhereNotNull('verified_at')
+                ->orWhereNotNull('verified_by')->orWhereNotNull('id_archive_opname');
+        });
+    }
+
+    /** Tulis pra-citra: nilai kolom verifikasi SEMUA baris non-QA28 yang tidak default (data developer). Mengembalikan jumlah baris. */
+    function q28_write_vjournal($t)
+    {
+        $rows = [];
+        foreach (q28_nondefault($t)->get(['id_archive', 'is_verified', 'verified_at', 'verified_by', 'id_archive_opname']) as $r) {
+            $rows[(string) $r->id_archive] = [$r->is_verified === null ? null : (int) $r->is_verified, $r->verified_at, $r->verified_by, $r->id_archive_opname];
+        }
+        file_put_contents(q28_vjournal(), json_encode(['taken_at' => date('c'), 'rows' => $rows]));
+
+        return count($rows);
+    }
+
+    function q28_read_vjournal()
+    {
+        return is_file(q28_vjournal()) ? (json_decode(file_get_contents(q28_vjournal()), true) ?: []) : [];
+    }
+
+    /**
+     * Hapus data opname sesi QA tercatat (jurnal) dan kembalikan kolom verifikasi `archives` yang ditandai sesi itu ke NILAI
+     * SEBELUMNYA (pra-citra; baris tanpa pra-citra = default). Hanya baris yang ditandai `id_archive_opname` sesi QA yang
+     * disentuh; sesi dan baris developer tidak.
+     */
     function q28_sweep($t)
     {
         $ids = q28_tracked();
+        $pre = q28_read_vjournal()['rows'] ?? [];
         if ($ids) {
-            q28_w($t, function ($c) use ($ids) {
+            q28_w($t, function ($c) use ($ids, $pre) {
                 foreach (array_chunk($ids, 100) as $chunk) {
-                    $c->table('archives')->whereIn('id_archive_opname', $chunk)->update([
-                        'is_verified' => 0, 'verified_at' => null, 'verified_by' => null, 'id_archive_opname' => null,
-                    ]);
+                    $groups = [];
+                    foreach ($c->table('archives')->whereIn('id_archive_opname', $chunk)->pluck('id_archive')->all() as $id) {
+                        $groups[json_encode($pre[(string) $id] ?? [0, null, null, null])][] = $id;
+                    }
+                    foreach ($groups as $json => $list) {
+                        $v = json_decode($json, true);
+                        foreach (array_chunk($list, 500) as $part) {
+                            $c->table('archives')->whereIn('id_archive', $part)->update([
+                                'is_verified' => $v[0], 'verified_at' => $v[1], 'verified_by' => $v[2], 'id_archive_opname' => $v[3],
+                            ]);
+                        }
+                    }
                     $c->table('archive_opname_documents')->whereIn('id_archive_opname', $chunk)->delete();
                     $c->table('archive_opname_folders')->whereIn('id_archive_opname', $chunk)->delete();
                     $c->table('archive_opnames')->whereIn('id_archive_opname', $chunk)->delete();
@@ -429,43 +491,189 @@ if (!function_exists('q28_dbname')) {
         @unlink(q28_sjournal());
     }
 
-    /** Jumlah baris opname (3 tabel) + baris archives dengan kolom verifikasi tidak default (di luar baris QA28-). */
-    function q28_dirty($t)
+    /** Sisa sisipan massal berpenanda QA28BULK* (X-2, X-7) dari run yang mati: hanya baris berawalan itu. */
+    function q28_bulk_purge($t)
     {
-        $c = $t->db();
-
-        return [
-            'opnames'   => $c->table('archive_opnames')->count(),
-            'folders'   => $c->table('archive_opname_folders')->count(),
-            'documents' => $c->table('archive_opname_documents')->count(),
-            'archives'  => $c->table('archives')->where('name', 'not like', Q28_PREFIX . '%')->where(function ($q) {
-                $q->where('is_verified', '!=', 0)->orWhereNotNull('verified_at')->orWhereNotNull('verified_by')->orWhereNotNull('id_archive_opname');
-            })->count(),
-        ];
+        q28_w($t, function ($c) {
+            $c->table('archive_opname_documents')->where('id_archive_opname', 'like', 'QA28BULK%')->delete();
+            $c->table('archive_opname_folders')->where('id_archive_opname', 'like', 'QA28BULK%')->delete();
+            $c->table('archive_opnames')->where('id_archive_opname', 'like', 'QA28BULK%')->delete();
+        });
     }
 
-    /** Awal AC: pulihkan sisa run yang mati, lalu pastikan keadaan = default (opname kosong, verifikasi default). */
+    function q28_cols($t, $table)
+    {
+        $out = [];
+        foreach ($t->db()->select("SHOW COLUMNS FROM `$table`") as $r) {
+            $out[] = $r->Field;
+        }
+
+        return $out;
+    }
+
+    /** [jumlah baris, jumlah CRC32 per baris] satu tabel (opsional WHERE). */
+    function q28_sum($t, $table, array $cols, $where = '', array $bind = [])
+    {
+        $parts = array_map(function ($c) {
+            return "IFNULL(CAST(`$c` AS CHAR),'~')";
+        }, $cols);
+        $r = $t->db()->selectOne("SELECT COUNT(*) n, IFNULL(SUM(CRC32(CONCAT_WS('|'," . implode(',', $parts) . '))),0) h FROM `' . $table . '` ' . $where, $bind);
+
+        return [(int) $r->n, (string) $r->h];
+    }
+
+    /** Keadaan developer: tiga tabel opname (semua baris) + kolom verifikasi archives non-QA28. */
+    function q28_devstate($t)
+    {
+        $out = [];
+        foreach (['archive_opnames' => 'opnames', 'archive_opname_folders' => 'folders', 'archive_opname_documents' => 'documents'] as $table => $key) {
+            $out[$key] = q28_sum($t, $table, q28_cols($t, $table));
+        }
+        $out['archives'] = q28_sum($t, 'archives', ['id_archive', 'is_verified', 'verified_at', 'verified_by', 'id_archive_opname'], 'WHERE name NOT LIKE ?', [Q28_PREFIX . '%']);
+
+        return $out;
+    }
+
+    /**
+     * Awal AC: pulihkan sisa run yang mati (user, grant, sesi, sisipan massal), buang data QA28-, catat pra-citra baru dan keadaan
+     * developer. TIDAK menuntut tabel opname kosong atau archives default. Menetapkan $GLOBALS['q28_now'] = acuan "sekarang" untuk
+     * waktu sesi QA (q28_day): 10 hari di depan sesi developer terbaru (atau waktu nyata bila lebih baru).
+     */
     function q28_baseline($t)
     {
         q28_recover_user($t);
+        q28_grant_recover($t);
         q28_sweep($t);
+        @unlink(q28_vjournal());
+        q28_bulk_purge($t);
         q28_purge($t);
-        $d = q28_dirty($t);
-        $t->eq(json_encode($d), json_encode(['opnames' => 0, 'folders' => 0, 'documents' => 0, 'archives' => 0]),
-            'prasyarat: tabel opname kosong & kolom verifikasi archives default');
+        $n = q28_write_vjournal($t);
+        $newest = $t->db()->table('archive_opnames')->max('confirmed_at');
+        $GLOBALS['q28_now'] = max(time(), $newest ? strtotime($newest) : 0) + 10 * 86400;
+        $GLOBALS['q28_last'] = 0;
+        $GLOBALS['q28_base'] = q28_devstate($t);
+        $b = $GLOBALS['q28_base'];
+        $t->note(sprintf('data developer di DB uji dijaga: %d sesi, %d baris folder, %d baris dokumen opname; %d baris archives verifikasi tidak default', $b['opnames'][0], $b['folders'][0], $b['documents'][0], $n));
+
+        return $b;
     }
 
-    /** Akhir AC (finally): bersihkan dan buktikan tidak ada sisa. */
+    /** Tanggal (Y-m-d) "$daysAgo hari lalu" menurut acuan q28_now (di atas semua sesi developer). */
+    function q28_day($daysAgo)
+    {
+        return date('Y-m-d', ($GLOBALS['q28_now'] ?? (time() + 10 * 86400)) - (int) $daysAgo * 86400);
+    }
+
+    /** Akhir AC (finally): pulihkan nilai sebelumnya, buang data QA, buktikan data developer sama persis. */
     function q28_cleanup($t, $label = 'data uji dibuang')
     {
+        $tracked = q28_tracked();
         q28_sweep($t);
+        q28_bulk_purge($t);
         q28_purge($t);
-        $d = q28_dirty($t);
-        $t->eq(json_encode($d), json_encode(['opnames' => 0, 'folders' => 0, 'documents' => 0, 'archives' => 0]),
-            $label . ': opname kosong & verifikasi default');
-        $t->eq($t->db()->table('archives')->where('name', 'like', Q28_PREFIX . '%')->count(), 0, $label . ' (archives QA28-)');
-        $t->eq($t->db()->table('archive_documents')->where('transaction_no', 'like', Q28_PREFIX . '%')->count(), 0, $label . ' (archive_documents)');
-        $t->eq($t->db()->table('archive_permissions')->where('created_by', 'QA28')->count(), 0, $label . ' (archive_permissions)');
+        $c = $t->db();
+        $gone = $tracked ? $c->table('archive_opnames')->whereIn('id_archive_opname', $tracked)->count() : 0;
+        $now = q28_devstate($t);
+        $base = $GLOBALS['q28_base'] ?? null;
+        $t->eq($gone, 0, $label . ' (sesi opname QA)');
+        $t->eq($c->table('archives')->where('name', 'like', Q28_PREFIX . '%')->count(), 0, $label . ' (archives QA28-)');
+        $t->eq($c->table('archive_documents')->where('transaction_no', 'like', Q28_PREFIX . '%')->count(), 0, $label . ' (archive_documents)');
+        $t->eq($c->table('archive_permissions')->where('created_by', 'QA28')->count(), 0, $label . ' (archive_permissions)');
+        $t->eq($c->table('archive_opnames')->where('id_archive_opname', 'like', 'QA28BULK%')->count(), 0, $label . ' (sisipan massal)');
+        if ($base === null) {
+            $t->fail($label . ': keadaan developer sebelum AC tidak tercatat (baseline tidak jalan)');
+        }
+        $diff = [];
+        foreach ($base as $k => $v) {
+            if (json_encode($v) !== json_encode($now[$k])) {
+                $diff[] = $k . ' ' . json_encode($v) . ' -> ' . json_encode($now[$k]);
+            }
+        }
+        $t->true($diff === [], $label . ': data developer sama persis dengan sebelum AC (' . implode('; ', $diff) . ')');
+        @unlink(q28_vjournal());
+    }
+
+    // ------------------------------------------------------------------ grant permission sementara (role_permissions), berjurnal
+
+    function q28_gjournal()
+    {
+        return __DIR__ . '/.grant-journal-q28.json';
+    }
+
+    /** Hapus baris role_permissions yang dibuat QA (id tercatat di jurnal; hanya created_by QA28). */
+    function q28_grant_recover($t)
+    {
+        if (is_file(q28_gjournal())) {
+            $ids = json_decode(file_get_contents(q28_gjournal()), true);
+            if (is_array($ids) && $ids) {
+                q28_w($t, function ($c) use ($ids) {
+                    $c->table('role_permissions')->whereIn('id_role_permission', $ids)->where('created_by', 'QA28')->delete();
+                });
+            }
+            @unlink(q28_gjournal());
+        }
+    }
+
+    function q28_perm_id($t, $name)
+    {
+        return $t->db()->table('permissions')->where('permission_name', $name)->value('id_permission');
+    }
+
+    function q28_has_perm($t, $role, $name)
+    {
+        return $t->db()->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')
+            ->where('rp.id_role', $role)->where('p.permission_name', $name)->exists();
+    }
+
+    /** Beri role(s) permission $name (per NAMA); mengembalikan [id baris dibuat]. Dicatat di jurnal. Role yang sudah memegangnya tidak disentuh. */
+    function q28_grant($t, $roles, $name)
+    {
+        $roles = (array) $roles;
+        $pid = q28_perm_id($t, $name);
+        $t->true($pid !== null, "permission '$name' ada (dicari per nama, id $pid)");
+        $made = [];
+        q28_w($t, function ($c) use ($roles, $name, $pid, &$made) {
+            foreach ($roles as $role) {
+                $has = $c->table('role_permissions')->where('id_role', $role)->where('id_permission', $pid)->exists();
+                if (!$has) {
+                    $made[] = $c->table('role_permissions')->insertGetId([
+                        'id_role' => $role, 'id_permission' => $pid, 'permission_name' => $name,
+                        'created_at' => date('Y-m-d H:i:s'), 'created_by' => 'QA28',
+                    ]);
+                }
+            }
+        });
+        $old = is_file(q28_gjournal()) ? (json_decode(file_get_contents(q28_gjournal()), true) ?: []) : [];
+        file_put_contents(q28_gjournal(), json_encode(array_merge($old, $made)));
+
+        return $made;
+    }
+
+    /** Ringkasan (jumlah+CRC) role_permissions: bukti pemulihan persis. */
+    function q28_rp_sum($t)
+    {
+        return q28_sum($t, 'role_permissions', q28_cols($t, 'role_permissions'));
+    }
+
+    /**
+     * Jalankan $fn dengan role(s) $roles memegang permission $name. Baris role_permissions yang dibuat dicatat di jurnal dan dihapus
+     * persis di finally; bukti: jumlah+CRC role_permissions sama dengan sebelumnya.
+     */
+    function q28_with_grant($t, $roles, $name, callable $fn)
+    {
+        q28_grant_recover($t);
+        $before = q28_rp_sum($t);
+        try {
+            q28_grant($t, $roles, $name);
+
+            return $fn();
+        } finally {
+            q28_grant_recover($t);
+            $after = q28_rp_sum($t);
+            if (json_encode($after) !== json_encode($before)) {
+                $t->fail("role_permissions tidak sama persis sesudah grant '$name' dicabut: " . json_encode($before) . ' -> ' . json_encode($after));
+            }
+        }
     }
 
     // ------------------------------------------------------------------ request
@@ -518,30 +726,76 @@ if (!function_exists('q28_dbname')) {
         return json_encode($filters);
     }
 
-    function q28_store($t, $s, $folder, array $folders = [], $continue = null)
+    // ------------------------------------------------------------------ sesi opname 03 (rev: tanpa draft; POST opnames = Konfirmasi)
+
+    /** Handle satu sesi stateless: pilihan Step 1, selected_at, daftar scan; id terisi sesudah Konfirmasi sukses. */
+    class Q28Session
     {
-        $body = ['id_archive' => $folder, 'folders' => $folders];
+        public $sel;
+        public $selectedAt;
+        public $scans = [];
+        public $id;
+        public $confirm;
+    }
+
+    /** Body pilihan Step 1: folder opname (null = root), subfolder terpilih (q28_sel), is_continue folder opname. */
+    function q28_selection($folder, array $folders = [], $continue = null)
+    {
+        $b = ['id_archive' => $folder, 'folders' => $folders];
         if ($continue !== null) {
-            $body['is_continue'] = $continue;
+            $b['is_continue'] = $continue;
         }
-        $r = $t->call($s, 'POST', Q28_BASE . '/opnames', $body);
-        $id = $r[1]['result']['id_archive_opname'] ?? null;
-        if ($id) {
-            q28_track($id);
+
+        return $b;
+    }
+
+    /** Tunggu sampai detik server berikutnya sesudah Konfirmasi terakhir: selected_at baru tidak bentrok dengannya (ARCHIVE414). */
+    function q28_wait()
+    {
+        while (time() <= (int) ($GLOBALS['q28_last'] ?? 0)) {
+            usleep(100000);
+        }
+    }
+
+    /** Muat Step 1 (GET opnames/folders) -> handle sesi dengan selected_at server. */
+    function q28_session($t, $s, $folder, array $folders = [], $continue = null)
+    {
+        q28_wait();
+        $r = $t->call($s, 'GET', q28_url(Q28_BASE . '/opnames/folders', $folder === null ? [] : ['id_archive' => $folder]));
+        $t->status($r, 200, 'muat Step 1 (selected_at)');
+        $at = $r[1]['result']['selected_at'] ?? null;
+        $t->true(is_string($at) && preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/', $at) === 1, 'selected_at = Y-m-d H:i:s');
+        $h = new Q28Session();
+        $h->sel = q28_selection($folder, $folders, $continue);
+        $h->selectedAt = $at;
+
+        return $h;
+    }
+
+    /** POST opnames/scan (klasifikasi satu kode, tanpa simpan); scan sukses dicatat di handle. Mengembalikan respons. */
+    function q28_scan($t, $s, Q28Session $h, $code)
+    {
+        $r = $t->call($s, 'POST', Q28_BASE . '/opnames/scan', $h->sel + ['code' => $code]);
+        if ($r[0] === 200 && isset($r[1]['result']['row']['scanned_at'])) {
+            $h->scans[] = ['code' => $code, 'scanned_at' => $r[1]['result']['row']['scanned_at']];
         }
 
         return $r;
     }
 
-    /** Buat sesi dan kembalikan id (gagal bila tidak 200). */
-    function q28_session($t, $s, $folder, array $folders = [], $continue = null)
+    /** POST opnames = Konfirmasi Opname (satu-satunya penulisan sesi); sesi sukses dicatat di jurnal. Mengembalikan respons. */
+    function q28_confirm($t, $s, Q28Session $h)
     {
-        $r = q28_store($t, $s, $folder, $folders, $continue);
-        $t->status($r, 200, 'buat sesi');
+        $r = $t->call($s, 'POST', Q28_BASE . '/opnames', $h->sel + ['scans' => $h->scans, 'selected_at' => $h->selectedAt]);
+        $GLOBALS['q28_last'] = time();
+        $h->confirm = $r;
         $id = $r[1]['result']['id_archive_opname'] ?? null;
-        $t->true($id !== null, 'buat sesi: id dikembalikan');
+        if ($r[0] === 200 && $id) {
+            $h->id = $id;
+            q28_track($id);
+        }
 
-        return $id;
+        return $r;
     }
 
     function q28_sel(array $ids)
@@ -558,27 +812,17 @@ if (!function_exists('q28_dbname')) {
         return $out;
     }
 
-    function q28_scan($t, $s, $id, $code)
-    {
-        return $t->call($s, 'POST', Q28_BASE . '/opnames/' . $id . '/scan', ['code' => $code]);
-    }
-
-    function q28_confirm($t, $s, $id)
-    {
-        return $t->call($s, 'PUT', Q28_BASE . '/opnames/' . $id . '/confirm');
-    }
-
-    /** Sesi sukses: buat, scan kode-kode, confirm. Mengembalikan id sesi. */
+    /** Sesi sukses seperti FE: muat Step 1, scan kode-kode, satu POST opnames (200 dituntut). Mengembalikan id sesi (string). */
     function q28_run($t, $s, $folder, array $folders, array $codes, $continue = null)
     {
-        $id = q28_session($t, $s, $folder, $folders, $continue);
+        $h = q28_session($t, $s, $folder, $folders, $continue);
         foreach ($codes as $code) {
-            $t->status(q28_scan($t, $s, $id, $code), 200, "scan $code");
+            $t->status(q28_scan($t, $s, $h, $code), 200, "scan $code");
         }
-        $t->status(q28_confirm($t, $s, $id), 200, 'confirm');
-        sleep(1); // sesi yang tumpang tindih di detik yang sama dianggap bentrok (ED-1026 BR-23)
+        $t->status(q28_confirm($t, $s, $h), 200, 'confirm (POST opnames)');
+        $t->true($h->id !== null, 'confirm: id sesi dikembalikan');
 
-        return $id;
+        return $h->id;
     }
 
     function q28_set_owner($t, $id, $username)

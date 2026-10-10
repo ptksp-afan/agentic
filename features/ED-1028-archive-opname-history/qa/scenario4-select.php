@@ -3,6 +3,9 @@
  * ED-1028 - select untuk query filter: AC-10 (GET select/document-archive/archive/folders) dan AC-11 (.../opname-users).
  * Folder: folder aktif dalam lokasi ∩ View user (oracle SQL mentah), label path, search nama, selected_id, urut label, superadmin semua.
  * User: username unik pembuat sesi terkonfirmasi yang terlihat pemanggil (termasuk superadmin bila pelaku), search, selected_id, urut.
+ * (rev) Tahan data developer: himpunan lengkap dibandingkan dengan oracle SQL (ikut menghitung sesi asing); angka tangan hanya
+ * pada username milik QA (awalan qa28 + user pelaku). Tanpa draft/batal (FB-3). user2 = pemegang Opname Document (grant sementara guard);
+ * tanpa Opname Document: options [] -> AC-14 (scenario5-access.php).
  */
 require_once __DIR__ . '/qa_hist.php';
 
@@ -207,7 +210,7 @@ return [
 
     [
         'id'    => 'AC-11',
-        'title' => 'select archive/opname-users: username unik pembuat sesi terkonfirmasi yang terlihat pemanggil (superadmin bila pelaku; user tanpa sesi, draft-only, batal-only tidak muncul), search, selected_id, urut username',
+        'title' => 'select archive/opname-users: username unik pembuat sesi terkonfirmasi yang terlihat pemanggil (superadmin bila pelaku; user tanpa sesi tidak muncul), search, selected_id, urut username; tahan data developer',
         'run'   => function ($t) {
             $s = $t->session();
             q28_guard($t, function () use ($t, $s) {
@@ -216,21 +219,25 @@ return [
                 q28_with_user($t, ['role' => 1], function () use ($t, $s, &$x, &$ids) {
                     $x = q28_tree($t);
                     $ids = q28_hfix($t, $s, $x);
-                    // E milik qa28eve (E tak terlihat user2/user3); draft H & batal K milik user yang tak punya sesi terkonfirmasi
+                    // E milik qa28eve (E tak terlihat user2/user3)
                     q28_set_owner($t, $ids['E'], 'qa28eve');
-                    q28_set_owner($t, $ids['H'], 'qa28draftonly');
-                    q28_set_owner($t, $ids['K'], 'qa28cancelonly');
                 });
                 $me = (string) q28_uname($t);
                 $opts = function ($r) {
                     return array_keys(q28_selopts($r));
+                };
+                // username milik QA saja (awalan qa28 + user pelaku): sesi/user developer di DB uji tidak diasersikan dengan angka tangan
+                $qaOnly = function (array $names) use ($me) {
+                    return array_values(array_filter($names, function ($n) use ($me) {
+                        return strpos($n, 'qa28') === 0 || $n === $me;
+                    }));
                 };
                 // urutan menurut DB (kolasi kolom): oracle SQL independen dari daftar sesi terlihat
                 $sqlOrder = function (array $sessionIds) use ($t) {
                     return $t->db()->table('archive_opnames')->whereIn('id_archive_opname', $sessionIds ?: ['-'])->distinct()->orderBy('created_by')->pluck('created_by')->all();
                 };
 
-                $verify = function ($label, $session, array $u, array $expectSet) use ($t, $opts, $sqlOrder) {
+                $verify = function ($label, $session, array $u, array $expectSet) use ($t, $opts, $sqlOrder, $qaOnly) {
                     $r = q28_sel_users($t, $session);
                     $t->status($r, 200, "$label: select opname-users");
                     $t->eq($r[1]['msg_code'] ?? null, 'SUCCESS', "$label: msg_code");
@@ -238,24 +245,21 @@ return [
                     $got = $opts($r);
                     $exp = $sqlOrder(q28_oracle_sessions($t, $u));
                     $t->eq($got, $exp, "$label: username unik + urut = oracle SQL (DISTINCT created_by sesi terlihat)");
-                    $a = $got;
+                    $a = $qaOnly($got);
                     $b = $expectSet;
                     sort($a);
                     sort($b);
-                    $t->eq($a, $b, "$label: himpunan = angka tangan " . implode(',', $expectSet));
+                    $t->eq($a, $b, "$label: himpunan username QA = angka tangan " . implode(',', $expectSet));
                     foreach ($r[1]['result']['options'] as $o) {
                         $t->eq($o['value'], $o['label'], "$label: value = label ({$o['value']})");
                     }
                     $t->eq(count($got), count(array_unique($got)), "$label: tanpa duplikat");
-                    foreach (['qa28draftonly', 'qa28cancelonly'] as $bad) {
-                        $t->true(!in_array($bad, $got, true), "$label: $bad (hanya draft / batal) tidak muncul");
-                    }
 
                     return $got;
                 };
 
                 // --- superadmin
-                q28_with_user($t, ['role' => 1], function ($setter) use ($t, $s, $me, $verify, $opts) {
+                q28_with_user($t, ['role' => 1], function ($setter) use ($t, $s, $me, $verify, $opts, $qaOnly) {
                     $got = $verify('superadmin', $s, q28_uu($t, 'super'), ['qa28alice', 'qa28bob', 'qa28carol', 'qa28eve', 'qa28_under', $me]);
                     $t->true(in_array($me, $got, true), 'superadmin pelaku sesi (Z) ikut di daftar');
                     $setter(['role' => 2]);
@@ -264,7 +268,10 @@ return [
 
                     // search (mengandung, tanpa beda huruf)
                     $r = q28_sel_users($t, $s, ['search' => 'ALI']);
-                    $t->eq($opts($r), ['qa28alice'], 'search ALI -> qa28alice');
+                    $t->eq($qaOnly($opts($r)), ['qa28alice'], 'search ALI -> qa28alice (username QA)');
+                    foreach ($opts($r) as $nm) {
+                        $t->true(stripos($nm, 'ali') !== false, "search ALI: '$nm' mengandung 'ali' (tanpa beda huruf)");
+                    }
                     $r = q28_sel_users($t, $s, ['search' => 'qa28_']);
                     $t->eq($opts($r), ['qa28_under'], 'search "qa28_" harfiah -> qa28_under');
                     $r = q28_sel_users($t, $s, ['search' => '%']);
@@ -281,13 +288,14 @@ return [
                     }
                     // selected_id
                     $r = q28_sel_users($t, $s, ['search' => 'ALI', 'selected_id' => 'qa28bob']);
-                    $got = $opts($r);
+                    $got = $qaOnly($opts($r));
                     sort($got);
                     $t->eq($got, ['qa28alice', 'qa28bob'], 'selected_id (string) ikut walau tak lolos search');
-                    $r = q28_sel_users($t, $s, ['search' => 'ALI', 'selected_id' => ['qa28bob', 'qa28eve', 'tidak-ada-' . uniqid(), 'qa28draftonly']]);
-                    $got = $opts($r);
+                    $r = q28_sel_users($t, $s, ['search' => 'ALI', 'selected_id' => ['qa28bob', 'qa28eve', 'tidak-ada-' . uniqid(), 'qa28tanpasesi']]);
+                    $got = $qaOnly($opts($r));
                     sort($got);
-                    $t->eq($got, ['qa28alice', 'qa28bob', 'qa28eve'], 'selected_id (array): hanya yang ada di daftar; draft-only & tak dikenal tidak ikut');
+                    $t->eq($got, ['qa28alice', 'qa28bob', 'qa28eve'], 'selected_id (array): hanya yang ada di daftar; user tanpa sesi & tak dikenal tidak ikut');
+                    $t->true(!in_array('qa28tanpasesi', $opts($r), true), 'selected_id user tanpa sesi tidak ikut');
                     foreach (['search[]=a', 'selected_id[][a]=b'] as $raw) {
                         $r = $t->call($s, 'GET', Q28_SEL . '/opname-users?' . $raw);
                         q28_no500($t, $r, "select users mentah $raw");
@@ -304,7 +312,6 @@ return [
                 $got = $verify('user2', $s2, q28_uu($t, 'user2'), ['qa28alice', 'qa28bob', 'qa28_under', $me]);
                 $t->true(!in_array('qa28carol', $got, true), 'user2: qa28carol (sesi D tak terlihat) tidak ada');
                 $t->true(!in_array('qa28eve', $got, true), 'user2: qa28eve (sesi E tak terlihat) tidak ada');
-                $t->true(!in_array($u2name, $got, true), 'user2: user tanpa sesi (dirinya) tidak ada');
                 $r = q28_sel_users($t, $s2, ['selected_id' => ['qa28carol', 'qa28eve']]);
                 $t->true(!in_array('qa28carol', $opts($r), true) && !in_array('qa28eve', $opts($r), true), 'user2: selected_id di luar daftar terlihat tidak ikut');
                 $r = q28_sel_users($t, $s2, ['search' => 'qa28b']);
@@ -312,11 +319,15 @@ return [
                 $t->eq(q28_sel_users($t, $s2)[1]['message'], 'Success', 'user2: pesan SUCCESS bahasa EN');
                 $t->call($s2, 'GET', 'api/v5/auth/log-out');
 
-                // tanpa sesi sama sekali: options kosong
+                // tanpa sesi QA (sweep): username QA hilang; sisanya = sesi developer terlihat user3 (kosong bila tabel opname kosong)
                 q28_sweep($t);
                 $r = q28_sel_users($t, $s);
-                $t->status($r, 200, 'tanpa sesi: 200');
-                $t->eq($r[1]['result']['options'], [], 'tanpa sesi terkonfirmasi: options []');
+                $t->status($r, 200, 'tanpa sesi QA: 200');
+                $t->eq($opts($r), $sqlOrder(q28_oracle_sessions($t, q28_uu($t, 'user3'))), 'tanpa sesi QA: options = username sesi developer terlihat (oracle SQL)');
+                $t->eq($qaOnly(array_diff($opts($r), [$me])), [], 'tanpa sesi QA: tidak ada username qa28*');
+                if (!$t->db()->table('archive_opnames')->exists()) {
+                    $t->eq($r[1]['result']['options'], [], 'tabel opname kosong: options []');
+                }
             });
         },
     ],

@@ -3,101 +3,118 @@ key: ED-1028
 scope: be
 round: 1
 verdict: PASS
-counts: {pass: 14, fail: 0, manual: 0, not_verifiable: 0}
+counts: {pass: 16, fail: 0, manual: 0, not_verifiable: 1}
 be_server: fpm
 ---
 ## Ringkasan
 
-QA BE ronde 1, Story ED-1028 (subtask BE ED-1034, ED-1040, ED-1046; QA ED-1062). Cakupan: 14 AC `[BE]` (AC-1..AC-14).
+QA BE **revisi** (ronde 1 revisi, 2026-10-10) atas kode BE ED-1100 (saring `folders[]`/`warnings[]`) dan ED-1101 (riwayat hanya untuk `Opname Document`), diff vs baseline `3ae86a5c1` (4 berkas: `OpnameService.php`, `SelectArchiveService.php`, `ColumnDisplaySettingService.php`, `Routes/DocumentArchive/api.php`). Laporan ronde 1 asli (2026-10-07, PASS 14/14) ada di git: `git show 934f11f:features/ED-1028-archive-opname-history/qa-be.md`.
 
-- Skenario permanen di `features/ED-1028-archive-opname-history/qa/` (7 berkas `scenario*.php` + `qa_lib.php`, `qa_hist.php`): **22 skenario** (14 AC + 8 tambahan X-1..X-8), **2.642 asersi, semuanya PASS** pada run penuh terakhir (`work/qa-be-ed1028-r1-final.txt`, laporan JSON `work/qa-http/ED-1028-20261007200627.json`).
-- Sesi opname dibuat lewat API opname ED-1026 (draft, scan, confirm, cancel) oleh superadmin sementara (role 1), lalu waktu/pemilik diatur di DB agar urutan dan rentang deterministik. Pengamat: superadmin role 1 dan 2, `user3` = QA_USER role 3 (semua lokasi, bukan superadmin), `user2` = QA_USER2 sungguhan (Sales Supervisor, lokasi SMR, **List Archive tanpa Opname Document**, bahasa EN). Setiap AC memverifikasi hasil terhadap **oracle independen** (SQL mentah + PHP, tanpa kode BE) selain angka tangan.
-- Tidak ada HTTP 500 dari kode ED-1028 di ribuan request (fuzz 460 request, 20-30 ribu folder sisipan, 3.000 sesi sisipan, sesi 39 ribu baris).
-- Regresi ED-1024..ED-1027: 110 skenario PASS, 4 FAIL yang semuanya bukan regresi (2 stale yang sudah diketahui, 2 asersi ED-1026 yang digantikan oleh perubahan sah item ini; lihat bagian Regresi).
-- 1 defect kecil (D-1, kontrak, tidak memblokir AC). 3 hal untuk dikonfirmasi developer.
-- Server `fpm` (kode PHP dibaca ulang tiap request, tidak ada reload). Tidak ada perintah yang ditolak izin/classifier.
-- Efek samping runner: bind `force_login=1` mencabut token lain QA_USER di `api_sidomaju` (token run: 0 masih aktif di akhir). Role, lokasi karyawan, bahasa QA_USER dan role QA_USER2 dipulihkan persis (dicek: role [3] / [5], lokasi sama, ID/EN); tabel opname 0 baris, tanpa data `QA28`, baris display setting `documentArchiveOpnameHistory` dihapus kembali (hanya `documentArchive` ada, seperti sebelum run).
-- Transparansi: sebelum menulis skenario saya sempat membaca `run.md` dan "Catatan implementasi" di spec yang memuat catatan dev (mis. risiko kolasi latin1, sort). Pengecekan tetap diturunkan dari spec + kontrak; catatan itu hanya membuat saya menyertakan kasus teks non-latin1, sort kolom tersembunyi dan sesi batal.
+- Cakupan: 15 AC `[BE]` (AC-1, 2, 4-14, 26, 28; AC-3 dihapus oleh FB-3) + sisi BE AC-24 = **16 PASS, 0 FAIL**. Tidak ada HTTP 500 dari kode item ini. Verdict PASS.
+- Skenario permanen di `qa/` (9 berkas `scenario*.php` + `qa_lib.php`, `qa_hist.php`): **24 skenario, 3.309 asersi, semuanya PASS** pada run penuh terakhir di DB tanpa data developer (`work/qa-ed1028-rev/final-full2.txt`). Seluruh suite juga dijalankan terhadap **data developer simulasi** (4 sesi termasuk 1 sesi root + 4.241 baris snapshot + 4.241 dokumen root bertanda verifikasi): 24/24 PASS, dan DB identik (jumlah + CRC) sebelum/sesudah.
+- Server `fpm` (tanpa reload). Penolakan izin/classifier: **0** (satu `sleep` foreground diblokir guard tool, bukan penolakan izin; diganti loop `until`).
+- 3 catatan di luar item ("Bug di luar item"), tidak memblokir. Tidak ada defect pada ED-1100 / ED-1101.
+- Subtask ED-1102 (QA, folder ini saja): skenario usang diperbarui + skenario baru AC-26/AC-24/AC-28 + pengaman data uji (lihat bagian sendiri).
 
 ## Hasil per AC
 
-Bukti = berkas skenario (di `qa/`) + jumlah asersi; semua dijalankan dengan `"$PHP_BIN" scripts/qa-http/run.php ED-1028 [--only=...]`.
+Perintah: `"$PHP_BIN" scripts/qa-http/run.php ED-1028 [--only=ID]`. Oracle = SQL mentah + PHP tanpa kode BE (`q28_oracle`, `q28_oracle_sessions`, `q28_summary_oracle`) selain angka tangan. Role: user2 = `QA_USER2` (adi, role asli 5 = `List Archive` tanpa `Opname Document`, SMR) + grant sementara `Opname Document` (per NAMA, id 1139) di `q28_guard`; R0 = role asli itu; user3 = `QA_USER` role 3; superadmin = role 1/2 sementara.
 
 | AC | Cara cek | Hasil | Bukti |
 |---|---|---|---|
-| AC-1 | `scenario1-list.php` AC-1: baris display setting dihapus lebih dulu, request pertama (data kosong dan dengan 7 sesi): 200 `ARCHIVE200`, semua kunci paginator, `columns` = 7 kolom urut BR-6 (= DB `current_columns` = config), `available_columns` = 7 + Scanned + Belum discan, `queries` = confirmedAt `dateTimeRange`, createdBy `select` endpoint opname-users, idArchives `select` endpoint folders `multiple`; baris `column_display_settings` terbentuk 1x (request kedua tidak menggandakan); urut `confirmed_at` turun; kunci baris = kolom aktif + `id_archive_opname`/`id_archive`/`scope`; pagination (halaman 1-4, 0/-3/abc/x tidak 500); pesan ID/EN | PASS | 146 asersi. Excerpt: `urut confirmed_at turun (Z, Y, D, C, B, A)`; `respons columns = DB current_columns` |
-| AC-2 | `scenario1-list.php` AC-2: tiap baris = kolom `archive_opnames` (total/verified/not found/invalid, created_by, confirmed_at, id_archive); angka tangan sesi A = 9/2/1/1; `scope` = `scope` `GET opnames/{id}` (juga sesi root + 3 subfolder: `other_count` 2, folder + 2 subfolder: 1); dokumen ditambah ke F/S1/S2, dokumen di-unverify dan dinonaktifkan sesudah Confirm: seluruh baris identik | PASS | 153 asersi. Excerpt: `sesudah dokumen ditambah ... semua baris sama persis` |
-| AC-3 | `scenario1-list.php` AC-3: draft (user lain dan milik sendiri) dan sesi batal tidak muncul untuk superadmin, user3, konteks folder dan filter user pembuat; kontrol positif: draft baru muncul tepat setelah Confirm | PASS | 70 asersi |
-| AC-4 | `scenario2-search.php` AC-4: username sebagian / besar-kecil / trim; nama folder level 0, 1, 2 (snapshot; nama diganti sesudah Confirm: nama lama masih cocok); `%`, `_`, `\` harfiah; teks non-latin1/emoji/injeksi/3.000 karakter = 200 kosong; user2: nama folder tanpa View / lokasi JOG tidak mencocokkan, superadmin masih cocok; oracle penuh untuk 10 teks x user2/user3; search bukan JSON = 422 | PASS | 145 asersi. Excerpt: `user2: nama PRIV (tanpa View) tidak mencocokkan R`; `query "qa28_": "_" harfiah` |
-| AC-5 | `scenario2-search.php` AC-5: rentang inklusif di kedua ujung (selisih 1 detik), hanya awal, hanya akhir, `[null,null]`, awal > akhir kosong; 10 bentuk tak valid (bulan 13, tanpa jam, teks, ISO `T`, angka, 1/3 elemen, string, objek) = 422 dengan kunci error `confirmedAt.0` / `.1` / `confirmedAt` | PASS | 93 asersi |
-| AC-6 | `scenario2-search.php` AC-6: `createdBy` persis; `idArchives` [S2,OTH] = ATAU; [F] mencakup sesi subfolder (K-3 ii: A, B, Y, D, E); [S1a] -> A, Y; id ganda, id tak ada/dokumen/nonaktif = kosong 200; AND dengan query/confirmedAt (4 filter sekaligus); user2: id di luar scope tidak mencocokkan; non-array / isi angka / bersarang / createdBy array = 422 | PASS | 101 asersi. Excerpt: `idArchives [F] (superadmin): A (F), B (S2), Y (S1a), D (SJ), E (SP)` |
-| AC-7 | `scenario2-search.php` AC-7: 8 kolom sortable x asc/desc x bentuk JSON-string FE dan objek = urutan oracle (nilai DB, pemecah seri `confirmed_at` turun lalu id turun); `scope`, kolom asing, relasi, `sortBy` array/injeksi diabaikan (urutan bawaan, 200); `sorts` mentah aneh tidak 500; dua sort; sort + pagination lintas halaman; sort + filter | PASS | 173 asersi. Catatan: param `sort` (tunggal) dipetakan ke `sorts` oleh middleware `ConvertRequestToSnakeCase` |
-| AC-8 | `scenario3-visibility.php` AC-8: 9 sesi (termasuk 2 sesi dari folder yang dihapus fisik). Superadmin role 1 dan 2 = semua 9; user3 = 7 (tanpa E = SP tanpa View, tanpa G1 folder terhapus bukan pembuat; G2 terlihat sebagai pembuat); user3 sebagai pembuat E melihat E; user2 = 5 (Z, Y, C, B, A). Tiap kasus = oracle, dan 3 baris pertama halaman 1 = `last_sessions` `GET verifications` (id, waktu, user, scope, angka) | PASS | 88 asersi |
-| AC-9 | `scenario3-visibility.php` AC-9: `id_archive`=F/S1/OTH/S1a/P untuk superadmin, user3, user2 = oracle + angka tangan, 3 baris pertama = `last_sessions` `GET verifications/{F}`; folder tanpa sesi = kosong 200; AND dengan query/idArchives/confirmedAt; 404 `ARCHIVE400` (id tak ada, nonaktif, panjang, non-ASCII, kutip, array), 400 `ARCHIVE417` (dokumen), 403 `ARCHIVE407` (SP, SPc, PRIV, lokasi JOG, tanpa View) tanpa data, pesan EN benar, konteks diperiksa sebelum validasi search (403 dulu) | PASS | 195 asersi |
-| AC-10 | `scenario4-select.php` AC-10: himpunan folder = oracle SQL untuk superadmin role 1/2 (semua folder aktif, 32), user3 (28), user2 (21: tanpa dokumen, nonaktif, JOG, tanpa View); label = path dari tabel mentah; urut label; nama kembar = 2 opsi label beda; search nama (bukan path, tanpa beda huruf); `selected_id` string/array ikut hanya bila dalam scope (PRIV/SJ/SP/SX/dokumen/tak ada tidak ikut); bentuk salah tidak 500 | PASS | 223 asersi; ~190-250 ms per panggilan |
-| AC-11 | `scenario4-select.php` AC-11: username unik sesi terkonfirmasi terlihat = oracle SQL (urut kolasi DB); superadmin pelaku ikut; draft-only / batal-only / user tanpa sesi (termasuk user2 sendiri) tidak muncul; user2 tanpa carol (sesi D) dan eve (sesi E); search, `%`, `_` harfiah, `selected_id`; value = label; tanpa sesi = `options` [] | PASS | 126 asersi |
-| AC-12 | `scenario5-access.php` AC-12: prasyarat dari DB (role user2 punya 1082, tanpa 1133). user2: show + documents sesi terlihat A, B, C, Y, Z = 200; sesi D, E, G1, G2, draft user lain dan milik user QA, sesi batal user lain, id tak ada/panjang/kutip/non-ASCII = 404 `ARCHIVE412` tanpa data; user3: pembuat selalu terbaca (G2, E dipindah pemilik), draft sendiri 200, sesi batal sendiri 200 (perilaku 03); superadmin 1/2 semua terkonfirmasi, draft/batal user lain 404; user2 menulis (folders, POST, confirm, DELETE, scan) = 403 `GE0114` `Opname Document`, draft tak berubah; alur 03 pemegang Opname Document (Step 1 folders, scan, show draft, documents, Confirm, muncul di history) | PASS | 408 asersi |
-| AC-13 | `scenario3-visibility.php` AC-13: sesi root superadmin (root + OTH + JOGR + PRIV; scan 4 verified, 2 not found, 1 invalid). Superadmin: `is_partial` false, `result_counts` = `counts`, jumlah baris = `result_counts` untuk 6 filter. user2 dan user3 (pembuat, bukan superadmin): `result_counts`, baris tiap filter (semua halaman, pagination 3 dan 500) dan `total` paginator = oracle baris tersaring (scope lokasi + View folder), Invalid selalu tampil, `is_partial` true, `counts` kartu tetap angka rekaman; sesi A untuk user2 parsial karena dJF lokasi JOG | PASS | 138 asersi; X-7 mengulang dengan 39.241 baris (53 asersi) |
-| AC-14 | `scenario5-access.php` AC-14: user2 dengan role sementara 22 (tanpa 1082): 403 `GE0114` pada 8 URL (`GET opnames` dengan dan tanpa `id_archive`/`search`, `opnames/{id}`, `/documents`, id tak ada), parameter pesan = `List Archive`, tanpa data / tanpa kebocoran id sesi; role asli 200 sebelum dan sesudah; role dipulihkan persis; tanpa token 401 (3 endpoint + 2 select). Seed tidak berubah: `git status` BE hanya 9 berkas M + 1 baru (tanpa `.sql`, tanpa Updater) | PASS | 108 asersi. Bagian "tukar lisensi sungguhan" = MANUAL Gate 2 epic (lihat bawah) |
-
-Skenario tambahan (di luar AC, tetap permanen): X-1 display setting lewat API v4 `PUT display-columns/documentArchiveOpnameHistory` (kolom aktif menentukan kunci baris, Scanned/Belum discan, sort/filter kolom tersembunyi, 0-1 kolom aktif) 81 asersi; X-2 3.000 sesi sisipan (list/search/filter/sort/select 220-250 ms) 83; X-3 isolasi antar user bergantian 60; X-4 fuzz 460 request (status 200/400/404/422, nol 5xx) 45; X-5 bentuk parameter FE (`idArchive` camelCase, Reset filter, kunci search snake_case diabaikan) 54; X-6 20.030 folder, select 283 ms 16; X-7 sesi 39.241 baris (show 335 ms, documents 400 ms) 53; X-8 30.000 folder + daftar `IN` panjang untuk user bukan superadmin (< 1,1 s) 83.
+| AC-1 | `scenario1` AC-1: baris display setting dihapus lebih dulu, request pertama membuatnya 1x; 200 `ARCHIVE200`; kunci paginator; 7 kolom urut BR-6 = config = DB; available 7+2; 3 query (`dateTimeRange`, select `opname-users`, select `folders` multiple); urut `confirmed_at` turun; kunci baris; halaman 1-3 = potongan urutan penuh, halaman di luar jangkauan kosong; 6 parameter aneh tidak 5xx; pesan ID/EN | PASS | 155 asersi: `sesi QA ada di atas sesi developer: 6 baris pertama seluruhnya sesi QA` |
+| AC-2 (rev) | `scenario1` AC-2: angka baris = kolom `archive_opnames` (angka tangan A 9/2/1/1); `scope` baris = `scope` `GET opnames/{id}` = **tepat** `is_root, folder_name, subfolder_count` (tanpa `first_name`/`other_count`), `subfolder_count` = `scope_folder_count`; 9 sesi (A,B,C,D,E,Y,Z,R,M): A `{false,F,1}`, C `{true,null,1}`, B `{false,S2,0}`, R `{true,null,3}`, M `{false,F,2}`; nama subfolder tak ada di scope; dokumen ditambah / di-unverify / dinonaktifkan sesudahnya -> semua baris identik | PASS | 193 asersi |
+| AC-4 | `scenario2`: query username (sebagian, besar-kecil, trim), nama folder level 0/1/2 snapshot, `%` `_` `\` harfiah, teks non-latin1/emoji/injeksi/3.000 char = 200 kosong, user2: nama tak terlihat tidak cocok, oracle 10 teks x 2 user, search bukan JSON = 422 | PASS | 152 asersi |
+| AC-5 | `scenario2`: `confirmedAt` inklusif kedua ujung (selisih 1 detik), satu ujung, `[null,null]`, awal>akhir kosong, 10 bentuk tak valid = 422 (kunci `confirmedAt.0/.1/confirmedAt`) | PASS | 98 asersi |
+| AC-6 | `scenario2`: `createdBy` persis; `idArchives` [F1,F2] = ATAU termasuk subfolder; AND dengan query/confirmedAt (4 filter); user2 id di luar scope tidak cocok; non-array = 422 | PASS | 106 asersi |
+| AC-7 | `scenario2`: 8 kolom x asc/desc x bentuk JSON-string/objek = urutan oracle; pemecah seri; `scope`/kolom asing/injeksi diabaikan 200; 2 sort; lintas halaman 3+3+3 = potongan urutan penuh | PASS | 179 asersi |
+| AC-8 | `scenario3`: superadmin 1 dan 2 = semua; user3 / user2 = oracle (EPIC K-1 a); 3 baris pertama = `last_sessions` `GET verifications`; total = oracle | PASS | 96 asersi |
+| AC-9 | `scenario3`: `id_archive` F/S1/OTH/S1a/P = oracle + angka tangan; 3 baris pertama = `last_sessions` `GET verifications/{F}`; AND; 404 `ARCHIVE400`, 400 `ARCHIVE417`, 403 `ARCHIVE407` (user3 dan user2), konteks dicek sebelum search | PASS | 201 asersi |
+| AC-10 | `scenario4`: select folders = oracle (superadmin 35, user3 27, user2 19 folder), label path, urut, search, `selected_id`, tanpa 5xx | PASS | 229 asersi; ~190-225 ms |
+| AC-11 | `scenario4`: username unik sesi terlihat = oracle SQL; angka tangan hanya untuk username QA (tahan data developer); search / `%` / `_` / `selected_id`; sesudah sweep sesi QA = oracle sesi developer saja | PASS | 126 asersi |
+| AC-12 (rev) | `scenario5`: user2 **ber-Opname Document**: A,B,C,Y,Z `show`+`documents` = 200; D, E, G1, G2, id tak ada/panjang/kutip/non-ASCII = 404 `ARCHIVE412` (3 URL) pesan EN; **id bekas draft** (baris sesi dibuang) dan sisa baris `status` 1 dan 3 (disisipkan) = 404 untuk user2, user3 (pembuat), superadmin; pembuat selalu terbaca; alur ED-1026 (Step 1 -> scan tanpa menulis -> satu POST -> show -> documents -> muncul di riwayat user3 dan user2) | PASS | 414 asersi; prasyarat per nama: `Opname Document` milik user2 hanya dari grant QA28 |
+| AC-13 | `scenario3`: sesi root superadmin dibaca user2 dan user3 (pembuat): `documents` tiap filter (semua halaman) = oracle, `result_counts`, `total` paginator, `is_partial=true`, Invalid selalu tampil, `counts` = rekaman; superadmin `is_partial=false`, `result_counts` = `counts` | PASS | 143 asersi |
+| AC-14 (rev) | `scenario5`: **R0** (role asli user2): 11 URL (`GET opnames` + `id_archive` dalam/luar scope/tak ada, search valid/tak valid, `opnames/{S}`, `/documents` (+`result=all`), id tak ada) = 403 `GE0114` `parameter` "Opname Document", tanpa data/kebocoran, pesan EN; `opnames/folders`, `POST opnames`, `POST opnames/scan` 403 (milik ED-1026 AC-3, dicatat); select opname-users 200 `options: []` (juga dengan `search`/`selected_id`); select folders = scope (oracle); **role 22** (tanpa permission Archive) = 403 "Opname Document" (bukan "List Archive") di 11 URL; grant sementara = 200/404 sesuai, dicabut = 403; role dan `role_permissions` (jumlah + CRC) dipulihkan persis; tanpa token 401 | PASS | 235 asersi |
+| AC-24 (BE) | `scenario8` AC-24: hak folder FB-9 tidak mengubah sesi terlihat: user3 `V` (View) terlihat, `VC` (anak Izin On tanpa baris), `U` (hanya Update/Delete/Store), `UC` (induk tanpa View) tidak; user2 hanya `O`; `U` diberi View -> `U`,`UC` terlihat; `V` dicabut View (tinggal U/D/S) -> hilang; riwayat = oracle dan `show` 200 / 404 `ARCHIVE412` per kasus. Alur opname ED-1026 (scan/pratinjau/Confirm) = regresi ED-1026 39/39 | PASS | 81 asersi |
+| AC-26 (rev) | `scenario8`: sesi S (superadmin) dari W dengan A(A1, A2 Izin On), B(B1) Izin On tanpa hak, C(C1 tersembunyi), D(D1 tersembunyi). user2 **dan** user3: `folders[]` = W, A, C, D, A1 (= oracle); `warnings[]` = W, A, C `unverify_count` 1/1/1 (A = SUM SQL baris terlihat A+A1; D hasil 0 **tidak dikirim**; B tidak ada); nama **dan id** B, B1, A2, C1, D1 tak ada di respons mana pun; `scope` 3 kunci; `counts` = kolom; `result_counts`/`is_partial` = oracle (parsial). Superadmin 1 dan 2: 10 baris, 5 peringatan [1,2,1,2,1], `is_partial=false`. **Sesi root**: baris root selalu ikut, RH tersaring. **Pembuat non-superadmin** (S2): View X dicabut -> X tersaring; View W2 dicabut -> `folders: []`, tetap 200; `counts` tetap | PASS | 176 asersi. Excerpt: `D semula bernilai 1 (D1), terlihat 0 -> peringatan D hilang` |
+| AC-28 (rev) | `scenario9`: baris dihapus dulu: R0 `GET`/`PUT` = 403 `GE0114` "Opname Document" **dan baris tidak dibuat** (juga varian huruf besar/kecil, spasi akhir); sesudah pemegang membuatnya: R0 `GET`/`PUT` (isi sama/beda/skalar) 403, baris identik (+ `updated_at`); `GET setting/display-columns` R0 tanpa baris itu di semua halaman, `total` = pemegang - 1 (360 vs 361); `search=documentArchive` R0 -> hanya `documentArchive`, pemegang -> dua; `documentArchive` dan `supplier` tetap 200; pemegang: baris tampil, `GET`/`PUT` 200; user2 + grant = 200; sidik jari tabel `column_display_settings` dipulihkan persis | PASS | 213 asersi. Cabang "seluruh modul" ED-1027 (dulu hanya tingkat servis) kini terbukti lewat HTTP |
+| X-1..X-8 | skenario tambahan permanen: X-1 display setting (kolom aktif = kunci baris; kini lewat **API v5**, sesuai `REACT_APP_API_BASEPATH=api/v5`) 86; X-2 3.000 sesi sisipan (208-253 ms) 88; X-3 isolasi user bergantian (6 putaran, bahasa tak bocor) 65; X-4 fuzz 460 request (200/400/404/422, nol 5xx) 50; X-5 bentuk parameter FE 59; X-6 20.000 folder (select 262-415 ms) 19; X-7 sesi 39.241 baris (show 205-392 ms) 57; X-8 30.000 folder + `idArchives` 91 id (<1 s) 88 | PASS | `work/qa-ed1028-rev/final-full2.txt` |
 
 ## Defect
 
-**D-1 (rendah, kontrak; tidak memblokir AC)** - subtask ED-1034 `[BE]` (layer BE), rujukan kontrak §1 baris 422 / BR-13.
-- Langkah: `GET /api/v5/document-archive/opnames?search=[1,2]` (juga `[{"query":"a"}]`), token QA_USER.
-- Diharapkan: 422, kontrak §1 "`search` bukan JSON objek".
-- Aktual: 200, tanpa filter (daftar penuh). `search=123`, `"x"`, `abc`, `[` benar 422; `[]` dan `{}` = 200 (wajar).
-- Dugaan: `OpnameService.php:933` `if (!is_array($search))` meloloskan JSON list non-kosong. Perbaikan: tolak array list (`array_values($search) === $search && $search !== []`) atau longgarkan kalimat kontrak. FE tidak pernah mengirim bentuk ini.
-
-## Perlu dikonfirmasi developer (bukan defect)
-
-1. Kontrak §2 baris tabel 404 `ARCHIVE412` menyebut "sesi batal" tanpa syarat pemilik, sedangkan badan §2 dan perilaku ED-1026 (teruji) membolehkan pemilik membaca sesi batalnya sendiri; sesi batal milik user lain memang 404 (teruji). Usul: samakan kata-kata tabel.
-2. `idArchives: [""]` (elemen kosong) = 200 dengan 0 baris (kontrak hanya mengatur `[]` = tanpa filter). FE yang mengosongkan multi-select harus mengirim `[]`.
-3. Label path select folder memuat nama induk walau induk tidak terlihat user (sama dengan breadcrumb folder, tercatat di spec). Dan filter `idArchives` dikirim di query string GET: server web menolak > ~8 KB (percobaan 601 id = 414); 90 id aman.
+Tidak ada defect pada ED-1100 (BE saring `folders`/`warnings`) maupun ED-1101 (BE `Opname Document`): AC-12, AC-14, AC-26, AC-28 PASS, tanpa 5xx. Catatan non-defect (perlu diketahui developer):
+- `PUT setting/display-columns/documentArchiveOpnameHistory` oleh R0 **tanpa** `current_columns` = **422** (validasi controller `ColumnDisplaySettingController.php:31` berjalan sebelum cek permission di service), bukan 403. Tidak membaca/menulis apa pun; sama dengan modul `documentArchive` (ED-1027). FE selalu mengirim `current_columns`. Asersi AC-28 menerima 403 atau 422.
+- Select `opname-users` dan display setting memakai `MyHelper::hasPermission`, sedangkan route memakai `permission_v5` (selisih kecil, lihat "Bug di luar item" B-2); sesuai spec §4 (preseden `TransactionPrintService.php:37`).
 
 ## Isolasi tenant & permission
 
-Permission (semua endpoint baru/diubah):
-
-| Endpoint | Pemegang izin | Tanpa izin | Tanpa token |
+| Endpoint | Pemegang `Opname Document` | Tanpa (R0 / role 22) | Tanpa token |
 |---|---|---|---|
-| GET `opnames` (List Archive) | superadmin 1/2, user3, user2: 200 | role 22: 403 `GE0114` (param `List Archive`) | 401 |
-| GET `opnames/{id}`, `/documents` (List Archive) | user2 (tanpa Opname Document) 200 / 404 `ARCHIVE412` sesuai visibilitas | role 22: 403 `GE0114`, juga untuk id tak ada | 401 |
-| GET select `folders`, `opname-users` | konvensi select tanpa `permission_v5` (spec BR-12): 200, data tetap dalam scope user (teruji untuk role 22: = oracle scope user2) | n/a | 401 |
-| Endpoint tulis 03 (folders, POST, scan, confirm, DELETE) | tetap `Opname Document`: user2 = 403 `GE0114` | | |
+| GET `opnames` | superadmin 1/2, user3, user2(+grant): 200 | 403 `GE0114` "Opname Document" (dicek pertama, sebelum id/lokasi/View/validasi) | 401 |
+| GET `opnames/{id}`, `/documents` | 200 / 404 `ARCHIVE412` sesuai visibilitas | 403 `GE0114`, juga id tak ada | 401 |
+| GET select `opname-users` | username sesi terlihat | 200 `options: []` | 401 |
+| GET select `folders` | konvensi select: data dalam scope | 200, = scope user (oracle) | 401 |
+| GET/PUT `setting/display-columns/documentArchiveOpnameHistory` | 200 | 403 `GE0114` "Opname Document" | - |
+| GET `setting/display-columns` | memuat baris | tanpa baris, `total` - 1 | - |
 
-Isolasi tenant: **tidak bisa diverifikasi**, `QA_DBS` hanya `api_sidomaju` (1 DB). Pengganti yang dikerjakan: (a) tinjauan diff: tanpa `static`, singleton, `Cache::`, `config([...])` atau `$GLOBALS` baru; `context()`/`viewableFolderIds()` dihitung per request; (b) X-3: 6 putaran permintaan bergantian user2 dan user3 (list, select opname-users, select folders) memberi hasil identik di tiap putaran, bahasa (EN/ID) tidak bocor. Perlu diulang saat ada dua DB tenant.
+Isolasi tenant antar-DB: **tidak bisa diverifikasi** (`QA_DBS` = 1 DB, `api_sidomaju`). Pengganti: X-3 (6 putaran bergantian user2/user3: hasil, select, bahasa EN/ID identik tiap putaran) dan tinjauan diff: tidak ada `static`, singleton, `Cache::`, `config([...])`, `$GLOBALS` baru di 4 berkas; `hiddenModules()` dihitung per request. Ulangi saat ada dua DB tenant (RoadRunner tidak dipakai di mesin ini).
 
-## Tinjauan kebenaran diff BE (bukan gaya)
+## Tinjauan kebenaran diff BE
 
-- Kontrak vs aktual: kunci baris, `columns`/`queries`, envelope `ARCHIVE200`/`SUCCESS`, kode 404/400/403/422, kunci error 422 (`confirmedAt.0`, `idArchives`, `createdBy`), `result_counts`/`is_partial` (draft: dari `counts`, `is_partial` false), `total` paginator = `result_counts[result]` = cocok, kecuali D-1.
-- Kode pesan yang dipakai (`ARCHIVE200/400/407/412/417`, `GE0114`, `SUCCESS`) ada di `app/Lib/lang/id_ID.php` dan `en_EN.php`; tidak ada kode baru.
-- Skema: tidak ada tabel/Updater/permission seed baru (sesuai spec); display setting dibuat otomatis oleh `MyHelper::getDisplaySetting` pada request pertama (teruji). Tidak ada kolom v3 yang disentuh (hanya baca).
-- Rollback: semua endpoint baru hanya baca; endpoint opname 03 yang berubah (`readable()` mengembalikan `[opname, context]`) tetap lulus regresi 03.
-- Performa: query `EXISTS` tanpa duplikasi baris; 3.000 sesi, 30.000 folder, 39 ribu baris snapshot semuanya < 1,1 s.
+- **Kontrak vs aktual** (diperiksa lewat HTTP): 403 `{message, code: GE0114, parameter: "Opname Document"}`; select opname-users R0 `{status, msg_code: SUCCESS, result: {default: null, options: []}}`; `folders[]` kunci `id_archive, name, level, is_continue, is_opnamed_today, document_count`; `warnings[]` `id_archive, name, is_opnamed_today, unverify_count`; `scope` tiga kunci; display setting 403 sebelum baris dibuat. Semua sesuai kontrak §1-§3, §6, §7. Tidak ada kode pesan baru (`GE0114` ada di kedua berkas bahasa).
+- **D-1 (`confirmedSummary`)**: pengelompokan level 2 -> baris Step 1 memakai struktur snapshot (juga lewat baris tersembunyi), saringan hanya menentukan baris yang dijumlahkan dan ditampilkan; root (`id_archive` null) selalu ikut; `counts` tidak disaring; himpunan = `context['folders']` (sama dengan `whereVisibleRows`), tanpa query pohon kedua; `show` meneruskan `$context` yang sudah dihitung `readable()`. Benar untuk: folder tak terlihat karena Izin Folder, induk tanpa View, folder terhapus/nonaktif, pembuat yang kehilangan View.
+- **Rute** `api.php:42,45,49`: tiga rute GET `opnames*` kini `permission_v5:Opname Document`; komentar `api.php:40` tidak lagi menyebut `List Archive` untuk baca sesi (O-5).
+- **Display setting**: entri seluruh modul di `PERMISSION_FILTERS`; `index` membuang baris lewat `whereNotIn` (kolasi tak peka huruf/spasi sama dengan `permissionFilter`), `total` ikut; varian nama dan baris-belum-ada ditolak sebelum dibuat/ditulis.
+- Skema: tanpa Updater, tabel, atau permission baru; tidak ada kolom v3 yang disentuh (hanya baca); tidak ada tulisan baru -> tidak ada rollback yang perlu diuji.
 
-## Regresi BE ED-1024..ED-1027
+## Skrip QA yang diperbarui (ED-1102, hanya `features/ED-1028-archive-opname-history/qa/`)
 
-Dijalankan penuh sesudah skenario ED-1028 (`work/qa-be-ed1028-r1-reg-ED-10xx.txt`).
+| Berkas | Perubahan |
+|---|---|
+| `qa_lib.php` | `q28_session/scan/confirm/run` -> alur stateless ED-1026 (**satu** `POST opnames` dengan `scans` + `selected_at`; `Q28Session`, `q28_wait`); `q28_baseline/sweep/cleanup` -> pola pengaman data uji (pra-citra, jumlah + CRC, `q28_bulk_purge`); grant sementara berjurnal (`q28_grant/with_grant`); `Q28_OD`, `Q28_LA` |
+| `qa_hist.php` | fixture H (draft) dan K (batal + `DELETE`) dibuang; `q28_hfix` + `extras`; waktu sesi QA di atas sesi developer (`q28_day`); `pagination=100` = semua halaman; `q28_hkeys` membuang sesi asing; `q28_guard` memberi user2 `Opname Document` + bukti `role_permissions` persis; `q28_summary_oracle` |
+| `scenario1-list.php` | kunci `scope` = `is_root, folder_name, subfolder_count`, asersi `first_name/other_count` -> `subfolder_count`; AC-3 (draft/batal + `DELETE`) dihapus; R dan M dibuat lewat `extras` |
+| `scenario5-access.php` | AC-12 dan AC-14 ditulis ulang (prasyarat per nama, user2 ber-OD, id bekas draft 404, rute dihapus ED-1026 dibuang, R0 / role 22 "Opname Document", `options: []`); X-1 ke API v5 |
+| `scenario2/3/4/7` | tahan data developer (kunci dilingkup, total = oracle, halaman potongan urutan penuh), user2 ber-OD, tanpa H/K |
+| `scenario8-folders-filter.php` (baru) | AC-26 (D-1) dan AC-24 (BE, FB-9) |
+| `scenario9-display-setting.php` (baru) | AC-28 (K-8 a, K-9 a) |
+| e2e `ED-1028-opname-history.spec.js` | **tidak disentuh** (tahap FE): `.ant-segmented-item` -> `CheckableTag`, AC-21 user2 ber-OD, profil R0 AC-27, asumsi tabel opname kosong (`epics/ED-1022-ba2-notes.md`) = tugas QA FE. `e2e/fixture.php` tidak memakai `qa_lib.php` |
+
+## Pengaman data uji (data developer)
+
+- Tabel opname boleh kosong **atau** berisi data developer. `q28_baseline` mencatat pra-citra kolom verifikasi semua baris `archives` non-`QA28-` yang tidak default dan keadaan developer (jumlah + CRC `archive_opnames`, `_folders`, `_documents`, `archives`); `q28_sweep` hanya menghapus baris opname sesi di jurnal dan mengembalikan kolom verifikasi baris bertanda sesi itu ke **nilai sebelumnya** (bukan default); `q28_cleanup` membuktikan keadaan developer sama persis di akhir **setiap AC**. Penghapusan hanya untuk awalan `QA28-`/`QA28BULK*`/jurnal.
+- Dibuktikan dengan data simulasi (bukan data developer asli), dijurnal: 4 sesi opname (`DEVSIM-`, pemilik `devsim.kevin`, `QA_USER`, `adi`, `kevinsudjadi.adm`; satu sesi **root** yang menandai 4.241 dokumen root nyata). Seluruh 24 skenario PASS dan jumlah + CRC DB identik sesudah suite (`devstate` sama persis). Simulasi menemukan satu asersi X-8 yang mengasumsikan semua sesi cocok `QA28-`; sudah dilingkup ke sesi QA.
+- Simulasi dibuang seluruhnya: 4 sesi + 5 baris folder + 4.241 baris dokumen snapshot, 4 folder + 7 dokumen `DEVSIM-` (beserta `archive_documents`), kolom verifikasi 4.241 dokumen root nyata dikembalikan ke default (keadaan awal terbukti default: pra-citra 0 baris); keadaan DB sesudahnya = sebelum simulasi (CRC sama). **Data developer yang dihapus: tidak ada (0 baris).**
+- Pemulihan: `role_permissions` (jumlah + CRC) sama sesudah tiap AC, 0 baris `created_by = QA28`; role user2 = [5], QA_USER = [3], lokasi dan bahasa (ID / EN) sama; baris `documentArchiveOpnameHistory` (1 baris, total 361) dan `documentArchive` utuh; tabel opname 0 baris; 0 sisa `QA28-`/`DEVSIM-`/`QA28BULK`; token run 0 aktif. Penghitung auto-id `role_permissions` maju (tak berpengaruh).
+
+## Regresi BE (record; bukan hitungan item ini)
+
+Run penuh sesudah ED-1028, DB kosong (`work/qa-ed1028-rev/reg-ED-10xx.txt`):
 
 | Item | PASS | FAIL | SKIP | Catatan |
 |---|---|---|---|---|
 | ED-1024 | 26 | 0 | 0 | bersih |
-| ED-1025 | 30 | 1 | 0 | AC-1 = stale yang sudah diketahui ("Updater = kunci terbesar di `Updaters/config.php`") |
-| ED-1026 | 34 | 3 | 0 | AC-1 = stale yang sudah diketahui; **AC-12 dan AC-15 digantikan oleh perubahan sah item ini** (lihat di bawah) |
-| ED-1027 | 20 | 0 | 1 | X-3 SKIP (1 DB tenant) |
+| ED-1025 | 40 | 0 | 0 | X-12 (75 x 500) dan X-13 (500) = karakterisasi bug pra-ada ED-1071 / ED-1070 |
+| ED-1026 | 39 | 0 | 0 | AC-3 / AC-12 / AC-15 sudah diperbarui ED-1026 untuk perubahan sah ini |
+| ED-1027 | 28 | 0 | 1 | X-3 SKIP (1 DB); AC-24 / X-12 / X-13 (peta saringan) PASS bersama entri seluruh modul baru; X-10 mencatat 500 pra-ada ED-1070 |
+| ED-1029 | 29 | 0 | 1 | X-ISO SKIP (1 DB); X-1 mencatat 16 x 500 SQLSTATE pra-ada (ED-1071) |
 
-ED-1026 AC-12: asersi "sesi terkonfirmasi user lain, non-superadmin: show/documents 404" kini 200 untuk sesi yang terlihat (BR-3/BR-12, kontrak §2 "memperluas visibilitas"). ED-1026 AC-15: daftar kunci `show` persis tanpa `result_counts` dan `is_partial` (kontrak §2 menambahkannya). Karena AC berhenti di asersi gagal pertama, saya menjalankan **salinan di folder scratch** (bukan mengubah berkas item lain) dengan dua ekspektasi itu disesuaikan: AC-12 (140 asersi), AC-15 (40), AC-24, EXTRA-SCOPE, EXTRA-PERM, EXTRA-STALE semuanya PASS, jadi sisa asersi (draft user lain 404 untuk semua termasuk superadmin, sesi batal user lain 404, mutasi ditolak 400/404) tidak berubah. Berkas QA ED-1026 (dan dokumen 03 §4/§6) perlu diperbarui oleh pihak yang berwenang.
+"Digantikan perubahan sah": **tidak ada yang tersisa** (skenario usang ronde lama ED-1025 AC-1, ED-1026 AC-12/AC-15, ED-1027 AC-1/X-1 sudah diperbarui pemiliknya). Skenario ED-1027 yang dulu hanya memeriksa cabang "seluruh modul" di tingkat servis kini punya bukti HTTP di AC-28 ED-1028; skenario ED-1028 yang dicatat usang oleh ED-1026/ED-1027 (`q28_session`, `scenario1-list.php`, `scenario5-access.php`, `qa_hist.php`) sudah diperbaiki (bagian di atas), sehingga "ED-1028 20/22 FAIL" di laporan ED-1026/ED-1027 tidak berlaku lagi (sekarang 24/24).
 
-500 yang tampak di keluaran regresi: hanya ED-1025 X-12 (75 dari 80 kasus; tiket ED-1071: karakter di luar Windows-1252) dan X-13 (tiket ED-1070: `pagination`/`sorts`/`search` salah bentuk pada `GET archives`), keduanya karakterisasi bug pra-ada lintas v5 pada endpoint ED-1025/list Archive. Bukan kode ED-1028 dan tidak dihitung sebagai defect item ini; disebut karena aturan "setiap 500 adalah defect".
+## Bug di luar item
+
+- **B-1 (rendah, keputusan developer): route V4 `setting/display-columns*` tidak ikut dijaga.** `Modules/V4/Routes/Setup/setting.php:58-62` + `Modules/V4/Services/Setup/Setting/ColumnDisplaySettingService.php:12-35` tanpa cek permission. Bukti (R0, read-only): `GET api/v4/setting/display-columns/documentArchiveOpnameHistory` -> **200** berisi `current_columns`; `GET api/v4/setting/display-columns?search=documentArchive` -> total **2** (memuat `documentArchiveOpnameHistory`) vs `api/v5/...` -> total **1** dan 403 untuk modul itu. PUT v4: dari kode, tidak dijalankan. FE memakai `api/v5` (`.env` `REACT_APP_API_BASEPATH`), jadi UI aman; yang terbuka hanya konfigurasi kolom (tanpa data sesi) lewat klien non-FE. Celah yang sama untuk saringan `documentArchive` ED-1027. Usul: tutup di V4 atau terima (legacy).
+- **B-2 (info, tidak diverifikasi): `permission_v5` vs `MyHelper::hasPermission` berbeda.** Middleware memakai `permissions.is_active = 1` dan meloloskan `user->customer` (`PermissionVersion5.php:28-30`; `V4/Permission::permissionByRole`), `hasPermission` (`MyHelper.php:521`) tidak memeriksa keduanya. Saat ini tidak ada permission `is_active != 1` di DB uji, jadi tidak ada selisih nyata; pengguna aplikasi customer (tidak ada di config QA) bisa lolos `GET opnames*` tetapi mendapat `options: []` di select dan tidak melihat entri display setting. Sama dengan yang dicatat reviewer BE; konsekuensi platform (customer bypass berlaku untuk semua rute v5).
+- **B-3 (info): 500 pra-ada yang terlihat di regresi**, bukan kode item ini: ED-1025 X-12 / X-13 (kolasi latin1 = ED-1071; `pagination`/`sorts`/`search` salah bentuk = ED-1070), ED-1027 X-10 (`sorts` array = ED-1070), ED-1029 X-1 (16 x SQLSTATE = ED-1071). ED-1122 (`PUT display-columns` isi sama di detik yang sama = 500) tidak dipicu (PUT pemegang selalu mengubah isi, sekali).
 
 ## Yang tidak bisa diverifikasi (dan kenapa)
 
-- Isolasi tenant antar-DB: `QA_DBS` berisi 1 DB (lihat di atas).
-- AC-14, bagian "tukar lisensi sungguhan sekali" (tanpa fitur Salesman Activity): `PROFILES` kosong; MANUAL di Gate 2 epic (cara seragam EPIC K-2 b). Bagian http (role tanpa List Archive), seed tidak berubah, dan 401 sudah PASS.
-- AC `[FE]` dan `[BE+FE]` (AC-15..AC-25) bukan milik tahap ini.
+- **Isolasi tenant antar-DB**: `QA_DBS` = 1 DB (lihat di atas); `not_verifiable: 1` pada front matter = butir ini (bukan AC). RoadRunner tidak dipakai (`BE_SERVER=fpm`).
+- Tukar lisensi Salesman Activity sungguhan (AC-14 bagian lisensi): `PROFILES` kosong; MANUAL Gate 2 epic (EPIC K-2 b). Bagian http (R0, role 22, seed tanpa perubahan, 401) PASS.
+- Pengguna aplikasi customer (B-2) dan `PUT api/v4/...` (B-1): tidak ada user customer di config QA; PUT v4 tidak dijalankan.
+- Seluruh `[FE]` / `[BE+FE]` (AC-15..25, 27, 29, sisi FE AC-24): tahap FE.
 
 ## Riwayat ronde
 
-- Ronde 1 (2026-10-07): 22 skenario PASS (2.642 asersi), 1 defect rendah (D-1), regresi ED-1024..1027 tanpa regresi nyata; verdict PASS.
+- Ronde 1 revisi (2026-10-10): **PASS**. 16 AC BE (15 + AC-24 BE) PASS; 24 skenario / 3.309 asersi; data developer simulasi 24/24 dan DB identik; regresi ED-1024 26/26, ED-1025 40/40, ED-1026 39/39, ED-1027 28+1 SKIP, ED-1029 29+1 SKIP; 0 defect; 3 catatan di luar item.
+- Ronde 1 asli (2026-10-07): PASS 14/14 AC, 22 skenario / 2.642 asersi, 1 defect rendah (D-1 kontrak, diperbaiki); laporan lengkap: `git show 934f11f:features/ED-1028-archive-opname-history/qa-be.md`.

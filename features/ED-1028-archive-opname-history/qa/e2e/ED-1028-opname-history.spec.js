@@ -1,19 +1,32 @@
 'use strict';
 
 /**
- * ED-1028 - Archive: Opname History (semua sesi). Drawer inline dari modal Document Verified (All Archive) dan tab Verification
- * drawer folder; tabel v5 (display setting, search + filter popover, sort, pagination); hasil satu sesi (drawer bersarang).
+ * ED-1028 - Archive: Opname History (semua sesi). Drawer inline dari modal Document Verified (All Archive), tab Verification
+ * drawer folder dan (rev) modal verifikasi folder; tabel v5 (display setting, search + filter popover, sort, pagination); hasil satu
+ * sesi (drawer bersarang, filter CheckableTag). (rev 2026-10-10) K-8 a: riwayat hanya untuk pemegang `Opname Document`.
  *
  * Data uji dibuat fixture (fixtures.json -> fixture.php) dan dibuang persis di teardown: folder berawalan "0QA28-", sesi N01..N14
- * (14 terkonfirmasi, 13 terlihat user2), HID (terkonfirmasi, tak terlihat), draft, batal. Sesi disisipkan spec (fixture.php sessions)
- * sesudah test "tanpa sesi sama sekali" supaya keadaan nol sesi nyata ikut teruji. Lihat kepala fixture.php untuk angka tangan.
- * User [default] = QA_USER (role 3, semua lokasi, bahasa ID, bukan superadmin), [user2] = QA_USER2 (Sales Supervisor, lokasi SMR, EN).
+ * (14 terkonfirmasi, 13 terlihat user2) dan HID (terkonfirmasi, tak terlihat). Tidak ada draft/batal (ED-1026 FB-3). Sesi disisipkan
+ * fixture dengan waktu konfirmasi TAHUN 2031: selalu di atas data developer pada urutan bawaan, jadi halaman 1, 3 sesi overview, dan
+ * rentang tanggal deterministik walau tabel opname berisi data developer. Semua asersi dilingkup ke sesi uji sendiri (pengguna
+ * `qa28*`): baris asing hanya dibuang dari perbandingan (`rowKeys`), total diperiksa terhadap batas bawah (`>= 14`/`>= 13`) dan
+ * ke "total sebelum filter" (Reset). Spec lulus dengan atau tanpa sesi developer di tabel opname.
+ * Lihat kepala fixture.php untuk angka tangan dan format Scope ("<folder> + N subfolder", root "Semua Arsip · root" / "All Archive · root").
+ *
+ * User [default] = QA_USER (role 3, pemegang Opname Document, semua lokasi, bahasa ID, bukan superadmin).
+ * User [user2] = QA_USER2 (Sales Supervisor, lokasi SMR, EN, role asli TANPA Opname Document = "R0"):
+ *   - AC-27 R0: role asli tanpa permission -> tanpa CTA, tanpa riwayat di DOM, tanpa request opnames*;
+ *   - AC-21: `Opname Document` diberikan SEMENTARA lewat fixture.php grant-od (baris role_permissions yang dibuat saja, dicari per NAMA,
+ *     dicabut persis di finally + revoke-od + down) lalu halaman dimuat ulang (FE membaca permission dari auth/info saat mount).
  *
  * Mutasi: Display Setting `documentArchiveOpnameHistory` (baris global; dipulihkan spec lalu fixture), Confirm Opname GAMMA lewat UI
- * (test terakhir; sesi baru dibuang teardown). Test dijalankan berurutan (E2E_WORKERS=1).
+ * (sesi baru dibuang fixture), grant sementara (role_permissions). Test berbagi state itu, jadi tiap test mengambil kunci lintas-proses
+ * (`takeStateLock`) dan hasil tidak bergantung pada `--workers` (default harness: 2 worker + fullyParallel); tetap dianjurkan
+ * `scripts/e2e/run.sh ED-1028 --workers 1 --profile default,user2`.
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { test, expect, config } = require('e2e-harness');
@@ -23,6 +36,8 @@ const fixture = (cmd) => execFileSync(config.get('PHP_BIN'), [path.join(__dirnam
 const ids = () => JSON.parse(fs.readFileSync(path.join(__dirname, '.fixture-ids.json'), 'utf8'));
 const inspectDb = () => JSON.parse(fixture('inspect').trim().split('\n').pop());
 const displayDb = () => JSON.parse(fixture('display').trim().split('\n').pop());
+const grantOd = () => JSON.parse(fixture('grant-od').trim().split('\n').pop());
+const revokeOd = () => fixture('revoke-od').trim().split('\n').pop();
 const trimAll = (arr) => arr.map((t) => t.replace(/\s+/g, ' ').trim());
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -35,48 +50,53 @@ const dateText = (at, lang = 'id') => {
   const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(at);
   return `${m[3]} ${MONTHS[lang][Number(m[2]) - 1]} ${m[1]} ${m[4]}:${m[5]}`;
 };
-// [confirmed_at, user, scope, total, verified, notFound, invalid]
+const ROOT = '@root'; // teks root bergantung bahasa (ED-1026 N-4)
+// [confirmed_at, user, scope, total, verified, notFound, invalid]; scope = getScopeTag: "<folder> + N subfolder" (K-14 a), tanpa akhiran bila 0
 const S = {
-  N01: ['2026-10-06 16:40:00', 'qa28alice', `${P}ALFA-S1 + 1 subfolder`, 5, 3, 1, 1],
-  N02: ['2026-10-05 09:15:00', 'qa28root', 'All Archive · root', 8, 3, 1, 1],
-  N03: ['2026-10-04 14:30:00', 'qa28bob', `${P}BRAVO`, 1, 1, 0, 0],
-  N04: ['2026-10-03 11:05:00', 'qa28carol', `${P}BRAVO-T1`, 1, 1, 0, 0],
-  N05: ['2026-10-02 08:20:00', 'qa28alice', `${P}ALFA-S2`, 1, 1, 0, 0],
-  N06: ['2026-10-01 17:45:00', 'qa28dave', `${P}BRAVO`, 2, 1, 0, 1],
-  N07: ['2026-09-30 10:10:00', 'qa28erin', `${P}ALFA-S1`, 2, 2, 0, 0],
-  N08: ['2026-09-29 13:00:00', 'qa28bob', `${P}BRAVO`, 2, 1, 1, 0],
-  N09: ['2026-09-28 09:00:00', 'qa28carol', `${P}ALFA`, 3, 2, 0, 0],
-  N10: ['2026-09-27 15:30:00', 'qa28dave', `${P}BRAVO`, 2, 2, 0, 0],
-  N11: ['2026-09-26 12:00:00', 'qa28alice', `${P}ALFA-S1-X`, 1, 1, 0, 0],
-  N12: ['2026-09-25 08:00:00', 'qa28erin', `${P}BRAVO`, 2, 1, 0, 0],
-  N13: ['2026-09-24 07:30:00', 'qa28bob', `${P}ALFA`, 3, 3, 0, 0],
-  N14: ['2026-09-23 06:00:00', 'qa28view', `${P}VIEWONLY`, 1, 1, 0, 0],
+  N01: ['2031-10-06 16:40:00', 'qa28alice', `${P}ALFA + 2 subfolder`, 5, 3, 1, 1],
+  N02: ['2031-10-05 09:15:00', 'qa28root', ROOT, 8, 3, 1, 1],
+  N03: ['2031-10-04 14:30:00', 'qa28bob', `${P}BRAVO`, 1, 1, 0, 0],
+  N04: ['2031-10-03 11:05:00', 'qa28carol', `${P}BRAVO-T1`, 1, 1, 0, 0],
+  N05: ['2031-10-02 08:20:00', 'qa28alice', `${P}ALFA-S2`, 1, 1, 0, 0],
+  N06: ['2031-10-01 17:45:00', 'qa28dave', `${P}BRAVO`, 2, 1, 0, 1],
+  N07: ['2031-09-30 10:10:00', 'qa28erin', `${P}ALFA-S1`, 2, 2, 0, 0],
+  N08: ['2031-09-29 13:00:00', 'qa28bob', `${P}BRAVO + 1 subfolder`, 2, 1, 1, 0],
+  N09: ['2031-09-28 09:00:00', 'qa28carol', `${P}ALFA`, 3, 2, 0, 0],
+  N10: ['2031-09-27 15:30:00', 'qa28dave', `${P}BRAVO`, 2, 2, 0, 0],
+  N11: ['2031-09-26 12:00:00', 'qa28alice', `${P}ALFA-S1-X`, 1, 1, 0, 0],
+  N12: ['2031-09-25 08:00:00', 'qa28erin', `${P}BRAVO`, 2, 1, 0, 0],
+  N13: ['2031-09-24 07:30:00', 'qa28bob', `${P}ALFA`, 3, 3, 0, 0],
+  N14: ['2031-09-23 06:00:00', 'qa28view', `${P}VIEWONLY`, 1, 1, 0, 0],
 };
-const ORDER = Object.keys(S); // terbaru -> terlama
-const cells = (k, lang = 'id') => [dateText(S[k][0], lang), S[k][1], S[k][2], ...S[k].slice(3).map(String)];
+const ORDER = Object.keys(S); // terbaru -> terlama (juga urutan bawaan di UI: sesi uji selalu di atas data developer)
+const USER2_ORDER = ORDER.filter((k) => k !== 'N14'); // N14 (folder VIEWONLY) tak terlihat user2
+const HIDDEN_USERS = /qa28hid/;
+const scopeOf = (k, lang) => (S[k][2] === ROOT ? LANG[lang].root : S[k][2]);
+const cells = (k, lang = 'id') => [dateText(S[k][0], lang), S[k][1], scopeOf(k, lang), ...S[k].slice(3).map(String)];
 const cellsOf = (keys, lang) => keys.map((k) => cells(k, lang));
-const HIDDEN_USERS = /qa28hid|qa28draft|qa28cancel/;
 
 const LANG = {
   id: {
-    link: 'Lihat detail per tipe transaksi', cta: 'Lihat semua riwayat', title: 'Riwayat Opname', subAll: 'All Archive — seluruh sesi opname',
-    subFolder: (n) => `${n} — seluruh sesi opname yang mencakup folder ini`, resultTitle: 'Hasil Opname',
+    link: 'Lihat detail per tipe transaksi', cta: 'Lihat semua riwayat', title: 'Riwayat Opname', subAll: 'Semua Arsip — seluruh sesi opname',
+    subFolder: (n) => `${n} — seluruh sesi opname yang mencakup folder ini`, resultTitle: 'Hasil Opname', root: 'Semua Arsip · root',
     heads: ['Waktu', 'User', 'Scope', 'Total Dokumen', 'Verified', 'Not Found', 'Invalid'],
     cards: ['Total dokumen', 'Terverifikasi sesi ini', 'Tidak ditemukan', 'Tidak valid', 'Belum discan'],
     seg: ['Semua', 'Discan', 'Terverifikasi', 'Tidak ditemukan', 'Tidak valid'],
     partial: 'Sebagian dokumen di luar akses Anda tidak ditampilkan.', outside: 'Di luar scope opname',
     res: { verified: 'Terverifikasi', not_found: 'Tidak ditemukan', invalid: 'Tidak valid', unscanned: 'Belum discan' },
     docHeads: ['No Dokumen', 'Tipe Transaksi', 'Folder', 'Waktu', 'Hasil'], display: /Pengaturan Tampilan/, view: /^Lihat$/, verif: 'Verifikasi',
+    dv: 'Dokumen Terverifikasi',
   },
   en: {
     link: 'See detail per transaction type', cta: 'See all history', title: 'Opname History', subAll: 'All Archive — all opname sessions',
-    subFolder: (n) => `${n} — all opname sessions that cover this folder`, resultTitle: 'Opname Result',
+    subFolder: (n) => `${n} — all opname sessions that cover this folder`, resultTitle: 'Opname Result', root: 'All Archive · root',
     heads: ['Time', 'User', 'Scope', 'Total Documents', 'Verified', 'Not Found', 'Invalid'],
     cards: ['Total documents', 'Verified this session', 'Not found', 'Invalid', 'Not scanned'],
     seg: ['All', 'Scanned', 'Verified', 'Not found', 'Invalid'],
     partial: 'Some documents outside your access are not shown.', outside: 'Outside opname scope',
     res: { verified: 'Verified', not_found: 'Not found', invalid: 'Invalid', unscanned: 'Not scanned' },
     docHeads: ['Document No', 'Transaction Type', 'Folder', 'Time', 'Result'], display: /Display Setting/, view: /^View$/, verif: 'Verification',
+    dv: 'Document Verified',
   },
 };
 
@@ -128,6 +148,7 @@ const searchOf = (resp) => {
   const raw = new URL(resp.url()).searchParams.get('search');
   return raw === null || raw === '' ? null : JSON.parse(raw);
 };
+const folderParam = (u) => u.searchParams.get('idArchive') || u.searchParams.get('id_archive');
 
 function noServerError(monitor) {
   const bad = monitor.responses.filter((r) => r.status >= 500);
@@ -136,7 +157,7 @@ function noServerError(monitor) {
   expect(api.length, 'ada panggilan API v5 tercatat (monitor aktif)').toBeGreaterThan(0);
 }
 
-/** buang dari monitor penolakan yang SENGAJA dibuat (respons dimodifikasi), setelah memastikan terjadi */
+/** buang dari monitor penolakan yang SENGAJA dibuat (respons dimodifikasi / probe R0), setelah memastikan terjadi */
 function expectRejected(monitor, label, { status, urlRe }) {
   const expected = (e) =>
     (e.kind === 'response' && e.status === status && urlRe.test(decodeURIComponent(e.url))) ||
@@ -147,6 +168,62 @@ function expectRejected(monitor, label, { status, urlRe }) {
   monitor.note(`${label}: ${dropped.length} entri error yang diharapkan dikeluarkan dari pemeriksaan`);
 }
 
+/** GET API v5 dari dalam halaman (token ada di localStorage FE, tidak pernah keluar dari browser / dicetak) */
+async function apiGet(page, uri) {
+  const base = `${config.apiBase()}/${config.apiBasePath()}/`;
+  return page.evaluate(
+    async ({ base: b, uri: u }) => {
+      const bearer = JSON.parse(localStorage.getItem('bearer') || 'null');
+      const res = await fetch(b + u, { headers: { Accept: 'application/json', Authorization: `Bearer ${bearer && bearer.accessToken}` } });
+      let json = null;
+      try {
+        json = await res.json();
+      } catch (e) {
+        json = null;
+      }
+      return { status: res.status, json };
+    },
+    { base, uri },
+  );
+}
+
+// ------------------------------------------------------------------------------------------------ kunci state lintas-proses
+/**
+ * Kunci lintas-proses (mkdir atomik): state bersama (Display Setting global, grant role, sesi opname) tidak boleh ditimpa test lain
+ * yang jalan bersamaan di worker/profil lain (QA FE ED-1027 Q-1). Kunci basi (> 5 menit, worker mati) diambil alih.
+ */
+const STATE_LOCK = path.join(os.tmpdir(), 'ed1028-e2e-state.lock');
+async function takeStateLock(maxWaitMs = 900000) {
+  const t0 = Date.now();
+  for (;;) {
+    try {
+      fs.mkdirSync(STATE_LOCK);
+      fs.writeFileSync(path.join(STATE_LOCK, 'at'), String(Date.now()));
+      return Date.now() - t0;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      let at = 0;
+      try {
+        at = Number(fs.readFileSync(path.join(STATE_LOCK, 'at'), 'utf8'));
+      } catch (_) {
+        at = 0;
+      }
+      if (at && Date.now() - at > 300000) {
+        fs.rmSync(STATE_LOCK, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() - t0 > maxWaitMs) throw new Error('kunci state e2e ED-1028 tidak kunjung terlepas');
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
+}
+let stateLockHeld = false; // per worker (satu test sekali jalan)
+const releaseStateLock = () => {
+  if (!stateLockHeld) return;
+  stateLockHeld = false;
+  fs.rmSync(STATE_LOCK, { recursive: true, force: true });
+};
+
 // ------------------------------------------------------------------------------------------------ halaman Archive, modal, drawer
 const modalVisible = (page) => page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal').last();
 const drawerOpen = (page) => page.locator('.ant-drawer-open').last();
@@ -154,6 +231,7 @@ const hist = (page) => page.locator('.archive-opname-history.ant-drawer-open').f
 const resDrawer = (page) => hist(page).locator('.ant-drawer.ant-drawer-open');
 const histTable = (page) => hist(page).locator('.ant-table').first();
 const histRowsLoc = (page) => histTable(page).locator('tbody tr.ant-table-row');
+const noModal = (page) => page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal');
 
 const rowOf = (page, name) =>
   page.locator('.archive-page .ant-table-row').filter({ hasText: new RegExp(`(^|\\s)${esc(name)}(?![\\w-])`) }).first();
@@ -229,6 +307,23 @@ async function openFolderVerification(app, page, name, lang = 'id') {
   await pane.locator('.ant-card').first().waitFor({ state: 'visible', timeout: 20000 });
   await app.settle();
   return { drawer: dr, pane };
+}
+
+/** klik nilai Document Verified (V/T) baris folder -> modal verifikasi folder (ED-1027 rev); kembalikan modal */
+async function openFolderModal(app, page, name, lang = 'id') {
+  const heads = trimAll(await page.locator('.archive-page .ant-table-thead th').allInnerTexts());
+  const idx = heads.indexOf(LANG[lang].dv);
+  expect(idx, `kolom "${LANG[lang].dv}" ada (header: ${JSON.stringify(heads)})`).toBeGreaterThanOrEqual(0);
+  const link = rowOf(page, name).locator('td').nth(idx).locator('button');
+  await expect(link, `${name}: tautan V/T ada`).toHaveCount(1);
+  const resp = page.waitForResponse((r) => r.request().method() === 'GET' && /\/document-archive\/verifications\/[^/?]+/.test(r.url()), { timeout: 30000 });
+  await link.click();
+  expect((await resp).status(), `${name}: GET verifications/{id} 200`).toBe(200);
+  const modal = modalVisible(page);
+  await modal.waitFor({ state: 'visible', timeout: 15000 });
+  await modal.locator('.ant-card').first().waitFor({ state: 'visible', timeout: 20000 });
+  await app.settle();
+  return modal;
 }
 
 /** drawer history menutupi wadahnya: kotak = kotak induk, dan elemen teratas di judul induk milik drawer history */
@@ -317,34 +412,58 @@ async function resetAll(page) {
   await page.waitForTimeout(700);
   return r;
 }
-const rowUsers = async (page) => (await histRows(page)).map((r) => r[1]);
-const rowKeys = async (page, lang = 'id') => {
-  const rows = await histRows(page);
-  return rows.map((r) => ORDER.find((k) => JSON.stringify(cells(k, lang)) === JSON.stringify(r)) || `?${r.join('|')}`);
+/**
+ * Kunci sesi uji dari satu baris tabel. Baris milik pengguna `qa28*` HARUS cocok persis dengan angka tangan (selain itu '?...' supaya
+ * perbandingan gagal); baris asing (data developer / sesi nyata Confirm QA) -> null dan dibuang dari perbandingan.
+ */
+const rowKey = (row, lang) => {
+  if (!/^qa28/.test(row[1])) return null;
+  return ORDER.find((k) => JSON.stringify(cells(k, lang)) === JSON.stringify(row)) || `?${row.join('|')}`;
 };
+const rowKeys = async (page, lang = 'id') =>
+  (await histRows(page)).map((r) => rowKey(r, lang)).filter((k) => k !== null);
+const foreignRows = async (page) => (await histRows(page)).filter((r) => !/^qa28/.test(r[1]));
+
+const tagsOf = (scope) => scope.locator('.ant-tag-checkable');
+const tagTexts = async (scope) => trimAll(await tagsOf(scope).allInnerTexts());
+const checkedTagTexts = async (scope) => trimAll(await scope.locator('.ant-tag-checkable-checked').allInnerTexts());
 
 // ---------------------------------------------------------------------------------------------------------------------
 test.describe('ED-1028 Opname History', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    const waited = await takeStateLock();
+    stateLockHeld = true;
+    // menunggu kunci tidak boleh memakan jatah waktu test itu sendiri
+    testInfo.setTimeout(testInfo.timeout + waited);
     await page.setViewportSize({ width: 1440, height: 1000 });
     fixture('ensure-sessions'); // tiap test mandiri (--grep); test "tanpa sesi" mengosongkan lalu mengisi ulang
   });
 
-  // ------------------------------------------------------------------------------------------- AC-23 tanpa sesi sama sekali + AC-15
-  test('[default] ED-1028 AC-23 tanpa sesi sama sekali: drawer inline terbuka, tabel kosong standar, tanpa teks "N sesi", tanpa error', async ({ app, page, monitor }) => {
-    fixture('reset-sessions');
+  test.afterEach(async () => {
+    releaseStateLock();
+  });
+
+  // ------------------------------------------------------------------------------------------- AC-23 tanpa sesi uji sama sekali + AC-15
+  test('[default] ED-1028 AC-23 tanpa sesi (uji) sama sekali: drawer inline terbuka, tabel kosong standar bila DB tanpa sesi lain, tanpa teks "N sesi", tanpa error', async ({ app, page, monitor }) => {
+    fixture('reset-sessions'); // hanya sesi milik fixture; sesi developer (bila ada) tidak disentuh
     const db0 = inspectDb();
-    expect(db0.sessions.length, 'DB: tidak ada sesi opname sama sekali').toBe(0);
+    expect(db0.sessions.length, 'DB: tidak ada sesi milik fixture').toBe(0);
     const calls = trace(page);
     await openArchive(app, page);
     const { resp } = await openHistoryFromModal(app, page, 'id', { expectRows: false });
-    expect(resp.status(), 'GET opnames 200 walau tanpa sesi').toBe(200);
+    expect(resp.status(), 'GET opnames 200 walau tanpa sesi uji').toBe(200);
     const res = await bodyOf(resp);
-    monitor.note(`respons tanpa sesi: total=${res.total} data=${res.data.length} kolom=${res.columns.length} query=${res.queries.length}`);
-    expect(res.total, 'total 0').toBe(0);
-    expect(res.data, 'data kosong').toEqual([]);
+    monitor.note(`respons tanpa sesi uji: total=${res.total} data=${res.data.length} kolom=${res.columns.length} query=${res.queries.length}`);
     expect(res.columns.map((c) => c.data_index), '7 kolom tetap dikirim').toEqual(['confirmedAt', 'createdBy', 'scope', 'totalDocuments', 'verifiedCount', 'notFoundCount', 'invalidCount']);
-    await expect(hist(page).locator('.ant-table-placeholder .ant-empty, .ant-empty').first(), 'empty state standar tabel').toBeVisible();
+    expect(JSON.stringify(res.data), 'tidak ada sesi uji di respons').not.toMatch(/qa28/);
+    if (res.total === 0) {
+      expect(res.data, 'data kosong').toEqual([]);
+      await expect(hist(page).locator('.ant-table-placeholder .ant-empty, .ant-empty').first(), 'empty state standar tabel').toBeVisible();
+    } else {
+      // DB berisi sesi developer terlihat user QA: keadaan nol sesi dibuktikan test filter tanpa hasil + folder EMPTYF (AC-23 b-d)
+      monitor.note(`DB berisi ${res.total} sesi developer terlihat: empty state sesi nol dibuktikan test AC-23 folder tanpa sesi / filter tanpa hasil`);
+      expect((await histRows(page)).length, 'baris = hanya sesi asing').toBe(Math.min(res.total, res.per_page));
+    }
     expect(await histHeads(page), 'header kolom tetap tampil').toEqual(LANG.id.heads);
     const text = await hist(page).innerText();
     expect(text, 'tanpa teks jumlah sesi ("N sesi")').not.toMatch(/\d+\s+sesi\b/i);
@@ -357,14 +476,15 @@ test.describe('ED-1028 Opname History', () => {
     noServerError(monitor);
     monitor.check();
     fixture('sessions'); // sesi uji untuk test berikutnya
-    expect(inspectDb().sessions.length, 'DB: 14 + HID + draft + batal = 17 sesi uji').toBe(17);
+    expect(inspectDb().sessions.length, 'DB: 14 terlihat + HID = 15 sesi uji').toBe(15);
   });
 
-  // ------------------------------------------------------------------------------------------- AC-15 / AC-1 / AC-24 modal -> history
-  test('[default] ED-1028 AC-15 modal Document Verified -> "Lihat semua riwayat": drawer inline menutupi modal, satu GET opnames tanpa idArchive, 3 baris teratas = overview, ✕ kembali', async ({ app, page, monitor }) => {
+  // ------------------------------------------------------------------------------------------- AC-15 / AC-1 / AC-19 / AC-24 modal -> history
+  test('[default] ED-1028 AC-15 modal Document Verified -> "Lihat semua riwayat": drawer inline menutupi modal, satu GET opnames tanpa idArchive, subjudul "Semua Arsip", Scope getScopeTag, 3 baris teratas = overview, ✕ kembali', async ({ app, page, monitor }) => {
     const calls = trace(page);
     await openArchive(app, page);
     const modal = await openModal(app, page);
+    await expect(modal.locator('.ant-modal-footer'), 'modal tanpa footer (7fa63869d)').toHaveCount(0);
     const overview = await tableRows(modal, 1);
     monitor.note(`overview modal: ${JSON.stringify(overview)}`);
     expect(overview, 'overview 3 sesi terbaru (04) tetap benar').toEqual(cellsOf(['N01', 'N02', 'N03']));
@@ -386,40 +506,52 @@ test.describe('ED-1028 Opname History', () => {
     // respons: paginator + columns + queries (AC-1 sisi FE: dipakai apa adanya)
     expect(resp.status(), 'GET opnames 200').toBe(200);
     const res = await bodyOf(resp);
-    expect(res.total, 'total = 14 sesi terlihat user QA (HID/draft/batal tidak ikut)').toBe(14);
+    monitor.note(`total sesi terlihat user QA = ${res.total} (14 sesi uji + ${res.total - 14} sesi lain)`);
+    expect(res.total, 'total >= 14 sesi uji terlihat user QA (HID tidak ikut; sesi developer boleh ada)').toBeGreaterThanOrEqual(14);
     expect(res.per_page, '10 per halaman').toBe(10);
-    expect(res.data.map((d) => d.created_by), 'urut confirmed_at turun').toEqual(ORDER.slice(0, 10).map((k) => S[k][1]));
+    expect(res.data.map((d) => d.created_by), 'urut confirmed_at turun: 10 sesi uji terbaru di halaman 1').toEqual(ORDER.slice(0, 10).map((k) => S[k][1]));
     expect(res.columns.map((c) => c.data_index), '7 kolom urut BR-6').toEqual(['confirmedAt', 'createdBy', 'scope', 'totalDocuments', 'verifiedCount', 'notFoundCount', 'invalidCount']);
     expect(res.queries.map((q) => [q.data_index, q.type]), '3 query').toEqual([['confirmedAt', 'dateTimeRange'], ['createdBy', 'select'], ['idArchives', 'select']]);
     expect(res.queries[2].multiple, 'query Folder multiple').toBe(true);
     expect(res.queries[1].endpoint, 'endpoint User').toBe('select/document-archive/archive/opname-users');
     expect(res.queries[2].endpoint, 'endpoint Folder').toBe('select/document-archive/archive/folders');
+    // AC-19 (sisi respons): scope = tepat tiga kunci (K-10 b); N01 = ALFA + 2 subfolder, N02 root
+    expect(Object.keys(res.data[0].scope).sort(), 'scope: tepat is_root, folder_name, subfolder_count').toEqual(['folder_name', 'is_root', 'subfolder_count']);
+    expect(res.data[0].scope, 'N01 scope').toEqual({ is_root: false, folder_name: `${P}ALFA`, subfolder_count: 2 });
+    expect(res.data[1].scope, 'N02 scope root').toEqual({ is_root: true, folder_name: null, subfolder_count: 0 });
 
-    // judul + subjudul + tanpa "N sesi"
+    // judul + subjudul (id: "Semua Arsip", ED-1026 N-4) + tanpa "N sesi"
     const title = (await hist(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' ');
     monitor.note(`judul drawer: ${title}`);
     expect(title, 'judul').toContain(LANG.id.title);
-    expect(title, 'subjudul All Archive').toContain(LANG.id.subAll);
+    expect(title, 'subjudul All Archive diterjemahkan (id: Semua Arsip)').toContain(LANG.id.subAll);
+    expect(title, 'bukan "All Archive" bahasa Inggris').not.toContain('All Archive');
     const text = await hist(page).innerText();
     expect(text, 'tanpa teks "N sesi"').not.toMatch(/\d+\s+sesi\b/i);
     expect(text, 'tanpa NaN / objek mentah').not.toMatch(/NaN|\[object Object\]/);
-    expect(text, 'sesi tersembunyi / draft / batal tidak tampil').not.toMatch(HIDDEN_USERS);
+    expect(text, 'sesi tersembunyi tidak tampil').not.toMatch(HIDDEN_USERS);
 
     // menutupi isi modal (bukan hanya sebagian)
     const cover = await coverInfo(page);
     monitor.note(`cover: ${JSON.stringify(cover)}`);
     expect(cover.parentClass, 'wadah = isi modal').toContain('ant-modal-content');
     expect(sameBox(cover.wrap, cover.parent), `drawer selebar & setinggi isi modal (${JSON.stringify(cover.wrap)} vs ${JSON.stringify(cover.parent)})`).toBe(true);
-    expect(cover.topInHistory && cover.bottomInHistory, 'judul dan footer modal tertutup drawer').toBe(true);
+    expect(cover.topInHistory && cover.bottomInHistory, 'judul dan dasar modal tertutup drawer').toBe(true);
 
-    // kolom + baris halaman 1 + 3 teratas = overview
+    // kolom + baris halaman 1 + 3 teratas = overview; sel Scope = getScopeTag (AC-19)
     expect(await histHeads(page), 'kolom default BR-6 (judul dari server)').toEqual(LANG.id.heads);
     const rows = await histRows(page);
-    expect(rows, 'halaman 1 = 10 sesi terbaru, nilai tersimpan').toEqual(cellsOf(ORDER.slice(0, 10)));
+    expect(rows, 'halaman 1 = 10 sesi uji terbaru, nilai tersimpan').toEqual(cellsOf(ORDER.slice(0, 10)));
     expect(rows.slice(0, 3), '3 baris teratas = overview 3 sesi').toEqual(overview);
+    const scopeCells = rows.map((r) => r[2]);
+    expect(scopeCells[0], 'Scope N01: folder + 2 subfolder').toBe(`${P}ALFA + 2 subfolder`);
+    expect(scopeCells[1], 'Scope N02: root id').toBe('Semua Arsip · root');
+    expect(scopeCells[2], 'Scope N03: folder tanpa subfolder = nama saja').toBe(`${P}BRAVO`);
+    expect(scopeCells[7], 'Scope N08: folder + 1 subfolder').toBe(`${P}BRAVO + 1 subfolder`);
+    expect(rows[0][0], 'Waktu = tanggal + jam').toBe('06 Okt 2031 16:40');
     await expect(hist(page).locator('.ant-pagination'), 'paginasi tampil').toBeVisible();
     const pageItems = trimAll(await hist(page).locator('.ant-pagination-item').allInnerTexts());
-    expect(pageItems, '2 halaman (14 sesi, 10 per halaman)').toEqual(['1', '2']);
+    expect(pageItems.slice(0, 2), 'minimal 2 halaman (>= 14 sesi, 10 per halaman)').toEqual(['1', '2']);
     await expect(histRowsLoc(page).first(), 'baris bisa diklik (kursor tangan)').toHaveClass(/cursor-pointer/);
     await expect(hist(page).locator('.search-bar'), 'search bar').toBeVisible();
     await expect(hist(page).locator('button', { hasText: LANG.id.display }).first(), 'tombol Display Setting').toBeVisible();
@@ -445,9 +577,9 @@ test.describe('ED-1028 Opname History', () => {
     expect((await histCalls(calls)).length, 'dua pembukaan = dua request').toBe(2);
     await hist(page).locator('.ant-drawer-close').click();
     await expect(page.locator('.archive-opname-history.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
-    // tutup modal (Tutup) -> buka lagi: drawer history tidak ikut terbuka (menutup induk membuangnya)
-    await modal.locator('.ant-modal-footer button').click();
-    await expect(page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal'), 'Tutup menutup modal').toHaveCount(0, { timeout: 10000 });
+    // tutup modal (✕; footer dihapus 7fa63869d) -> buka lagi: drawer history tidak ikut terbuka (menutup induk membuangnya)
+    await modal.locator('.ant-modal-close').click();
+    await expect(noModal(page), '✕ menutup modal').toHaveCount(0, { timeout: 10000 });
     await openModal(app, page);
     await expect(page.locator('.archive-opname-history.ant-drawer-open'), 'buka modal lagi: history tertutup').toHaveCount(0);
     await modalVisible(page).locator('.ant-modal-close').click();
@@ -474,7 +606,7 @@ test.describe('ED-1028 Opname History', () => {
     await histRowsLoc(page).first().waitFor({ state: 'visible', timeout: 20000 });
     await app.settle();
     const u = new URL(resp.url());
-    expect(u.searchParams.get('idArchive') || u.searchParams.get('id_archive'), 'request awal membawa idArchive = id folder ALFA').toBe(fx[`${P}ALFA`]);
+    expect(folderParam(u), 'request awal membawa idArchive = id folder ALFA').toBe(fx[`${P}ALFA`]);
     expect(resp.status(), 'GET opnames 200').toBe(200);
     const res = await bodyOf(resp);
 
@@ -500,8 +632,7 @@ test.describe('ED-1028 Opname History', () => {
 
     // idArchive menyertai SETIAP request: search, sort, reset, reload
     const withFolder = async (resp2, label) => {
-      const q = new URL(resp2.url()).searchParams;
-      expect(q.get('idArchive') || q.get('id_archive'), `${label}: idArchive tetap ada`).toBe(fx[`${P}ALFA`]);
+      expect(folderParam(new URL(resp2.url())), `${label}: idArchive tetap ada`).toBe(fx[`${P}ALFA`]);
     };
     const r1 = await typeSearch(page, 'alice');
     await withFolder(r1, 'search');
@@ -533,7 +664,7 @@ test.describe('ED-1028 Opname History', () => {
     const rb = await respB;
     await histRowsLoc(page).first().waitFor({ state: 'visible', timeout: 20000 });
     await page.waitForTimeout(500);
-    expect(new URL(rb.url()).searchParams.get('idArchive'), 'BRAVO: idArchive').toBe(fx[`${P}BRAVO`]);
+    expect(folderParam(new URL(rb.url())), 'BRAVO: idArchive').toBe(fx[`${P}BRAVO`]);
     const bravo = ['N02', 'N03', 'N04', 'N06', 'N08', 'N10', 'N12'];
     expect(await rowKeys(page), 'BRAVO: sesi yang mencakup BRAVO atau subfolder (N04 = BRAVO-T1), sesi root N02').toEqual(bravo);
     await app.screenshot('ac16-02-history-folder-bravo');
@@ -572,12 +703,14 @@ test.describe('ED-1028 Opname History', () => {
     const fx = ids();
     const calls = trace(page);
     await openArchive(app, page);
-    await openHistoryFromModal(app, page);
+    const { resp: resp0 } = await openHistoryFromModal(app, page);
+    const total0 = (await bodyOf(resp0)).total; // total sebelum filter (sesi uji + sesi lain terlihat user QA)
+    expect(total0, 'total awal >= 14').toBeGreaterThanOrEqual(14);
 
     // search bar: username, nama folder (level 2 / snapshot), tanpa beda huruf; folder tak terlihat tidak mencocokkan
     const r1 = await typeSearch(page, 'alice');
     expect(searchOf(r1), 'search = {"query":"alice"}').toEqual({ query: 'alice' });
-    expect((await bodyOf(r1)).total, 'total 3').toBe(3);
+    expect((await bodyOf(r1)).total, 'total >= 3').toBeGreaterThanOrEqual(3);
     expect(await rowKeys(page), 'username alice').toEqual(['N01', 'N05', 'N11']);
     await expect(hist(page).locator('.search-bar .reset-filter'), 'ikon reset muncul sesudah filter').toBeVisible();
     await app.screenshot('ac17-01-search-username');
@@ -585,12 +718,13 @@ test.describe('ED-1028 Opname History', () => {
     expect(searchOf(r2), 'query huruf kecil').toEqual({ query: 's1-x' });
     expect(await rowKeys(page), 'nama folder level 2 "ALFA-S1-X": N01 (ikut otomatis), N11').toEqual(['N01', 'N11']);
     const r3 = await typeSearch(page, 'SECRET');
-    expect((await bodyOf(r3)).total, 'nama folder SECRET (tak boleh dilihat user): tidak mencocokkan').toBe(0);
-    await expect(hist(page).locator('.ant-empty').first(), 'tabel kosong standar').toBeVisible();
+    expect(await rowKeys(page), 'nama folder SECRET (tak boleh dilihat user): tidak mencocokkan sesi uji apa pun').toEqual([]);
+    expect(await hist(page).innerText(), 'nama folder SECRET tidak bocor').not.toContain(`${P}SECRET`);
+    if ((await bodyOf(r3)).total === 0) await expect(hist(page).locator('.ant-empty').first(), 'tabel kosong standar').toBeVisible();
     await app.screenshot('ac17-02-search-kosong');
     const r4 = await resetAll(page);
     expect(searchOf(r4), 'Reset: search kosong').toBeNull();
-    expect((await bodyOf(r4)).total, 'Reset: data kembali (14)').toBe(14);
+    expect((await bodyOf(r4)).total, 'Reset: data kembali (total awal)').toBe(total0);
     expect(await histRows(page), 'Reset: 10 baris halaman 1').toEqual(cellsOf(ORDER.slice(0, 10)));
 
     // popover: tiga query
@@ -603,7 +737,7 @@ test.describe('ED-1028 Opname History', () => {
     await expect(popover(page).locator('.ant-picker-range'), 'rentang tanggal-jam').toBeVisible();
     await app.screenshot('ac17-03-popover');
 
-    // select User (endpoint opname-users)
+    // select User (endpoint opname-users): opsi dicari per awalan "qa28" supaya terbaca utuh walau ada pelaku sesi lain
     const selects = popover(page).locator('.ant-select');
     await selects.nth(0).click();
     // opsi bisa dimuat saat popover dibuka atau saat select diklik: cukup ada panggilan sukses ke endpoint-nya
@@ -611,9 +745,14 @@ test.describe('ED-1028 Opname History', () => {
     expect(calls.filter((c) => /select\/document-archive\/archive\/opname-users/.test(c.path)).map((c) => c.status), 'GET select opname-users 200').toEqual(expect.arrayContaining([200]));
     const dd = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').last();
     await dd.locator('.ant-select-item-option').first().waitFor({ state: 'visible', timeout: 15000 });
+    const uResp = page.waitForResponse((r) => /select\/document-archive\/archive\/opname-users/.test(r.url()) && /search=/.test(decodeURIComponent(r.url())), { timeout: 30000 });
+    await selects.nth(0).locator('input').fill('qa28');
+    expect((await uResp).status(), 'select opname-users search=qa28 200').toBe(200);
+    await page.waitForTimeout(600);
     const userOpts = trimAll(await dd.locator('.ant-select-item-option').allInnerTexts());
-    monitor.note(`opsi User: ${JSON.stringify(userOpts)}`);
-    expect(userOpts, 'opsi User = pelaku sesi terlihat (tanpa HID/draft/batal), urut username').toEqual(['qa28alice', 'qa28bob', 'qa28carol', 'qa28dave', 'qa28erin', 'qa28root', 'qa28view']);
+    monitor.note(`opsi User (cari "qa28"): ${JSON.stringify(userOpts)}`);
+    expect(userOpts.filter((o) => /^qa28/.test(o)), 'opsi User = pelaku sesi uji terlihat (tanpa HID), urut username').toEqual(['qa28alice', 'qa28bob', 'qa28carol', 'qa28dave', 'qa28erin', 'qa28root', 'qa28view']);
+    expect(userOpts.filter((o) => !/^qa28/.test(o)), 'pencarian qa28: tidak ada opsi lain').toEqual([]);
     await app.screenshot('ac17-04-opsi-user');
     await dd.locator('.ant-select-item-option', { hasText: /^qa28bob$/ }).click();
     const r5 = await submitPopover(page);
@@ -676,7 +815,7 @@ test.describe('ED-1028 Opname History', () => {
     await app.screenshot('ac17-06-filter-folder');
     await resetAll(page);
 
-    // rentang waktu: dua ujung, hanya awal, hanya akhir, ujung inklusif
+    // rentang waktu (sesi uji bertahun 2031): dua ujung, hanya awal, hanya akhir, ujung inklusif
     const fillRange = async (start, end) => {
       await openPopover(page);
       const inputs = popover(page).locator('.ant-picker-range input');
@@ -700,44 +839,46 @@ test.describe('ED-1028 Opname History', () => {
       }
     };
     const typeRange = fillRange;
-    await typeRange('05 Okt 2026 00:00:00', '06 Okt 2026 23:59:59');
+    await typeRange('05 Okt 2031 00:00:00', '06 Okt 2031 23:59:59');
     const r8 = await submitPopover(page);
     monitor.note(`search rentang: ${JSON.stringify(searchOf(r8))}`);
-    expect(searchOf(r8).confirmedAt, 'confirmedAt = [awal, akhir] format Y-m-d H:i:s').toEqual(['2026-10-05 00:00:00', '2026-10-06 23:59:59']);
-    expect(await rowKeys(page), 'rentang 5-6 Okt: N01, N02 (HID 6 Okt 20:00 tak terlihat)').toEqual(['N01', 'N02']);
+    expect(searchOf(r8).confirmedAt, 'confirmedAt = [awal, akhir] format Y-m-d H:i:s').toEqual(['2031-10-05 00:00:00', '2031-10-06 23:59:59']);
+    expect(await rowKeys(page), 'rentang 5-6 Okt 2031: N01, N02 (HID 6 Okt 20:00 tak terlihat)').toEqual(['N01', 'N02']);
+    expect((await bodyOf(r8)).total, 'rentang 2031: hanya sesi uji (data developer tidak bertahun 2031)').toBe(2);
     await app.screenshot('ac17-07-filter-waktu');
     await resetAll(page);
 
-    await typeRange('04 Okt 2026 00:00:00', '');
+    await typeRange('04 Okt 2031 00:00:00', '');
     const r9 = await submitPopover(page);
     const c9 = searchOf(r9).confirmedAt;
     monitor.note(`hanya awal: ${JSON.stringify(c9)}`);
-    expect(c9[0], 'hanya awal: ujung awal terkirim').toBe('2026-10-04 00:00:00');
+    expect(c9[0], 'hanya awal: ujung awal terkirim').toBe('2031-10-04 00:00:00');
     expect(c9[1] === null || c9[1] === undefined || c9[1] === '', 'hanya awal: ujung akhir kosong/null').toBe(true);
-    expect(await rowKeys(page), 'sejak 4 Okt: N01, N02, N03').toEqual(['N01', 'N02', 'N03']);
+    expect(await rowKeys(page), 'sejak 4 Okt 2031: N01, N02, N03').toEqual(['N01', 'N02', 'N03']);
     await resetAll(page);
 
-    await fillRange('', '26 Sep 2026 23:59:59');
+    await fillRange('', '26 Sep 2031 23:59:59');
     const r10 = await submitPopover(page);
     const c10 = searchOf(r10);
     monitor.note(`hanya akhir: ${JSON.stringify(c10)}`);
     if (c10 && c10.confirmedAt) {
       expect(c10.confirmedAt[0] === null || c10.confirmedAt[0] === undefined || c10.confirmedAt[0] === '', 'hanya akhir: ujung awal kosong').toBe(true);
-      expect(c10.confirmedAt[1], 'hanya akhir: ujung akhir').toBe('2026-09-26 23:59:59');
-      expect(await rowKeys(page), 'sampai 26 Sep 23:59:59: N11, N12, N13, N14').toEqual(['N11', 'N12', 'N13', 'N14']);
+      expect(c10.confirmedAt[1], 'hanya akhir: ujung akhir').toBe('2031-09-26 23:59:59');
+      expect(await rowKeys(page), 'sampai 26 Sep 2031 23:59:59: N11, N12, N13, N14 (sesi lain, bila ada, lebih tua dan dibuang dari perbandingan)').toEqual(['N11', 'N12', 'N13', 'N14']);
+      expect((await bodyOf(r10)).data.every((d) => d.confirmed_at <= '2031-09-26 23:59:59'), 'semua baris respons <= ujung akhir').toBe(true);
     } else {
       monitor.note('hanya akhir: picker tidak menerima ketikan ujung akhir saja (dicatat, diperiksa lewat API di bawah)');
     }
     await resetAll(page);
 
     // ujung inklusif: awal = akhir = waktu tepat N01
-    await typeRange('06 Okt 2026 16:40:00', '06 Okt 2026 16:40:00');
+    await typeRange('06 Okt 2031 16:40:00', '06 Okt 2031 16:40:00');
     const r11 = await submitPopover(page);
-    expect(searchOf(r11).confirmedAt, 'awal = akhir = waktu N01').toEqual(['2026-10-06 16:40:00', '2026-10-06 16:40:00']);
+    expect(searchOf(r11).confirmedAt, 'awal = akhir = waktu N01').toEqual(['2031-10-06 16:40:00', '2031-10-06 16:40:00']);
     expect(await rowKeys(page), 'ujung inklusif: tepat N01').toEqual(['N01']);
     const r12 = await resetAll(page);
     expect(searchOf(r12), 'Reset mengosongkan search').toBeNull();
-    expect((await bodyOf(r12)).total, 'data kembali 14').toBe(14);
+    expect((await bodyOf(r12)).total, 'data kembali (total awal)').toBe(total0);
     expect(await searchInput(page).inputValue(), 'input search kosong sesudah Reset').toBe('');
 
     // tidak ada request GET archives (list di belakang) selama bekerja di drawer
@@ -803,8 +944,8 @@ test.describe('ED-1028 Opname History', () => {
     monitor.note(`header sesudah: ${JSON.stringify(heads)}`);
     expect(heads, 'header tanpa Invalid, dengan Discan').toEqual(['Waktu', 'User', 'Scope', 'Total Dokumen', 'Verified', 'Not Found', 'Discan']);
     const rows = await histRows(page);
-    expect(rows[0], 'N01: Discan = 5').toEqual([dateText(S.N01[0]), 'qa28alice', S.N01[2], '5', '3', '1', '5']);
-    expect(rows[1], 'N02: Discan = 5').toEqual([dateText(S.N02[0]), 'qa28root', S.N02[2], '8', '3', '1', '5']);
+    expect(rows[0], 'N01: Discan = 5').toEqual([dateText(S.N01[0]), 'qa28alice', scopeOf('N01', 'id'), '5', '3', '1', '5']);
+    expect(rows[1], 'N02: Discan = 5').toEqual([dateText(S.N02[0]), 'qa28root', scopeOf('N02', 'id'), '8', '3', '1', '5']);
     expect(displayDb().documentArchiveOpnameHistory, 'DB: kolom aktif berubah').toEqual(['confirmedAt', 'createdBy', 'scope', 'totalDocuments', 'verifiedCount', 'notFoundCount', 'scannedCount']);
     await app.screenshot('ac18-02-kolom-diganti');
 
@@ -819,6 +960,7 @@ test.describe('ED-1028 Opname History', () => {
 
     // sort per header (useTable v5: sorts[] bertumpuk, kolom yang diklik lebih dulu = utama; klik ketiga membatalkan sort kolom itu).
     // Urutan UI dibandingkan dengan urutan harapan yang dihitung dari tabel S (angka tangan) memakai daftar sorts di request.
+    // Dilingkup ke sesi uji lewat search "qa28" (username / nama folder berawalan 0QA28-): sesi developer tidak ikut dan tidak menggeser halaman.
     const FIELD = { confirmedAt: (k) => S[k][0], createdBy: (k) => S[k][1], totalDocuments: (k) => S[k][3], verifiedCount: (k) => S[k][4], notFoundCount: (k) => S[k][5], invalidCount: (k) => S[k][6] };
     const sortsOf = (resp) => new URL(resp.url()).searchParams.getAll('sorts[]').map((x) => JSON.parse(x));
     const expectedKeys = (sorts) =>
@@ -834,6 +976,12 @@ test.describe('ED-1028 Opname History', () => {
     for (const col of ['Waktu', 'User', 'Total Dokumen', 'Verified', 'Not Found', 'Invalid']) {
       await expect(thOf(col).locator('.ant-table-column-sorters'), `${col} punya pengurut`).toHaveCount(1);
     }
+    const scopeToOwn = async () => {
+      const r = await typeSearch(page, 'qa28');
+      expect(searchOf(r), 'lingkup sesi uji: search qa28').toEqual({ query: 'qa28' });
+      expect((await bodyOf(r)).total, 'search qa28 = 14 sesi uji terlihat').toBe(14);
+      await page.waitForTimeout(500);
+    };
     const reopen = async () => {
       await hist(page).locator('.ant-drawer-close').click();
       await expect(page.locator('.archive-opname-history.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
@@ -842,6 +990,7 @@ test.describe('ED-1028 Opname History', () => {
       await rp;
       await histRowsLoc(page).first().waitFor({ state: 'visible', timeout: 20000 });
       await page.waitForTimeout(500);
+      await scopeToOwn();
     };
     const clickSort = async (title) => {
       const resp = waitOpnames(page);
@@ -856,6 +1005,7 @@ test.describe('ED-1028 Opname History', () => {
       expect(got, `sort ${title} (${JSON.stringify(sorts)}): urutan UI = urutan harapan`).toEqual(want);
       return sorts;
     };
+    await scopeToOwn();
     let so = await clickSort('Waktu');
     expect(so, 'Waktu klik 1 = naik').toEqual([{ sortBy: 'confirmedAt', sortType: 'asc' }]);
     expect(await rowKeys(page), 'Waktu naik: N14 pertama (terlama)').toEqual([...ORDER].reverse().slice(0, 10));
@@ -903,8 +1053,9 @@ test.describe('ED-1028 Opname History', () => {
     expect(pr.status(), 'page=2: GET opnames 200').toBe(200);
     expect(new URL(pr.url()).searchParams.get('page'), 'request page=2').toBe('2');
     expect(sortsOf(pr), 'page=2 membawa sort Waktu turun').toEqual([{ sortBy: 'confirmedAt', sortType: 'desc' }]);
+    expect(searchOf(pr), 'page=2 membawa search qa28').toEqual({ query: 'qa28' });
     await page.waitForTimeout(700);
-    expect(await rowKeys(page), 'halaman 2 (urut Waktu turun): N11..N14').toEqual(['N11', 'N12', 'N13', 'N14']);
+    expect(await rowKeys(page), 'halaman 2 (urut Waktu turun, lingkup sesi uji): N11..N14').toEqual(['N11', 'N12', 'N13', 'N14']);
     expect(trimAll(await hist(page).locator('.ant-pagination-item-active').allInnerTexts()), 'halaman aktif = 2').toEqual(['2']);
     await app.screenshot('ac18-04-halaman-2');
     const p1 = waitOpnames(page, (u) => u.searchParams.get('page') === '1');
@@ -917,7 +1068,7 @@ test.describe('ED-1028 Opname History', () => {
   });
 
   // ------------------------------------------------------------------------------------------- AC-20 hasil satu sesi
-  test('[default] ED-1028 AC-20 klik baris -> Hasil Opname: GET opnames/{id} + documents?result=scanned, kartu 5 angka, Segmented + jumlah, tabel, ✕ kembali ke halaman & filter yang sama', async ({ app, page, monitor }) => {
+  test('[default] ED-1028 AC-20 klik baris -> Hasil Opname: GET opnames/{id} + documents?result=scanned, kartu 5 angka, CheckableTag + jumlah, tabel, 375 px membungkus, ✕ kembali ke halaman & filter yang sama', async ({ app, page, monitor }) => {
     const fx = ids();
     const calls = trace(page);
     await openArchive(app, page);
@@ -951,13 +1102,14 @@ test.describe('ED-1028 Opname History', () => {
     monitor.note(`detail: counts=${JSON.stringify(d.counts)} result_counts=${JSON.stringify(d.result_counts)} is_partial=${d.is_partial}`);
     expect(d.is_partial, 'sesi penuh: is_partial false').toBe(false);
     expect(d.result_counts, 'result_counts sesi N01').toEqual({ all: 7, scanned: 5, verified: 3, not_found: 1, invalid: 1, unscanned: 2 });
+    expect(d.scope, 'scope N01 (tepat tiga kunci)').toEqual({ is_root: false, folder_name: `${P}ALFA`, subfolder_count: 2 });
     expect((await histCalls(calls)).length, 'membuka hasil tidak me-request ulang daftar').toBe(before);
 
     // judul + subjudul
     const title = (await resDrawer(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' ');
     monitor.note(`judul hasil: ${title}`);
     expect(title, 'judul "Hasil Opname"').toContain(L.resultTitle);
-    expect(title, 'subjudul Waktu · User · Scope').toContain(`${dateText(S.N01[0])} · qa28alice · ${S.N01[2]}`);
+    expect(title, 'subjudul Waktu · User · Scope (getScopeTag)').toContain(`${dateText(S.N01[0])} · qa28alice · ${scopeOf('N01', 'id')}`);
     // menutupi drawer history (bukan hanya sebagian)
     const box = await page.evaluate(() => {
       const h = document.querySelector('.archive-opname-history.ant-drawer-open');
@@ -970,15 +1122,17 @@ test.describe('ED-1028 Opname History', () => {
     expect(Math.abs(box.hist[2] - box.nested[2]) <= 3 && Math.abs(box.hist[3] - box.nested[3]) <= 3, 'drawer hasil selebar & setinggi drawer history').toBe(true);
     expect(box.topInResult, 'tabel history di bawahnya tertutup').toBe(true);
 
-    // kartu = counts (angka rekaman); Segmented = result_counts; default Scanned
+    // kartu = counts (angka rekaman); CheckableTag = result_counts; default Scanned; tanpa baris expand bawaan dan tanpa Segmented
     const rd = resDrawer(page);
     const cards = trimAll(await rd.locator('.ant-card').allInnerTexts());
     monitor.note(`kartu: ${JSON.stringify(cards)}`);
     expect(cards, '5 kartu: angka + label').toEqual(['5 ' + L.cards[0], '3 ' + L.cards[1], '1 ' + L.cards[2], '1 ' + L.cards[3], '2 ' + L.cards[4]]);
-    const seg = trimAll(await rd.locator('.ant-segmented-item').allInnerTexts());
-    monitor.note(`segmented: ${JSON.stringify(seg)}`);
-    expect(seg, 'Segmented + jumlah (result_counts)').toEqual([`${L.seg[0]} 7`, `${L.seg[1]} 5`, `${L.seg[2]} 3`, `${L.seg[3]} 1`, `${L.seg[4]} 1`]);
-    expect(trimAll(await rd.locator('.ant-segmented-item-selected').allInnerTexts()), 'default Scanned').toEqual([`${L.seg[1]} 5`]);
+    await expect(rd.locator('.ant-segmented'), 'tanpa Segmented (FB-10)').toHaveCount(0);
+    await expect(hist(page).locator('.ant-table-row-expand-icon, .ant-table-expanded-row'), 'tanpa baris expand bawaan (disableDefaultRowExpand)').toHaveCount(0);
+    const seg = await tagTexts(rd);
+    monitor.note(`CheckableTag: ${JSON.stringify(seg)}`);
+    expect(seg, 'CheckableTag + jumlah (result_counts)').toEqual([`${L.seg[0]} 7`, `${L.seg[1]} 5`, `${L.seg[2]} 3`, `${L.seg[3]} 1`, `${L.seg[4]} 1`]);
+    expect(await checkedTagTexts(rd), 'tepat satu aktif: default Scanned').toEqual([`${L.seg[1]} 5`]);
     expect(trimAll(await rd.locator('.ant-table').first().locator('thead th').allInnerTexts()).filter(Boolean), 'kolom tabel Step 3').toEqual(L.docHeads);
 
     const docRows = async () => {
@@ -1013,20 +1167,27 @@ test.describe('ED-1028 Opname History', () => {
     expect(trimAll(await rd.locator('button').allInnerTexts()).filter((t) => /Kembali|Konfirmasi|Back|Confirm|Selesai/i.test(t)), 'tanpa tombol Back/Confirm').toEqual([]);
     await app.screenshot('ac20-01-hasil-sesi');
 
-    // ganti filter -> request result baru; jumlah dan isi sesuai
+    // ganti filter -> request result baru halaman 1; tag aktif diklik lagi = tanpa request
     const pickSeg = async (idx) => {
       const resp = page.waitForResponse((r) => r.request().method() === 'GET' && /\/opnames\/[^/]+\/documents/.test(r.url()), { timeout: 30000 });
-      await rd.locator('.ant-segmented-item').nth(idx).click();
+      await tagsOf(rd).nth(idx).click();
       const r = await resp;
       expect(r.status(), 'documents 200').toBe(200);
       await page.waitForTimeout(600);
+      expect((await checkedTagTexts(rd)).length, `sesudah klik tag ${idx}: tepat satu tag aktif`).toBe(1);
       return new URL(r.url()).searchParams;
     };
     let q = await pickSeg(3);
     expect(q.get('result'), 'Tidak ditemukan -> result=not_found').toBe('not_found');
     expect(q.get('page'), 'ganti filter -> halaman 1').toBe('1');
+    expect(await checkedTagTexts(rd), 'tag aktif = Tidak ditemukan').toEqual([`${L.seg[3]} 1`]);
     expect(Object.keys(await docRows()), 'not_found: hanya B1').toEqual([`${P}B1`]);
     await app.screenshot('ac20-02-not-found');
+    const nDocs = calls.filter((c) => /^opnames\/[^/]+\/documents/.test(c.path)).length;
+    await tagsOf(rd).nth(3).click(); // tag yang sudah aktif diklik lagi
+    await page.waitForTimeout(1200);
+    expect(calls.filter((c) => /^opnames\/[^/]+\/documents/.test(c.path)).length, 'klik tag yang sudah aktif: tanpa request baru').toBe(nDocs);
+    expect(await checkedTagTexts(rd), 'tag aktif tetap satu').toEqual([`${L.seg[3]} 1`]);
     q = await pickSeg(4);
     expect(q.get('result'), 'Tidak valid -> result=invalid').toBe('invalid');
     expect(Object.keys(await docRows()), 'invalid: hanya INV-001').toEqual([`${P}INV-001`]);
@@ -1041,6 +1202,31 @@ test.describe('ED-1028 Opname History', () => {
     expect(allRows[`${P}A2`], 'baris belum discan: hasil "Belum discan", tanpa jam').toMatchObject({ result: L.res.unscanned, time: '—' });
     expect(allRows[`${P}S2a`].result, 'S2a belum discan').toBe(L.res.unscanned);
     await app.screenshot('ac20-04-semua');
+
+    // 375 px (xs): CheckableTag membungkus ke beberapa baris tanpa gulir horizontal
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.waitForTimeout(900);
+    const wrap = await page.evaluate(() => {
+      const d = document.querySelector('.archive-opname-history .ant-drawer.ant-drawer-open');
+      const tags = Array.from(d.querySelectorAll('.ant-tag-checkable'));
+      const tops = new Set(tags.map((t) => Math.round(t.getBoundingClientRect().top)));
+      const space = tags[0].closest('.ant-space');
+      return {
+        n: tags.length, lines: tops.size, vw: window.innerWidth,
+        spaceOverflow: space.scrollWidth - space.clientWidth,
+        outsideViewport: tags.filter((t) => t.getBoundingClientRect().right > window.innerWidth + 1 || t.getBoundingClientRect().left < -1).length,
+        docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+    monitor.note(`375 px: ${JSON.stringify(wrap)}`);
+    expect(wrap.n, '375 px: 5 tag').toBe(5);
+    expect(wrap.lines, '375 px: tag membungkus (>= 2 baris)').toBeGreaterThanOrEqual(2);
+    expect(wrap.spaceOverflow, '375 px: baris tag tanpa gulir horizontal').toBeLessThanOrEqual(1);
+    expect(wrap.outsideViewport, '375 px: semua tag di dalam layar').toBe(0);
+    expect(wrap.docOverflow, '375 px: halaman tanpa gulir horizontal').toBeLessThanOrEqual(1);
+    await app.screenshot('ac20-04b-375px');
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.waitForTimeout(900);
 
     // ✕: kembali ke tabel dengan filter (search alice) yang sama, tanpa request ulang daftar
     await resDrawer(page).locator('.ant-drawer-close').click();
@@ -1060,13 +1246,15 @@ test.describe('ED-1028 Opname History', () => {
     await resDrawer(page).locator('.ant-drawer-close').click();
     await expect(page.locator('.archive-opname-history .ant-drawer.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
 
-    // halaman 2 bertahan: reset -> halaman 2 -> klik N11 -> ✕ -> tetap halaman 2
+    // halaman 2 bertahan: reset -> halaman 2 -> klik N11 -> ✕ -> tetap halaman 2 (sesi uji lebih baru dari sesi lain: N11..N14 di awal halaman 2)
     await resetAll(page);
     const p2 = waitOpnames(page, (u) => u.searchParams.get('page') === '2');
     await hist(page).locator('.ant-pagination-item-2').click();
     await p2;
     await page.waitForTimeout(700);
-    expect(await rowKeys(page), 'halaman 2: N11..N14').toEqual(['N11', 'N12', 'N13', 'N14']);
+    const keys2 = await rowKeys(page);
+    expect(keys2, 'halaman 2: N11..N14 (baris sesi lain, bila ada, sesudahnya)').toEqual(['N11', 'N12', 'N13', 'N14']);
+    const rows2 = await histRows(page);
     const nList = (await histCalls(calls)).length;
     await histRowsLoc(page).first().locator('td').nth(1).click();
     await resDrawer(page).waitFor({ state: 'visible', timeout: 15000 });
@@ -1079,7 +1267,7 @@ test.describe('ED-1028 Opname History', () => {
     await expect(page.locator('.archive-opname-history .ant-drawer.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
     await page.waitForTimeout(500);
     expect(trimAll(await hist(page).locator('.ant-pagination-item-active').allInnerTexts()), '✕: tetap di halaman 2').toEqual(['2']);
-    expect(await rowKeys(page), '✕: baris halaman 2 sama').toEqual(['N11', 'N12', 'N13', 'N14']);
+    expect(await histRows(page), '✕: baris halaman 2 sama').toEqual(rows2);
     expect((await histCalls(calls)).length, '✕: tanpa request ulang daftar').toBe(nList);
 
     // sesi parsial (N02 menyertakan SECRET yang tak terlihat user QA): catatan + jumlah dari baris tampil + kartu angka rekaman
@@ -1094,9 +1282,11 @@ test.describe('ED-1028 Opname History', () => {
     await page.waitForTimeout(900);
     monitor.note(`N02 (parsial, user QA): counts=${JSON.stringify(dp.counts)} result_counts=${JSON.stringify(dp.result_counts)} is_partial=${dp.is_partial}`);
     expect(dp.is_partial, 'N02: is_partial true untuk user non-superadmin').toBe(true);
+    expect(dp.scope, 'N02: scope root (tiga kunci)').toEqual({ is_root: true, folder_name: null, subfolder_count: 0 });
+    expect((await resDrawer(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' '), 'N02: subjudul memuat "Semua Arsip · root"').toContain(`${dateText(S.N02[0])} · qa28root · Semua Arsip · root`);
     await expect(resDrawer(page).getByText(L.partial), 'catatan BR-11 tampil').toBeVisible();
     expect(trimAll(await resDrawer(page).locator('.ant-card').allInnerTexts()), 'kartu = angka rekaman (8/3/1/1/2), tidak disaring').toEqual(['8 ' + L.cards[0], '3 ' + L.cards[1], '1 ' + L.cards[2], '1 ' + L.cards[3], '2 ' + L.cards[4]]);
-    expect(trimAll(await resDrawer(page).locator('.ant-segmented-item').allInnerTexts()), 'Segmented dari baris yang tampil (H1/H2 di SECRET tersembunyi)').toEqual([`${L.seg[0]} 5`, `${L.seg[1]} 4`, `${L.seg[2]} 2`, `${L.seg[3]} 1`, `${L.seg[4]} 1`]);
+    expect(await tagTexts(resDrawer(page)), 'CheckableTag dari baris yang tampil (H1/H2 di SECRET tersembunyi)').toEqual([`${L.seg[0]} 5`, `${L.seg[1]} 4`, `${L.seg[2]} 2`, `${L.seg[3]} 1`, `${L.seg[4]} 1`]);
     expect(Object.keys(await docRows()).sort(), 'Scanned N02: tanpa H1').toEqual([`${P}B1`, `${P}INV-002`, `${P}S2a`, `${P}T1a`].sort());
     const qa = await pickSeg(0);
     expect(qa.get('result')).toBe('all');
@@ -1161,7 +1351,7 @@ test.describe('ED-1028 Opname History', () => {
     await page.waitForTimeout(2000);
     expect((await listCalls(calls)).length, 'history terbuka lagi: scan tidak memicu GET archives').toBe(nList1);
     await page.mouse.click(5, 5); // klik mask = tutup modal (induk) tanpa menutup history dulu
-    await expect(page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal'), 'modal induk tertutup (history ikut tertutup)').toHaveCount(0, { timeout: 10000 });
+    await expect(noModal(page), 'modal induk tertutup (history ikut tertutup)').toHaveCount(0, { timeout: 10000 });
     await expect(page.locator('.archive-opname-history.ant-drawer-open'), 'history ikut tertutup').toHaveCount(0);
     const cResp = waitList(page, (u) => (u.searchParams.get('search') || '').includes(code));
     await scan(null);
@@ -1219,7 +1409,7 @@ test.describe('ED-1028 Opname History', () => {
     const resp = await respP;
     await hist(page).waitFor({ state: 'visible', timeout: 15000 });
     await page.waitForTimeout(800);
-    expect(new URL(resp.url()).searchParams.get('idArchive'), 'idArchive = EMPTYF').toBe(fx[`${P}EMPTYF`]);
+    expect(folderParam(new URL(resp.url())), 'idArchive = EMPTYF').toBe(fx[`${P}EMPTYF`]);
     expect(resp.status(), '200').toBe(200);
     expect((await bodyOf(resp)).total, 'total 0').toBe(0);
     await expect(hist(page).locator('.ant-empty').first(), 'empty state').toBeVisible();
@@ -1228,8 +1418,9 @@ test.describe('ED-1028 Opname History', () => {
     await page.locator('.ant-drawer-open .ant-drawer-close:visible').first().click();
     await expect(page.locator('.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
 
-    // All Archive: filter tanpa hasil (rentang tahun lalu) -> kosong; Reset -> data kembali
-    await openHistoryFromModal(app, page);
+    // All Archive: filter tanpa hasil (rentang tahun 2040, tak ada sesi mana pun) -> kosong; Reset -> data kembali
+    const { resp: resAll } = await openHistoryFromModal(app, page);
+    const total0 = (await bodyOf(resAll)).total;
     await openPopover(page);
     const rin = popover(page).locator('.ant-picker-range input');
     const accept = async () => {
@@ -1239,21 +1430,21 @@ test.describe('ED-1028 Opname History', () => {
       await page.waitForTimeout(300);
     };
     await rin.nth(0).click();
-    await rin.nth(0).fill('01 Jan 2025 00:00:00');
+    await rin.nth(0).fill('01 Jan 2040 00:00:00');
     await rin.nth(0).press('Enter');
     await accept();
     await rin.nth(1).click();
-    await rin.nth(1).fill('31 Des 2025 23:59:59');
+    await rin.nth(1).fill('31 Des 2040 23:59:59');
     await rin.nth(1).press('Enter');
     await accept();
     const r = await submitPopover(page);
-    monitor.note(`filter tahun lalu: ${JSON.stringify(searchOf(r))}`);
+    monitor.note(`filter 2040: ${JSON.stringify(searchOf(r))}`);
     expect((await bodyOf(r)).total, 'tanpa hasil: total 0').toBe(0);
     await expect(hist(page).locator('.ant-empty').first(), 'tabel kosong standar').toBeVisible();
     await app.screenshot('ac23-03-filter-kosong');
     const r2 = await resetAll(page);
-    expect((await bodyOf(r2)).total, 'Reset: data kembali (14)').toBe(14);
-    expect(await rowKeys(page), 'Reset: 10 sesi terbaru').toEqual(ORDER.slice(0, 10));
+    expect((await bodyOf(r2)).total, 'Reset: data kembali (total awal)').toBe(total0);
+    expect(await histRows(page), 'Reset: 10 sesi uji terbaru').toEqual(cellsOf(ORDER.slice(0, 10)));
 
     // jalur error: GET opnames gagal -> toast, tabel kosong, ✕ tetap menutup; buka lagi normal
     await hist(page).locator('.ant-drawer-close').click();
@@ -1281,7 +1472,8 @@ test.describe('ED-1028 Opname History', () => {
     await modal.getByText(LANG.id.cta).first().click();
     expect((await resp3).status(), 'buka lagi tanpa blokir: normal').toBe(200);
     await histRowsLoc(page).first().waitFor({ state: 'visible', timeout: 20000 });
-    expect(await rowKeys(page), 'buka lagi: 10 sesi terbaru').toEqual(ORDER.slice(0, 10));
+    // tabel bisa masih dirender ulang sesaat sesudah baris pertama tampil: tunggu stabil, bukan baca sekali
+    await expect.poll(() => rowKeys(page), { message: 'buka lagi: 10 sesi uji terbaru', timeout: 15000 }).toEqual(ORDER.slice(0, 10));
     void calls;
     noServerError(monitor);
     monitor.check();
@@ -1323,108 +1515,278 @@ test.describe('ED-1028 Opname History', () => {
     monitor.check();
   });
 
-  // ------------------------------------------------------------------------------------------- AC-21 user2 (EN)
-  test('[user2] ED-1028 AC-21 user lokasi terbatas tanpa Opname Document (EN): history terbuka, 13 sesi terlihat, hasil sesi penuh dan parsial (catatan BR-11)', async ({ app, page, monitor }) => {
-    fixture('ensure-sessions');
+  // ------------------------------------------------------------------------------------------- AC-29 modal verifikasi folder -> riwayat
+  test('[default] ED-1028 AC-29 list Archive -> klik nilai Document Verified folder -> modal folder -> CTA: drawer inline menutupi modal, idArchive=F, subjudul nama F, ✕ kembali ke modal', async ({ app, page, monitor }) => {
     const fx = ids();
-    const db = inspectDb();
-    const confirmedExtra = db.sessions.filter((s) => s.status === 2 && !/^qa28/.test(s.created_by)).length; // sesi nyata dari test Confirm (bila sudah jalan)
-    const L = LANG.en;
     const calls = trace(page);
     await openArchive(app, page);
-    const { resp } = await openHistoryFromModal(app, page, 'en');
-    expect(resp.status(), '[user2] GET opnames 200 (List Archive tanpa Opname Document)').toBe(200);
-    const res = await bodyOf(resp);
-    monitor.note(`[user2] total=${res.total} (13 sesi uji terlihat${confirmedExtra ? ` + ${confirmedExtra} sesi nyata` : ''})`);
-    expect(res.total, '[user2] 13 sesi uji terlihat (N14 folder VIEWONLY, HID, draft, batal tidak)').toBe(13 + confirmedExtra);
-    const title = (await hist(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' ');
-    expect(title, '[user2] judul EN').toContain(L.title);
-    expect(title, '[user2] subjudul EN').toContain(L.subAll);
-    expect(await histHeads(page), '[user2] kolom EN').toEqual(L.heads);
-    expect(await hist(page).innerText(), '[user2] sesi tersembunyi tidak tampil').not.toMatch(/qa28hid|qa28draft|qa28cancel|qa28view/);
-    expect(await hist(page).innerText(), '[user2] tanpa "N sessions"').not.toMatch(/\d+\s+sessions?\b/i);
-    await app.screenshot('user2-01-history');
+    const modal = await openFolderModal(app, page, `${P}ALFA`);
+    await expect(modal.locator('.ant-modal-footer'), 'modal folder tanpa footer').toHaveCount(0);
+    const mTitle = (await modal.locator('.ant-modal-title').innerText()).replace(/\s+/g, ' ');
+    monitor.note(`judul modal folder: ${mTitle}`);
+    expect(mTitle, 'subjudul modal = nama folder').toContain(`${P}ALFA`);
+    await expect(modal.getByText(LANG.id.cta), 'CTA tampil di modal verifikasi folder').toBeVisible();
+    expect((await histCalls(calls)).length, 'sebelum CTA: 0 GET opnames').toBe(0);
+    await app.screenshot('ac29-00-modal-folder');
 
-    // N01 (penuh)
-    const openRowOf = async (user) => {
-      const rr = await typeSearch(page, user);
-      void rr;
-      const first = histRowsLoc(page).first();
-      await first.locator('td').nth(2).click();
-      await resDrawer(page).waitFor({ state: 'visible', timeout: 15000 });
-      await resDrawer(page).locator('.ant-card').first().waitFor({ state: 'visible', timeout: 20000 });
-      await page.waitForTimeout(900);
-    };
-    const closeResult = async () => {
-      await resDrawer(page).locator('.ant-drawer-close').click();
-      await expect(page.locator('.archive-opname-history .ant-drawer.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
-    };
-    await openRowOf('qa28alice');
-    const t1 = (await resDrawer(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' ');
-    expect(t1, '[user2] judul hasil EN').toContain(L.resultTitle);
-    expect(t1, '[user2] subjudul sesi terbaru alice').toContain(`${dateText(S.N01[0], 'en')} · qa28alice · ${S.N01[2]}`);
-    expect(await resDrawer(page).innerText(), '[user2] sesi penuh: tanpa catatan parsial').not.toContain(L.partial);
-    expect(trimAll(await resDrawer(page).locator('.ant-segmented-item').allInnerTexts()), '[user2] Segmented N01').toEqual([`${L.seg[0]} 7`, `${L.seg[1]} 5`, `${L.seg[2]} 3`, `${L.seg[3]} 1`, `${L.seg[4]} 1`]);
-    await app.screenshot('user2-02-hasil-penuh');
-    await closeResult();
-    await resetAll(page);
-
-    // N02 (parsial)
-    const dP = page.waitForResponse((r) => r.request().method() === 'GET' && r.url().includes(`/opnames/${fx._sessions.N02}`) && !/documents/.test(r.url()), { timeout: 30000 });
-    await typeSearch(page, 'qa28root');
-    await histRowsLoc(page).first().locator('td').nth(2).click();
-    const dp = await bodyOf(await dP);
-    await resDrawer(page).locator('.ant-card').first().waitFor({ state: 'visible', timeout: 20000 });
-    await page.waitForTimeout(900);
-    monitor.note(`[user2] N02: is_partial=${dp.is_partial} result_counts=${JSON.stringify(dp.result_counts)}`);
-    expect(dp.is_partial, '[user2] N02 parsial').toBe(true);
-    await expect(resDrawer(page).getByText(L.partial), '[user2] catatan BR-11 (EN)').toBeVisible();
-    expect(trimAll(await resDrawer(page).locator('.ant-card').allInnerTexts()), '[user2] kartu = angka rekaman').toEqual(['8 ' + L.cards[0], '3 ' + L.cards[1], '1 ' + L.cards[2], '1 ' + L.cards[3], '2 ' + L.cards[4]]);
-    expect(trimAll(await resDrawer(page).locator('.ant-segmented-item').allInnerTexts()), '[user2] Segmented dari baris tampil').toEqual([`${L.seg[0]} 5`, `${L.seg[1]} 4`, `${L.seg[2]} 2`, `${L.seg[3]} 1`, `${L.seg[4]} 1`]);
-    const rowsOf = async () => Object.fromEntries((await tableRows(resDrawer(page), 0)).map((r) => [r[0], { folder: r[2], result: r[4] }]));
-    expect(Object.keys(await rowsOf()).sort(), '[user2] Scanned N02: B1, T1a, S2a, INV-002 (tanpa H1)').toEqual([`${P}B1`, `${P}INV-002`, `${P}S2a`, `${P}T1a`].sort());
-    expect((await rowsOf())[`${P}S2a`], '[user2] Not found: "Outside opname scope"').toMatchObject({ folder: L.outside, result: L.res.not_found });
-    await resDrawer(page).locator('.ant-segmented-item').nth(0).click();
-    await page.waitForTimeout(1200);
-    const allRows = await rowsOf();
-    expect(Object.keys(allRows).sort(), '[user2] All N02: 5 baris, tanpa H1/H2').toEqual([`${P}A1`, `${P}B1`, `${P}INV-002`, `${P}S2a`, `${P}T1a`].sort());
-    expect(allRows[`${P}A1`].result, '[user2] A1 Not scanned').toBe(L.res.unscanned);
-    expect(await resDrawer(page).innerText(), '[user2] nama dokumen SECRET tidak bocor').not.toMatch(new RegExp(`${P}H[12]`));
-    await app.screenshot('user2-03-hasil-parsial');
-    await closeResult();
-
-    // konteks folder (drawer folder -> tab Verification) dalam bahasa EN: subjudul, kolom, isi
-    await hist(page).locator('.ant-drawer-close').first().click();
-    await expect(page.locator('.archive-opname-history.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
-    await modalVisible(page).locator('.ant-modal-close').click();
-    await expect(page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal')).toHaveCount(0, { timeout: 10000 });
-    const { pane } = await openFolderVerification(app, page, `${P}ALFA`, 'en');
-    const respF = waitOpnames(page);
-    await pane.getByText(L.cta).first().click();
-    const rf = await respF;
+    const respP = waitOpnames(page);
+    await modal.getByText(LANG.id.cta).first().click();
+    const resp = await respP;
     await hist(page).waitFor({ state: 'visible', timeout: 15000 });
     await histRowsLoc(page).first().waitFor({ state: 'visible', timeout: 20000 });
-    await page.waitForTimeout(600);
-    expect(new URL(rf.url()).searchParams.get('idArchive'), '[user2] idArchive = ALFA').toBe(fx[`${P}ALFA`]);
-    const tf = (await hist(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' ');
-    expect(tf, '[user2] judul folder EN').toContain(L.title);
-    expect(tf, '[user2] subjudul folder EN').toContain(L.subFolder(`${P}ALFA`));
-    expect(await histHeads(page), '[user2] kolom EN (folder)').toEqual(L.heads);
-    expect(await rowKeys(page, 'en'), '[user2] sesi yang mencakup ALFA').toEqual(['N01', 'N02', 'N05', 'N07', 'N09', 'N11', 'N13']);
-    await app.screenshot('user2-04-history-folder');
-    await hist(page).locator('.ant-drawer-close').first().click();
-    await page.locator('.ant-drawer-open .ant-drawer-close:visible').first().click();
-    await expect(page.locator('.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
+    await app.settle();
+    expect(resp.status(), 'GET opnames 200').toBe(200);
+    expect(folderParam(new URL(resp.url())), 'request membawa idArchive = id folder ALFA').toBe(fx[`${P}ALFA`]);
+    const hc = await histCalls(calls);
+    expect(hc.length, 'tepat satu GET opnames').toBe(1);
+    const title = (await hist(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' ');
+    monitor.note(`judul drawer riwayat (dari modal folder): ${title}`);
+    expect(title, 'judul').toContain(LANG.id.title);
+    expect(title, 'subjudul = nama folder + keterangan').toContain(LANG.id.subFolder(`${P}ALFA`));
+    const cover = await coverInfo(page);
+    monitor.note(`cover modal folder: ${JSON.stringify(cover)}`);
+    expect(cover.parentClass, 'wadah = isi modal verifikasi folder').toContain('ant-modal-content');
+    expect(sameBox(cover.wrap, cover.parent), `drawer riwayat menutupi isi modal (${JSON.stringify(cover.wrap)} vs ${JSON.stringify(cover.parent)})`).toBe(true);
+    expect(cover.topInHistory && cover.bottomInHistory, 'judul dan dasar modal tertutup drawer').toBe(true);
+    const alfa = ['N01', 'N02', 'N05', 'N07', 'N09', 'N11', 'N13'];
+    expect(await histRows(page), 'baris = sesi yang mencakup ALFA').toEqual(cellsOf(alfa));
+    expect((await bodyOf(resp)).total, 'total 7').toBe(7);
+    await app.screenshot('ac29-01-history-dari-modal-folder');
 
-    // sesi tak terlihat user2 (N14) tidak bisa dibuka lewat id: API = 404 ARCHIVE412 (FE tidak menawarkannya); tidak ada GET 4xx dari UI
-    const failed = calls.filter((c) => c.status >= 400);
-    expect(failed.map((c) => `${c.status} ${c.path}`), '[user2] tidak ada respons 4xx dari alur UI').toEqual([]);
+    // ✕ kembali ke modal folder (isi sama), modal tetap terbuka
+    await hist(page).locator('.ant-drawer-close').click();
+    await expect(page.locator('.archive-opname-history.ant-drawer-open'), '✕ menutup drawer riwayat').toHaveCount(0, { timeout: 10000 });
+    await expect(modal.locator('.ant-card').first(), 'isi modal folder tampil lagi').toBeVisible();
+    await expect(modal, 'modal folder tetap terbuka').toBeVisible();
+    await modal.locator('.ant-modal-close').click();
+    await expect(noModal(page), '✕ menutup modal folder').toHaveCount(0, { timeout: 10000 });
+    expect((await listCalls(calls)).length, 'tanpa GET archives tambahan (list tidak dimuat ulang)').toBe(1);
     noServerError(monitor);
     monitor.check();
   });
 
+  // ------------------------------------------------------------------------------------------- AC-27 profil default: CTA di tiga wadah + baris Setup
+  test('[default] ED-1028 AC-27 profil default (pemegang Opname Document): CTA riwayat ada di modal 05, tab Verification, modal verifikasi folder; Display Setting documentArchiveOpnameHistory tampil di daftar Setup dan show 200', async ({ app, page, monitor }) => {
+    const calls = trace(page);
+    await openArchive(app, page);
+
+    // (1) modal 05 (All Archive)
+    const modal = await openModal(app, page);
+    await expect(modal.getByText(LANG.id.cta).first(), 'CTA di modal 05').toBeVisible();
+    await modal.locator('.ant-modal-close').click();
+    await expect(noModal(page)).toHaveCount(0, { timeout: 10000 });
+
+    // (2) tab Verification drawer folder
+    const { pane } = await openFolderVerification(app, page, `${P}ALFA`);
+    await expect(pane.getByText(LANG.id.cta).first(), 'CTA di tab Verification').toBeVisible();
+    await page.locator('.ant-drawer-open .ant-drawer-close:visible').first().click();
+    await expect(page.locator('.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
+
+    // (3) modal verifikasi folder
+    const fm = await openFolderModal(app, page, `${P}ALFA`);
+    await expect(fm.getByText(LANG.id.cta).first(), 'CTA di modal verifikasi folder').toBeVisible();
+    await app.screenshot('ac27-01-cta-modal-folder');
+    await fm.locator('.ant-modal-close').click();
+    await expect(noModal(page)).toHaveCount(0, { timeout: 10000 });
+    expect((await histCalls(calls)).length, 'melihat CTA saja tidak memanggil GET opnames').toBe(0);
+
+    // Setup > Display Setting (daftar `GET setting/display-columns`; halaman FE-nya tidak punya route di build ini, jadi lewat API dari sesi browser)
+    const idx = await apiGet(page, 'setting/display-columns?search=documentArchiveOpnameHistory&pagination=50');
+    monitor.note(`index search=documentArchiveOpnameHistory: ${idx.status} ${JSON.stringify((idx.json && idx.json.result && idx.json.result.data || []).map((x) => x.module_name))}`);
+    expect(idx.status, 'index 200').toBe(200);
+    expect((idx.json.result.data || []).map((x) => x.module_name), 'daftar Setup memuat documentArchiveOpnameHistory').toContain('documentArchiveOpnameHistory');
+    const show = await apiGet(page, 'setting/display-columns/documentArchiveOpnameHistory');
+    expect(show.status, 'show documentArchiveOpnameHistory 200').toBe(200);
+    expect(show.json.result.current_columns.map((c) => c.data_index), 'show: 7 kolom aktif').toEqual(['confirmedAt', 'createdBy', 'scope', 'totalDocuments', 'verifiedCount', 'notFoundCount', 'invalidCount']);
+    noServerError(monitor);
+    monitor.check();
+  });
+
+  // ------------------------------------------------------------------------------------------- AC-27 R0: role asli user2 tanpa Opname Document
+  test('[user2] ED-1028 AC-27 R0 (role List Archive tanpa Opname Document): tanpa CTA riwayat, tanpa .archive-opname-history di DOM, tanpa request opnames*; daftar Setup tanpa documentArchiveOpnameHistory; show dan GET opnames 403', async ({ app, page, monitor }) => {
+    revokeOd(); // jaga-jaga: sisa grant run yang mati dicabut; role asli user2 tidak memegang Opname Document
+    const calls = trace(page);
+    await openArchive(app, page);
+    const L = LANG.en;
+
+    const noHistoryUi = async (label) => {
+      const text = await page.locator('body').innerText();
+      expect(text, `${label}: tanpa CTA "${L.cta}"`).not.toContain(L.cta);
+      expect(text, `${label}: tanpa CTA "${LANG.id.cta}"`).not.toContain(LANG.id.cta);
+      await expect(page.locator('.archive-opname-history, .drawer-history'), `${label}: tanpa riwayat opname di DOM`).toHaveCount(0);
+    };
+    const noOpnameReq = async (label) => {
+      const bad = (await Promise.all(calls.map((c) => c.ready)).then(() => calls)).filter((c) => /^opnames(\/|$)/.test(c.path) || /archive\/opname-users/.test(c.path));
+      expect(bad.map((c) => `${c.method} ${c.path}`), `${label}: tanpa request opnames* / opname-users`).toEqual([]);
+    };
+
+    // halaman Archive (list) tanpa tampilan verifikasi sama sekali: tidak ada tautan ringkasan, tidak ada kolom Document Verified
+    const heads = trimAll(await page.locator('.archive-page .ant-table-thead th').allInnerTexts());
+    monitor.note(`[user2 R0] header list: ${JSON.stringify(heads)}`);
+    expect(heads, '[user2 R0] list tanpa kolom Document Verified').not.toContain(L.dv);
+    await expect(page.locator('.archive-page').getByText(L.link, { exact: false }), '[user2 R0] tanpa tautan ringkasan (jalan masuk modal 05)').toHaveCount(0);
+    await noHistoryUi('[user2 R0] halaman Archive');
+    await app.screenshot('ac27-r0-01-list');
+
+    // drawer folder (Detail): tanpa tab Verification, tanpa CTA
+    await pickRowMenu(page, `${P}ALFA`, L.view);
+    const dr = drawerOpen(page);
+    await dr.waitFor({ state: 'visible', timeout: 15000 });
+    await dr.locator('.ant-skeleton').first().waitFor({ state: 'detached', timeout: 15000 }).catch(() => null);
+    await page.waitForTimeout(800);
+    const tabsTexts = trimAll(await dr.locator('.ant-tabs-tab').allInnerTexts());
+    monitor.note(`[user2 R0] tab drawer folder: ${JSON.stringify(tabsTexts)}`);
+    expect(tabsTexts, '[user2 R0] drawer folder tanpa tab Verification').not.toContain(L.verif);
+    await expect(dr.locator('input[maxlength="255"]').first(), '[user2 R0] drawer folder menampilkan tampilan Detail folder ALFA (bukan drawer kosong)').toHaveValue(`${P}ALFA`);
+    await noHistoryUi('[user2 R0] drawer folder (Detail)');
+    await app.screenshot('ac27-r0-02-drawer-detail');
+    await page.locator('.ant-drawer-open .ant-drawer-close:visible').first().click();
+    await expect(page.locator('.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
+
+    // list: pencarian tetap jalan, tetap tanpa riwayat
+    const sresp = waitList(page, (u) => (u.searchParams.get('search') || '').includes(`${P}RD`));
+    await page.mouse.click(5, 5);
+    await page.keyboard.type(`${P}RD`, { delay: 0 });
+    await page.keyboard.press('Enter');
+    expect((await sresp).status(), '[user2 R0] scan pencarian list tetap jalan').toBe(200);
+    await page.waitForTimeout(800);
+    await noHistoryUi('[user2 R0] list sesudah pencarian');
+    await noOpnameReq('[user2 R0] seluruh alur UI');
+
+    // Setup > Display Setting (API dari sesi browser R0): daftar tanpa baris riwayat, documentArchive tetap ada; show 403 GE0114
+    const idx = await apiGet(page, 'setting/display-columns?search=documentArchive&pagination=100');
+    const mods = ((idx.json && idx.json.result && idx.json.result.data) || []).map((x) => x.module_name);
+    monitor.note(`[user2 R0] index search=documentArchive: ${idx.status} ${JSON.stringify(mods)}`);
+    expect(idx.status, '[user2 R0] index 200').toBe(200);
+    expect(mods, '[user2 R0] daftar Setup memuat documentArchive').toContain('documentArchive');
+    expect(mods, '[user2 R0] daftar Setup TANPA documentArchiveOpnameHistory (K-9 a)').not.toContain('documentArchiveOpnameHistory');
+    const idx2 = await apiGet(page, 'setting/display-columns?search=documentArchiveOpnameHistory&pagination=100');
+    expect(((idx2.json && idx2.json.result && idx2.json.result.data) || []).map((x) => x.module_name), '[user2 R0] search tepat nama modul: tetap tanpa baris riwayat').toEqual([]);
+    const show = await apiGet(page, 'setting/display-columns/documentArchiveOpnameHistory');
+    monitor.note(`[user2 R0] show documentArchiveOpnameHistory: ${show.status} ${JSON.stringify({ code: show.json && show.json.code, parameter: show.json && show.json.parameter })}`);
+    expect(show.status, '[user2 R0] show 403').toBe(403);
+    expect(show.json.code, '[user2 R0] show: GE0114').toBe('GE0114');
+    expect(show.json.parameter, '[user2 R0] show: parameter "Opname Document"').toBe('Opname Document');
+    const list = await apiGet(page, 'document-archive/opnames');
+    expect(list.status, '[user2 R0] GET opnames 403').toBe(403);
+    expect(list.json.code, '[user2 R0] GET opnames: GE0114').toBe('GE0114');
+    expect(list.json.parameter, '[user2 R0] GET opnames: parameter "Opname Document"').toBe('Opname Document');
+    expectRejected(monitor, '[user2 R0] probe show display setting', { status: 403, urlRe: /setting\/display-columns\/documentArchiveOpnameHistory/ });
+    expectRejected(monitor, '[user2 R0] probe GET opnames', { status: 403, urlRe: /document-archive\/opnames/ });
+    noServerError(monitor);
+    monitor.check();
+  });
+
+  // ------------------------------------------------------------------------------------------- AC-21 user2 (EN) dengan Opname Document sementara
+  test('[user2] ED-1028 AC-21 user lokasi terbatas dengan Opname Document (diberikan sementara, EN): history terbuka, 13 sesi uji terlihat, hasil sesi penuh dan parsial (catatan BR-11)', async ({ app, page, monitor }) => {
+    const fx = ids();
+    const L = LANG.en;
+    const calls = trace(page);
+    const grant = grantOd();
+    monitor.note(`[user2] grant sementara Opname Document: ${JSON.stringify(grant)}`);
+    try {
+      expect(grant.made.length, '[user2] grant: satu baris role_permissions dibuat per role (role belum memegangnya)').toBe(grant.roles.length);
+      await openArchive(app, page); // halaman baru: FE membaca permission (auth/info) sesudah grant
+      const { resp } = await openHistoryFromModal(app, page, 'en');
+      expect(resp.status(), '[user2] GET opnames 200 (dengan Opname Document)').toBe(200);
+      const res = await bodyOf(resp);
+      monitor.note(`[user2] total=${res.total} (13 sesi uji terlihat + ${res.total - 13} sesi lain)`);
+      expect(res.total, '[user2] >= 13 sesi uji terlihat (N14 folder VIEWONLY dan HID tidak)').toBeGreaterThanOrEqual(13);
+      const title = (await hist(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' ');
+      expect(title, '[user2] judul EN').toContain(L.title);
+      expect(title, '[user2] subjudul EN').toContain(L.subAll);
+      const heads = await histHeads(page);
+      monitor.note(`[user2] header: ${JSON.stringify(heads)}`);
+      expect(heads, '[user2] kolom EN').toEqual(L.heads);
+      expect(await histRows(page), '[user2] halaman 1 = 10 sesi uji terbaru (Scope root "All Archive · root")').toEqual(cellsOf(USER2_ORDER.slice(0, 10), 'en'));
+      expect(await hist(page).innerText(), '[user2] sesi tersembunyi tidak tampil').not.toMatch(/qa28hid|qa28view/);
+      expect(await hist(page).innerText(), '[user2] tanpa "N sessions"').not.toMatch(/\d+\s+sessions?\b/i);
+      await app.screenshot('user2-01-history');
+
+      // N01 (penuh)
+      const openRowOf = async (user) => {
+        await typeSearch(page, user);
+        const first = histRowsLoc(page).first();
+        await first.locator('td').nth(2).click();
+        await resDrawer(page).waitFor({ state: 'visible', timeout: 15000 });
+        await resDrawer(page).locator('.ant-card').first().waitFor({ state: 'visible', timeout: 20000 });
+        await page.waitForTimeout(900);
+      };
+      const closeResult = async () => {
+        await resDrawer(page).locator('.ant-drawer-close').click();
+        await expect(page.locator('.archive-opname-history .ant-drawer.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
+      };
+      await openRowOf('qa28alice');
+      const t1 = (await resDrawer(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' ');
+      expect(t1, '[user2] judul hasil EN').toContain(L.resultTitle);
+      expect(t1, '[user2] subjudul sesi terbaru alice').toContain(`${dateText(S.N01[0], 'en')} · qa28alice · ${scopeOf('N01', 'en')}`);
+      expect(await resDrawer(page).innerText(), '[user2] sesi penuh: tanpa catatan parsial').not.toContain(L.partial);
+      expect(await tagTexts(resDrawer(page)), '[user2] CheckableTag N01').toEqual([`${L.seg[0]} 7`, `${L.seg[1]} 5`, `${L.seg[2]} 3`, `${L.seg[3]} 1`, `${L.seg[4]} 1`]);
+      await expect(resDrawer(page).locator('.ant-segmented'), '[user2] tanpa Segmented').toHaveCount(0);
+      await app.screenshot('user2-02-hasil-penuh');
+      await closeResult();
+      await resetAll(page);
+
+      // N02 (parsial)
+      const dP = page.waitForResponse((r) => r.request().method() === 'GET' && r.url().includes(`/opnames/${fx._sessions.N02}`) && !/documents/.test(r.url()), { timeout: 30000 });
+      await typeSearch(page, 'qa28root');
+      await histRowsLoc(page).first().locator('td').nth(2).click();
+      const dp = await bodyOf(await dP);
+      await resDrawer(page).locator('.ant-card').first().waitFor({ state: 'visible', timeout: 20000 });
+      await page.waitForTimeout(900);
+      monitor.note(`[user2] N02: is_partial=${dp.is_partial} result_counts=${JSON.stringify(dp.result_counts)}`);
+      expect(dp.is_partial, '[user2] N02 parsial').toBe(true);
+      expect((await resDrawer(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' '), '[user2] N02: subjudul root EN').toContain(`${dateText(S.N02[0], 'en')} · qa28root · ${L.root}`);
+      await expect(resDrawer(page).getByText(L.partial), '[user2] catatan BR-11 (EN)').toBeVisible();
+      expect(trimAll(await resDrawer(page).locator('.ant-card').allInnerTexts()), '[user2] kartu = angka rekaman').toEqual(['8 ' + L.cards[0], '3 ' + L.cards[1], '1 ' + L.cards[2], '1 ' + L.cards[3], '2 ' + L.cards[4]]);
+      expect(await tagTexts(resDrawer(page)), '[user2] CheckableTag dari baris tampil').toEqual([`${L.seg[0]} 5`, `${L.seg[1]} 4`, `${L.seg[2]} 2`, `${L.seg[3]} 1`, `${L.seg[4]} 1`]);
+      const rowsOf = async () => Object.fromEntries((await tableRows(resDrawer(page), 0)).map((r) => [r[0], { folder: r[2], result: r[4] }]));
+      expect(Object.keys(await rowsOf()).sort(), '[user2] Scanned N02: B1, T1a, S2a, INV-002 (tanpa H1)').toEqual([`${P}B1`, `${P}INV-002`, `${P}S2a`, `${P}T1a`].sort());
+      expect((await rowsOf())[`${P}S2a`], '[user2] Not found: "Outside opname scope"').toMatchObject({ folder: L.outside, result: L.res.not_found });
+      await tagsOf(resDrawer(page)).nth(0).click();
+      await page.waitForTimeout(1200);
+      const allRows = await rowsOf();
+      expect(Object.keys(allRows).sort(), '[user2] All N02: 5 baris, tanpa H1/H2').toEqual([`${P}A1`, `${P}B1`, `${P}INV-002`, `${P}S2a`, `${P}T1a`].sort());
+      expect(allRows[`${P}A1`].result, '[user2] A1 Not scanned').toBe(L.res.unscanned);
+      expect(await resDrawer(page).innerText(), '[user2] nama dokumen SECRET tidak bocor').not.toMatch(new RegExp(`${P}H[12]`));
+      await app.screenshot('user2-03-hasil-parsial');
+      await closeResult();
+
+      // konteks folder (drawer folder -> tab Verification) dalam bahasa EN: subjudul, kolom, isi
+      await hist(page).locator('.ant-drawer-close').first().click();
+      await expect(page.locator('.archive-opname-history.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
+      await modalVisible(page).locator('.ant-modal-close').click();
+      await expect(noModal(page)).toHaveCount(0, { timeout: 10000 });
+      const { pane } = await openFolderVerification(app, page, `${P}ALFA`, 'en');
+      const respF = waitOpnames(page);
+      await pane.getByText(L.cta).first().click();
+      const rf = await respF;
+      await hist(page).waitFor({ state: 'visible', timeout: 15000 });
+      await histRowsLoc(page).first().waitFor({ state: 'visible', timeout: 20000 });
+      await page.waitForTimeout(600);
+      expect(folderParam(new URL(rf.url())), '[user2] idArchive = ALFA').toBe(fx[`${P}ALFA`]);
+      const tf = (await hist(page).locator('.ant-drawer-title').innerText()).replace(/\s+/g, ' ');
+      expect(tf, '[user2] judul folder EN').toContain(L.title);
+      expect(tf, '[user2] subjudul folder EN').toContain(L.subFolder(`${P}ALFA`));
+      expect(await histHeads(page), '[user2] kolom EN (folder)').toEqual(L.heads);
+      expect(await histRows(page), '[user2] sesi yang mencakup ALFA').toEqual(cellsOf(['N01', 'N02', 'N05', 'N07', 'N09', 'N11', 'N13'], 'en'));
+      await app.screenshot('user2-04-history-folder');
+      await hist(page).locator('.ant-drawer-close').first().click();
+      await page.locator('.ant-drawer-open .ant-drawer-close:visible').first().click();
+      await expect(page.locator('.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
+
+      // sesi tak terlihat user2 (N14) tidak bisa dibuka lewat id: API = 404 ARCHIVE412 (FE tidak menawarkannya); tidak ada GET 4xx dari UI
+      const failed = calls.filter((c) => c.status >= 400);
+      expect(failed.map((c) => `${c.status} ${c.path}`), '[user2] tidak ada respons 4xx dari alur UI').toEqual([]);
+      noServerError(monitor);
+      monitor.check();
+    } finally {
+      monitor.note(`[user2] revoke: ${revokeOd()}`);
+    }
+  });
+
   // ------------------------------------------------------------------------------------------- AC-24 regresi + Confirm nyata
-  test('[default] ED-1028 AC-24 regresi: modal 05 & tab Verification, Opname Step 2/3 (Confirm nyata) -> sesi baru di history -> hasil sama dengan Step 3; list Archive, sort, scan, mode Pilih', async ({ app, page, monitor }) => {
+  test('[default] ED-1028 AC-24 regresi: modal 05, Opname Step 2/3 (scan tanpa simpan, satu POST opnames = Konfirmasi) -> sesi baru di history -> hasil sama dengan Step 3; list Archive, sort, scan, mode Pilih', async ({ app, page, monitor }) => {
     test.setTimeout(240000);
     const fx = ids();
     const L = LANG.id;
@@ -1449,13 +1811,21 @@ test.describe('ED-1028 Opname History', () => {
     await page.locator('.archive-page .reset-filter').first().click().catch(() => null);
     await page.waitForTimeout(800);
 
-    // modal 05 + tab Verification (04): overview 3 sesi tetap benar
+    // modal 05: overview 3 sesi tetap benar; total history sebelum Confirm dicatat
     const modal = await openModal(app, page);
     expect(await tableRows(modal, 1), 'modal 05: overview 3 sesi').toEqual(cellsOf(['N01', 'N02', 'N03']));
-    await modal.locator('.ant-modal-footer button').click();
-    await expect(page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal')).toHaveCount(0, { timeout: 10000 });
+    const rBefore = waitOpnames(page);
+    await modal.getByText(L.cta).first().click();
+    const total0 = (await bodyOf(await rBefore)).total;
+    await histRowsLoc(page).first().waitFor({ state: 'visible', timeout: 20000 });
+    await hist(page).locator('.ant-drawer-close').click();
+    await expect(page.locator('.archive-opname-history.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
+    await modal.locator('.ant-modal-close').click();
+    await expect(noModal(page)).toHaveCount(0, { timeout: 10000 });
+    expect(inspectDb().sessions.filter((s) => s.created_by === fx._user.username), 'sebelum Confirm: tidak ada sesi nyata QA_USER').toEqual([]);
 
     // Opname nyata GAMMA (tanpa subfolder: Step 1 dilewati): scan GD1, GD2 (verified), B1 (Not found), kode asing (Invalid)
+    // ED-1026 rev (FB-3): scan = POST opnames/scan (klasifikasi tanpa simpan); Konfirmasi = SATU POST opnames; tidak ada data opname sebelum Konfirmasi
     const modalRoot = page.locator('.modal-opname-archive .ant-modal-content').last();
     const foldersResp = page.waitForResponse((r) => r.request().method() === 'GET' && /\/document-archive\/opnames\/folders/.test(r.url()), { timeout: 45000 });
     await pickRowMenu(page, `${P}GAMMA`, /^Opname$/);
@@ -1464,33 +1834,37 @@ test.describe('ED-1028 Opname History', () => {
     const input = modalRoot.locator('input[placeholder*="Scan QR"]');
     await input.waitFor({ state: 'visible', timeout: 20000 });
     for (const code of [`${P}GD1`, `${P}GD2`, `${P}B1`, `${P}ASING`]) {
-      const sc = page.waitForResponse((r) => r.request().method() === 'POST' && /\/opnames\/[^/]+\/scan/.test(r.url()), { timeout: 30000 });
+      const sc = page.waitForResponse((r) => r.request().method() === 'POST' && /\/document-archive\/opnames\/scan(\?|$)/.test(r.url()), { timeout: 30000 });
       await input.click();
       await input.fill(code);
       await input.press('Enter');
       expect((await sc).status(), `scan ${code}`).toBe(200);
       await page.waitForTimeout(300);
     }
+    expect(inspectDb().sessions.filter((s) => s.created_by === fx._user.username), 'scan belum menyimpan sesi apa pun').toEqual([]);
     await modalRoot.locator('button').filter({ hasText: /^Selesai Opname$/ }).click();
     await expect(modalRoot.locator('.ant-modal-title')).toContainText('Konfirmasi Opname');
-    await page.waitForTimeout(1000);
-    // Step 3: kartu (komponen bersama) + Segmented dari counts + peringatan Step 3 masih ada kelasnya
+    const confirmBtn = modalRoot.locator('button').filter({ hasText: /^Konfirmasi Opname$/ }).first();
+    await expect(confirmBtn, 'Konfirmasi aktif sesudah pratinjau Step 3').toBeEnabled({ timeout: 20000 });
+    await page.waitForTimeout(800);
+    // Step 3: kartu (komponen bersama) + CheckableTag dari counts pratinjau
     const step3Cards = trimAll(await modalRoot.locator('.ant-card').allInnerTexts());
     monitor.note(`Step 3 kartu: ${JSON.stringify(step3Cards)}`);
     expect(step3Cards, 'Step 3: kartu 3 / 2 / 1 / 1 / 1').toEqual(['3 ' + L.cards[0], '2 ' + L.cards[1], '1 ' + L.cards[2], '1 ' + L.cards[3], '1 ' + L.cards[4]]);
-    const step3Seg = trimAll(await modalRoot.locator('.ant-segmented-item').allInnerTexts());
-    monitor.note(`Step 3 Segmented: ${JSON.stringify(step3Seg)}`);
-    expect(step3Seg, 'Step 3: Segmented dari counts (Semua = total + not found + invalid)').toEqual([`${L.seg[0]} 5`, `${L.seg[1]} 4`, `${L.seg[2]} 2`, `${L.seg[3]} 1`, `${L.seg[4]} 1`]);
-    expect(trimAll(await modalRoot.locator('.ant-segmented-item-selected').allInnerTexts()), 'Step 3: default Scanned').toEqual([`${L.seg[1]} 4`]);
+    await expect(modalRoot.locator('.ant-segmented'), 'Step 3: tanpa Segmented (FB-10)').toHaveCount(0);
+    const step3Seg = await tagTexts(modalRoot);
+    monitor.note(`Step 3 CheckableTag: ${JSON.stringify(step3Seg)}`);
+    expect(step3Seg, 'Step 3: CheckableTag dari pratinjau (Semua = total + not found + invalid)').toEqual([`${L.seg[0]} 5`, `${L.seg[1]} 4`, `${L.seg[2]} 2`, `${L.seg[3]} 1`, `${L.seg[4]} 1`]);
+    expect(await checkedTagTexts(modalRoot), 'Step 3: default Scanned').toEqual([`${L.seg[1]} 4`]);
     expect((await tableRows(modalRoot, 0)).length, 'Step 3: 4 baris Scanned').toBe(4);
     await app.screenshot('ac24-01-step3');
-    await modalRoot.locator('button').filter({ hasText: /^Konfirmasi Opname$/ }).click();
+    await confirmBtn.click();
     const pop = page.locator('.ant-popover:not(.ant-popover-hidden)').last();
     await pop.waitFor({ state: 'visible', timeout: 10000 });
-    const conf = page.waitForResponse((r) => r.request().method() === 'PUT' && /\/opnames\/[^/]+\/confirm/.test(r.url()), { timeout: 45000 });
+    const conf = page.waitForResponse((r) => r.request().method() === 'POST' && /\/document-archive\/opnames(\?|$)/.test(r.url()), { timeout: 60000 });
     await pop.locator('.ant-btn-primary').click();
     const cr = await conf;
-    expect(cr.status(), 'PUT confirm 200').toBe(200);
+    expect(cr.status(), 'POST opnames (Konfirmasi) 200').toBe(200);
     await expect(page.locator('.modal-opname-archive .ant-modal-content:visible'), 'modal opname tertutup').toHaveCount(0, { timeout: 15000 });
     await page.waitForTimeout(1500);
 
@@ -1502,20 +1876,25 @@ test.describe('ED-1028 Opname History', () => {
     monitor.note(`DB sesi baru: ${JSON.stringify(nsess)}`);
     expect([nsess.folder, nsess.total, nsess.verified, nsess.not_found, nsess.invalid, nsess.scanned, nsess.unscanned, nsess.doc_rows], 'DB: GAMMA 3 / 2 / 1 / 1 / scanned 4 / unscanned 1 / 5 baris').toEqual([`${P}GAMMA`, 3, 2, 1, 1, 4, 1, 5]);
 
-    // history: sesi baru di baris teratas dengan angka rekaman; hasilnya = Step 3
+    // history: total bertambah 1; sesi baru dicari lewat nama folder (sesi uji berwaktu 2031 berada di atasnya); hasilnya = Step 3
     const { resp } = await openHistoryFromModal(app, page);
     const res = await bodyOf(resp);
-    expect(res.total, 'total history bertambah 1 (15)').toBe(15);
-    const top = (await histRows(page))[0];
-    monitor.note(`baris teratas history: ${JSON.stringify(top)}`);
-    expect([top[1], top[2], ...top.slice(3)], 'baris baru: user, scope GAMMA, 3 / 2 / 1 / 1').toEqual([fx._user.username, `${P}GAMMA`, '3', '2', '1', '1']);
+    expect(res.total, 'total history bertambah 1').toBe(total0 + 1);
+    const rg = await typeSearch(page, 'GAMMA');
+    expect(searchOf(rg), 'search GAMMA').toEqual({ query: 'GAMMA' });
+    const gammaRows = (await histRows(page)).filter((r) => r[1] === fx._user.username);
+    monitor.note(`baris sesi baru di history: ${JSON.stringify(gammaRows)}`);
+    expect(gammaRows.length, 'tepat satu sesi GAMMA nyata di history').toBe(1);
+    const top = gammaRows[0];
+    expect([top[1], top[2], ...top.slice(3)], 'baris baru: user, scope GAMMA (tanpa akhiran subfolder), 3 / 2 / 1 / 1').toEqual([fx._user.username, `${P}GAMMA`, '3', '2', '1', '1']);
     expect(top[0], 'waktu = confirmed_at sesi (tanggal + jam)').toMatch(/^\d{2} \w{3} \d{4} \d{2}:\d{2}$/);
-    await histRowsLoc(page).first().locator('td').nth(2).click();
+    const rowIdx = (await histRows(page)).findIndex((r) => r[1] === fx._user.username);
+    await histRowsLoc(page).nth(rowIdx).locator('td').nth(2).click();
     await resDrawer(page).waitFor({ state: 'visible', timeout: 15000 });
     await resDrawer(page).locator('.ant-card').first().waitFor({ state: 'visible', timeout: 20000 });
     await page.waitForTimeout(900);
     expect(trimAll(await resDrawer(page).locator('.ant-card').allInnerTexts()), 'hasil history: kartu = Step 3').toEqual(step3Cards);
-    expect(trimAll(await resDrawer(page).locator('.ant-segmented-item').allInnerTexts()), 'hasil history: Segmented = Step 3').toEqual(step3Seg);
+    expect(await tagTexts(resDrawer(page)), 'hasil history: CheckableTag = Step 3').toEqual(step3Seg);
     const rows = await tableRows(resDrawer(page), 0);
     expect(rows.map((r) => r[0]).sort(), 'hasil history: baris Scanned = GD1, GD2, B1, kode asing').toEqual([`${P}ASING`, `${P}B1`, `${P}GD1`, `${P}GD2`].sort());
     await app.screenshot('ac24-02-hasil-nyata');
@@ -1525,7 +1904,7 @@ test.describe('ED-1028 Opname History', () => {
     await hist(page).locator('.ant-drawer-close').first().click();
     await expect(page.locator('.archive-opname-history.ant-drawer-open')).toHaveCount(0, { timeout: 10000 });
     await modalVisible(page).locator('.ant-modal-close').click();
-    await expect(page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal')).toHaveCount(0, { timeout: 10000 });
+    await expect(noModal(page)).toHaveCount(0, { timeout: 10000 });
     void calls;
     noServerError(monitor);
     monitor.check();

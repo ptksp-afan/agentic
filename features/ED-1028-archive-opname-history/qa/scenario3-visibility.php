@@ -3,23 +3,11 @@
  * ED-1028 - visibilitas & konteks folder: AC-8 (superadmin 1/2 semua, user lain sesuai K-4 + EPIC K-1 a, 3 baris pertama = last_sessions
  * GET verifications), AC-9 (id_archive=F: hanya sesi yang mencakup F, = last_sessions GET verifications/{F}; 404/400/403), AC-13
  * (sesi root superadmin dibaca user lain: baris di luar scope disaring, result_counts, is_partial).
- * Sesi dibuat lewat API opname ED-1026 oleh superadmin sementara (role 1). user2 = QA_USER2 sungguhan (SMR, List Archive tanpa
- * Opname Document); user3 = QA_USER role 3 (semua lokasi, bukan superadmin). Semua dipulihkan di finally.
+ * Sesi dibuat lewat API opname ED-1026 (satu POST opnames) oleh superadmin sementara (role 1). user2 = QA_USER2 sungguhan (SMR, role asli
+ * List Archive; (rev, K-8 a) memegang Opname Document lewat grant sementara q28_guard); user3 = QA_USER role 3 (semua lokasi, bukan
+ * superadmin). Semua dipulihkan di finally. (rev) Tahan data developer: total = oracle (ikut sesi asing), daftar kunci dilingkup ke sesi QA.
  */
 require_once __DIR__ . '/qa_hist.php';
-
-/** Dua sesi dari folder yang kemudian dihapus (G1 milik qa28erin, G2 milik user uji sendiri). */
-$q28_add_deleted = function ($t, $s, array &$x, array &$ids) {
-    $x['G1F'] = q28_folder($t, 'G1F');
-    $x['G2F'] = q28_folder($t, 'G2F');
-    $ids['G1'] = q28_run($t, $s, $x['G1F'], [], []);
-    $ids['G2'] = q28_run($t, $s, $x['G2F'], [], []);
-    q28_set_opname($t, $ids['G1'], ['confirmed_at' => date('Y-m-d', strtotime('-2 days')) . ' 09:00:00', 'created_by' => 'qa28erin']);
-    q28_set_opname($t, $ids['G2'], ['confirmed_at' => date('Y-m-d', strtotime('-1 day')) . ' 09:00:00']);
-    q28_w($t, function ($c) use ($x) {
-        $c->table('archives')->whereIn('id_archive', [$x['G1F'], $x['G2F']])->delete();
-    });
-};
 
 $q28_norm = function ($v) use (&$q28_norm) {
     if (is_array($v)) {
@@ -105,16 +93,16 @@ return [
     [
         'id'    => 'AC-8',
         'title' => 'visibilitas: superadmin (role 1 dan 2) semua sesi terkonfirmasi; user lain sesuai 04 K-4 + EPIC K-1 a (root semua, folder terlihat, pembuat, folder terhapus/tak terlihat hanya superadmin & pembuat) = oracle; 3 baris pertama halaman 1 = last_sessions GET verifications untuk user yang sama',
-        'run'   => function ($t) use ($q28_add_deleted, $q28_default_order, $q28_norm) {
+        'run'   => function ($t) use ($q28_default_order, $q28_norm) {
             $s = $t->session();
-            q28_guard($t, function () use ($t, $s, $q28_add_deleted, $q28_default_order, $q28_norm) {
+            q28_guard($t, function () use ($t, $s, $q28_default_order, $q28_norm) {
                 $x = null;
                 $ids = null;
                 $set = null;
-                q28_with_user($t, ['role' => 1], function ($setter) use ($t, $s, $q28_add_deleted, $q28_default_order, $q28_norm, &$x, &$ids) {
+                q28_with_user($t, ['role' => 1], function ($setter) use ($t, $s, $q28_default_order, $q28_norm, &$x, &$ids) {
                     $x = q28_tree($t);
                     $ids = q28_hfix($t, $s, $x);
-                    $q28_add_deleted($t, $s, $x, $ids);
+                    q28_add_deleted($t, $s, $x, $ids);
 
                     $check = function ($label, $session, array $u, array $expectKeys) use ($t, $ids, $q28_default_order, $q28_norm) {
                         $r = q28_hist($t, $session, ['pagination' => 100]);
@@ -137,7 +125,7 @@ return [
                     $all = ['G2', 'Z', 'Y', 'E', 'D', 'C', 'B', 'A'];
                     $withG1 = ['G2', 'G1', 'Z', 'Y', 'E', 'D', 'C', 'B', 'A'];
                     $confirmed = $t->db()->table('archive_opnames')->where('status', 2)->count();
-                    $t->eq($confirmed, 9, 'prasyarat: 9 sesi terkonfirmasi di DB (A,B,C,D,E,Y,Z,G1,G2)');
+                    $t->eq($t->db()->table('archive_opnames')->where('status', 2)->whereIn('id_archive_opname', array_values($ids))->count(), 9, 'prasyarat: 9 sesi QA terkonfirmasi di DB (A,B,C,D,E,Y,Z,G1,G2); total semua sesi = ' . $confirmed . ' (sisanya developer)');
 
                     $r = $check('superadmin role 1', $s, q28_uu($t, 'super'), $withG1);
                     $t->eq($r[1]['result']['total'], $confirmed, 'role 1: total = semua sesi terkonfirmasi');
@@ -162,7 +150,8 @@ return [
                 $exp = $q28_default_order($t, q28_oracle_sessions($t, $u2));
                 $t->eq(q28_hkeys(q28_hids($r), $ids), q28_hkeys($exp, $ids), 'user2: sesi terlihat = oracle');
                 $t->eq(q28_hkeys(q28_hids($r), $ids), ['Z', 'Y', 'C', 'B', 'A'], 'user2: A, B, C (root), Y, Z; bukan D (SJ lokasi JOG), E (SP tanpa View), G1/G2 (folder terhapus)');
-                $t->eq($r[1]['result']['total'], 5, 'user2: total 5');
+                $t->eq(q28_hcount(q28_hids($r), $ids), 5, 'user2: 5 sesi QA');
+                $t->eq($r[1]['result']['total'], count($exp), 'user2: total = oracle (sesi developer terlihat ikut)');
                 $v = q28_verif($t, $s2);
                 $t->status($v, 200, 'user2: GET verifications');
                 $first = array_map('q28_srow', array_slice($r[1]['result']['data'], 0, 3));
@@ -223,7 +212,8 @@ return [
                     $r = q28_hist($t, $s, ['id_archive' => $x['F'], 'pagination' => 100, 'search' => ['confirmedAt' => [$T['B'], $T['D']]]]);
                     $t->eq(q28_hkeys(q28_hids($r), $ids), ['D', 'B'], 'F + confirmedAt [B, D] -> D, B');
                     $r = q28_hist($t, $s, ['id_archive' => '', 'pagination' => 100]);
-                    $t->eq(count(q28_hids($r)), 6, 'id_archive kosong = tanpa konteks (6 sesi terlihat user3)');
+                    $t->eq(q28_hcount(q28_hids($r), $ids), 6, 'id_archive kosong = tanpa konteks (6 sesi QA terlihat user3)');
+                    $t->eq($r[1]['result']['total'], count(q28_oracle_sessions($t, q28_uu($t, 'user3'))), 'id_archive kosong: total = semua sesi terlihat user3 (oracle)');
                     $r = q28_hist($t, $s, ['id_archive' => $x['F'], 'pagination' => 2, 'page' => 2]);
                     $t->eq(q28_hkeys(q28_hids($r), $ids), ['B', 'A'], 'F + pagination 2 halaman 2 -> B, A');
                     $t->eq($r[1]['result']['total'], 4, 'F user3: total 4');

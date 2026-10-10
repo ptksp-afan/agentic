@@ -3,22 +3,32 @@
  * Fixture e2e ED-1028 (BUKAN skenario regresi; dipanggil lewat qa/e2e/fixtures.json dan spec).
  *
  *   "$PHP_BIN" fixture.php up         buat folder/dokumen uji berawalan "0QA28-" (tanpa sesi opname) + snapshot baris display setting
- *   "$PHP_BIN" fixture.php sessions   sisipkan sesi opname uji (14 terkonfirmasi + 1 tersembunyi + draft + batal); gagal bila sesi milik
+ *   "$PHP_BIN" fixture.php sessions   sisipkan sesi opname uji (14 terkonfirmasi terlihat + 1 tersembunyi); gagal bila sesi milik
  *                                     fixture sudah ada (sesi developer tidak dihitung)
- *   "$PHP_BIN" fixture.php ensure-sessions   seperti sessions, tetapi tanpa efek bila sesi milik fixture sudah ada
+ *   "$PHP_BIN" fixture.php ensure-sessions   (rev) pastikan TEPAT 15 sesi uji ada dan tidak ada sesi lain milik fixture (mis. sesi nyata
+ *                                     hasil Confirm lewat UI): keadaan menyimpang dibereskan (hanya milik fixture) lalu diisi ulang
  *   "$PHP_BIN" fixture.php reset-sessions    buang sesi opname MILIK FIXTURE saja (kolom verifikasi dokumen yang tersentuh dikembalikan);
  *                                     folder/dokumen uji tetap
- *   "$PHP_BIN" fixture.php down       buang HANYA data milik fixture (lihat "Jurnal"), pulihkan display setting persis, lalu pastikan
- *                                     tidak ada sisa milik fixture (count + CHECKSUM 8 tabel vs baseline hanya INFO)
+ *   "$PHP_BIN" fixture.php down       buang HANYA data milik fixture (lihat "Jurnal"), cabut sisa grant, pulihkan display setting persis,
+ *                                     lalu pastikan tidak ada sisa milik fixture (count + CHECKSUM 8 tabel vs baseline hanya INFO)
  *   "$PHP_BIN" fixture.php ids        cetak peta nama -> id (JSON, tanpa rahasia)
  *   "$PHP_BIN" fixture.php inspect    cetak keadaan DB (dokumen uji + sesi milik fixture; JSON, baca saja)
  *   "$PHP_BIN" fixture.php display    cetak kolom aktif display setting riwayat (JSON, baca saja)
+ *   "$PHP_BIN" fixture.php grant-od   (rev, K-8 a) beri role(s) QA_USER2 permission `Opname Document` (dicari per NAMA) SEMENTARA:
+ *                                     hanya baris role_permissions yang dibuat (created_by QA28E2E, id di .grant-journal.json); role yang
+ *                                     sudah memegangnya tidak disentuh. Dipakai test [user2] AC-21 (EN + lokasi terbatas), selalu dicabut.
+ *   "$PHP_BIN" fixture.php revoke-od  hapus PERSIS baris yang dibuat grant-od; ringkasan (jumlah + CRC) role_permissions harus sama dengan
+ *                                     sebelum grant, bila beda exit 1. `down` ikut mencabut sisa grant.
  *
  * Jurnal (.fixture-journal.json, ditulis up SEBELUM baris pertama): id sesi opname yang sudah ada sebelum up, snapshot kolom
  * verifikasi archives yang tak-bawaan, id archive dan id sesi yang disisipkan fixture. Milik fixture = archives berawalan
  * PREFIX / tercatat di jurnal; sesi yang disisipkan fixture, atau dibuat lewat aplikasi selama run pada folder fixture atau di
  * root oleh QA_USER/QA_USER2. Kolom verifikasi archives lain yang disentuh sesi itu dikembalikan ke nilai jurnal. Data
  * developer di tabel yang sama tidak pernah dihapus/direset; down tanpa jurnal tidak melakukan apa pun.
+ *
+ * (rev 2026-10-10) Tanpa draft/sesi batal (ED-1026 FB-3: tidak ada lagi di DB). Waktu konfirmasi sesi uji = TAHUN 2031 (jauh di depan
+ * semua data nyata): sesi uji selalu di atas sesi developer pada urutan bawaan (Waktu terbaru di atas), jadi halaman 1, 3 sesi
+ * overview, dan rentang tanggal uji deterministik walau tabel opname berisi data developer; asersi spec dilingkup ke sesi uji.
  *
  * Pohon uji (semua aktif, is_all_location=1; user QA = role 3 semua lokasi bukan superadmin, user2 = Sales Supervisor lokasi SMR):
  *   0QA28-ALFA   A1(6) A2(7) | ALFA-S1 (S1a 6) | ALFA-S1-X (X1 6, di bawah S1) | ALFA-S2 (S2a 7)
@@ -29,14 +39,15 @@
  *   0QA28-VIEWONLY folder permission aktif, user QA hanya View (drawer folder read-only); user2 tanpa baris = tak terlihat: VD1(6)
  *   dokumen root 0QA28-RD (6)
  *
- * Sesi (snapshot; terbaru dulu). Semua terkonfirmasi dan terlihat user QA/user2 kecuali yang ditandai:
- *   N01 alice  ALFA scope "0QA28-ALFA-S1 + 1 subfolder"  total 5 verified 3 not found 1 invalid 1 scanned 5 unscanned 2   (hasil lengkap, 7 baris)
+ * Sesi (snapshot; terbaru dulu; semua 2031). Terkonfirmasi dan terlihat user QA/user2 kecuali yang ditandai. Scope (ED-1026 K-14 a,
+ * K-10 b) = "<nama folder opname> + N subfolder", N = scope_folder_count; tanpa akhiran bila 0; root "Semua Arsip · root":
+ *   N01 alice  ALFA  N=2 "0QA28-ALFA + 2 subfolder" total 5 verified 3 not found 1 invalid 1 scanned 5 unscanned 2   (hasil lengkap, 7 baris)
  *   N02 root   root  "All Archive · root" total 8 verified 3 nf 1 inv 1 scanned 5 unscanned 2    (PARSIAL untuk user QA/user2: H1/H2 di SECRET)
- *   N03 bob    BRAVO "0QA28-BRAVO"
- *   N04 carol  BRAVO-T1   N05 alice ALFA-S2   N06 dave BRAVO    N07 erin ALFA-S1   N08 bob BRAVO   N09 carol ALFA
- *   N10 dave   BRAVO      N11 alice ALFA-S1-X N12 erin BRAVO    N13 bob ALFA
+ *   N03 bob    BRAVO
+ *   N04 carol  BRAVO-T1   N05 alice ALFA-S2   N06 dave BRAVO    N07 erin ALFA-S1   N08 bob BRAVO N=1 "0QA28-BRAVO + 1 subfolder"
+ *   N09 carol  ALFA       N10 dave BRAVO      N11 alice ALFA-S1-X N12 erin BRAVO    N13 bob ALFA
  *   N14 qa28view VIEWONLY (terlihat user QA, TIDAK terlihat user2)
- *   HID  qa28hid SECRET (terkonfirmasi, tidak terlihat user QA/user2)   DRAFT qa28draft BRAVO (status 1)   CANC qa28cancel BRAVO (status 3)
+ *   HID  qa28hid SECRET (terkonfirmasi, tidak terlihat user QA/user2)
  */
 
 namespace QaHttp;
@@ -54,6 +65,9 @@ const TABLES = ['archives', 'archive_documents', 'archive_locations', 'archive_p
 const OP_TABLES = ['archive_opnames', 'archive_opname_folders', 'archive_opname_documents'];
 const DISPLAY_MODULES = ['documentArchive', 'documentArchiveOpnameHistory'];
 const JOURNAL_V = 2;
+const SEEDED_N = 15; // 14 terlihat + HID
+const GRANT_BY = 'QA28E2E';
+const GRANT_PERMISSION = 'Opname Document';
 const VERIF_COLS = ['is_verified', 'verified_at', 'verified_by', 'id_archive_opname'];
 
 function say($line)
@@ -70,6 +84,7 @@ function fail($line)
 $cmd = $argv[1] ?? '';
 $journal = __DIR__ . '/.fixture-journal.json';
 $idsFile = __DIR__ . '/.fixture-ids.json';
+$grantJournal = __DIR__ . '/.grant-journal.json';
 
 Laravel::boot();
 $db = Config::defaultDb();
@@ -295,6 +310,64 @@ function compare($before, $after, &$lines)
     return $ok;
 }
 
+// ------------------------------------------------------------------ grant sementara `Opname Document` (rev K-8 a, test [user2] AC-21)
+
+/** [jumlah baris, jumlah CRC32 per baris] role_permissions: bukti pemulihan persis. */
+function rpSum($c)
+{
+    $cols = array_map(function ($r) {
+        return $r->Field;
+    }, $c->select('SHOW COLUMNS FROM `role_permissions`'));
+    $parts = array_map(function ($x) {
+        return "IFNULL(CAST(`$x` AS CHAR),'~')";
+    }, $cols);
+    $r = $c->selectOne("SELECT COUNT(*) n, IFNULL(SUM(CRC32(CONCAT_WS('|'," . implode(',', $parts) . '))),0) h FROM `role_permissions`');
+
+    return [(int) $r->n, (string) $r->h];
+}
+
+/** Cabut baris grant yang tercatat di jurnal (hanya id jurnal + created_by GRANT_BY). Mengembalikan baris pesan masalah. */
+function grantRevoke($c, $file)
+{
+    $j = journalRead($file);
+    if ($j === null) {
+        return [];
+    }
+    $ids = $j['ids'] ?? [];
+    if ($ids) {
+        $c->table('role_permissions')->whereIn('id_role_permission', $ids)->where('created_by', GRANT_BY)->delete();
+    }
+    $lines = [];
+    if (rpSum($c) !== ($j['before'] ?? null)) {
+        $lines[] = 'BEDA role_permissions sesudah grant dicabut: sebelum=' . json_encode($j['before'] ?? null) . ' sesudah=' . json_encode(rpSum($c));
+    } else {
+        @unlink($file);
+    }
+
+    return $lines;
+}
+
+/** Hapus sesi milik fixture (semua, termasuk hasil Confirm lewat UI) dan kembalikan kolom verifikasi dokumen yang disentuh. */
+function resetOwnSessions($c, array $j)
+{
+    $archiveIds = fixtureArchiveIds($c, $j);
+    $sessions = fixtureSessionIds($c, $j, $archiveIds); // hanya sesi milik fixture; sesi developer tidak disentuh
+    $c->transaction(function () use ($c, $j, $archiveIds, $sessions) {
+        restoreVerification($c, $j, $sessions, $archiveIds);
+        // dokumen fixture (dibuat tanpa verifikasi) yang disentuh sesi itu kembali ke bawaan
+        foreach (array_chunk($sessions, 200) as $chunk) {
+            foreach (array_chunk($archiveIds, 500) as $own) {
+                $c->table('archives')->whereIn('id_archive', $own)->whereIn('id_archive_opname', $chunk)->update([
+                    'is_verified' => 0, 'verified_at' => null, 'verified_by' => null, 'id_archive_opname' => null,
+                ]);
+            }
+        }
+        deleteSessions($c, $sessions);
+    });
+
+    return $sessions;
+}
+
 $gen = function () {
     return \Modules\V5\Entities\Helper\MyHelper::generateId();
 };
@@ -408,20 +481,7 @@ if ($cmd === 'reset-sessions') {
     if ($j === null || ($j['v'] ?? 0) !== JOURNAL_V) {
         fail('tidak ada jurnal fixture (jalankan up dulu): tidak ada yang dihapus');
     }
-    $archiveIds = fixtureArchiveIds($c, $j);
-    $sessions = fixtureSessionIds($c, $j, $archiveIds); // hanya sesi milik fixture; sesi developer tidak disentuh
-    $c->transaction(function () use ($c, $j, $archiveIds, $sessions) {
-        restoreVerification($c, $j, $sessions, $archiveIds);
-        // dokumen fixture (dibuat tanpa verifikasi) yang disentuh sesi itu kembali ke bawaan
-        foreach (array_chunk($sessions, 200) as $chunk) {
-            foreach (array_chunk($archiveIds, 500) as $own) {
-                $c->table('archives')->whereIn('id_archive', $own)->whereIn('id_archive_opname', $chunk)->update([
-                    'is_verified' => 0, 'verified_at' => null, 'verified_by' => null, 'id_archive_opname' => null,
-                ]);
-            }
-        }
-        deleteSessions($c, $sessions);
-    });
+    $sessions = resetOwnSessions($c, $j);
     if (is_file($idsFile)) {
         $ids = json_decode(file_get_contents($idsFile), true);
         unset($ids['_sessions']);
@@ -440,13 +500,20 @@ if ($cmd === 'sessions' || $cmd === 'ensure-sessions') {
     if ($j === null || ($j['v'] ?? 0) !== JOURNAL_V) {
         fail('tidak ada jurnal fixture: jalankan up dulu');
     }
-    $existing = fixtureSessionIds($c, $j, fixtureArchiveIds($c, $j)); // sesi developer tidak dihitung
-    if ($cmd === 'ensure-sessions' && $existing) {
-        say('fixture ensure-sessions: sudah ada ' . count($existing) . ' sesi milik fixture, tidak ada perubahan');
-        exit(0);
-    }
-    if ($existing) {
-        fail('sudah ada ' . count($existing) . ' sesi milik fixture sebelum sesi fixture (jalankan reset-sessions dulu)');
+    $owned = fixtureSessionIds($c, $j, fixtureArchiveIds($c, $j)); // sesi developer tidak dihitung
+    $seeded = array_values(array_intersect($owned, $j['sessions'] ?? []));
+    $extra = array_values(array_diff($owned, $seeded)); // dibuat aplikasi selama run (mis. Confirm Opname GAMMA lewat UI)
+    if ($cmd === 'ensure-sessions') {
+        if (count($seeded) === SEEDED_N && !$extra && isset($ids['_sessions'])) {
+            say('fixture ensure-sessions: ' . SEEDED_N . ' sesi uji ada, tidak ada perubahan');
+            exit(0);
+        }
+        if ($owned) { // keadaan menyimpang (kurang/lebih/sesi nyata): bereskan HANYA milik fixture lalu isi ulang
+            resetOwnSessions($c, $j);
+            say('fixture ensure-sessions: keadaan menyimpang (' . count($seeded) . ' sesi uji + ' . count($extra) . ' sesi nyata) dibereskan, diisi ulang');
+        }
+    } elseif ($owned) {
+        fail('sudah ada ' . count($owned) . ' sesi milik fixture sebelum sesi fixture (jalankan reset-sessions dulu)');
     }
     $P = PREFIX;
     $sessions = [];
@@ -488,9 +555,9 @@ if ($cmd === 'sessions' || $cmd === 'ensure-sessions') {
             return $ids[$P . $k];
         };
 
-        // N01: ALFA + S1 + S2 (X ikut otomatis), hasil lengkap
-        $at = '2026-10-06 16:40:00';
-        $s = $session('N01', $f('ALFA'), $P . 'ALFA-S1', 2, $at, 'qa28alice', [5, 3, 1, 1, 5, 2]);
+        // N01: opname di ALFA dengan 2 subfolder dicentang (S1 + S2; X ikut otomatis): scope "0QA28-ALFA + 2 subfolder", hasil lengkap
+        $at = '2031-10-06 16:40:00';
+        $s = $session('N01', $f('ALFA'), $P . 'ALFA', 2, $at, 'qa28alice', [5, 3, 1, 1, 5, 2]);
         $folderRow($s, 0, $P . 'ALFA', $f('ALFA'), null, $at);
         $folderRow($s, 1, $P . 'ALFA-S1', $f('ALFA-S1'), $f('ALFA'), $at);
         $folderRow($s, 1, $P . 'ALFA-S2', $f('ALFA-S2'), $f('ALFA'), $at);
@@ -504,7 +571,7 @@ if ($cmd === 'sessions' || $cmd === 'ensure-sessions') {
         $docRow($s, 4, $P . 'S2a', $f('S2a'), $f('ALFA-S2'), $at);
 
         // N02: sesi root oleh "superadmin"; mencakup SECRET yang tak terlihat user QA/user2 -> hasil parsial
-        $at = '2026-10-05 09:15:00';
+        $at = '2031-10-05 09:15:00';
         $s = $session('N02', null, null, 0, $at, 'qa28root', [8, 3, 1, 1, 5, 2]);
         $folderRow($s, 1, $P . 'ALFA', $f('ALFA'), null, $at);
         $folderRow($s, 1, $P . 'BRAVO', $f('BRAVO'), null, $at);
@@ -518,55 +585,53 @@ if ($cmd === 'sessions' || $cmd === 'ensure-sessions') {
         $docRow($s, 4, $P . 'A1', $f('A1'), $f('ALFA'), $at);      // belum discan
         $docRow($s, 4, $P . 'H2', $f('H2'), $f('SECRET'), $at);    // tersembunyi bagi user QA/user2
 
-        // N03..N13: satu folder tiap sesi
+        // N03..N13: satu folder tiap sesi; elemen ke-6 = scope_folder_count (subfolder dicentang)
         $rows = [
-            ['N03', 'BRAVO', '2026-10-04 14:30:00', 'qa28bob', [1, 1, 0, 0, 1, 0]],
-            ['N04', 'BRAVO-T1', '2026-10-03 11:05:00', 'qa28carol', [1, 1, 0, 0, 1, 0]],
-            ['N05', 'ALFA-S2', '2026-10-02 08:20:00', 'qa28alice', [1, 1, 0, 0, 1, 0]],
-            ['N06', 'BRAVO', '2026-10-01 17:45:00', 'qa28dave', [2, 1, 0, 1, 2, 1]],
-            ['N07', 'ALFA-S1', '2026-09-30 10:10:00', 'qa28erin', [2, 2, 0, 0, 2, 0]],
-            ['N08', 'BRAVO', '2026-09-29 13:00:00', 'qa28bob', [2, 1, 1, 0, 2, 1]],
-            ['N09', 'ALFA', '2026-09-28 09:00:00', 'qa28carol', [3, 2, 0, 0, 2, 1]],
-            ['N10', 'BRAVO', '2026-09-27 15:30:00', 'qa28dave', [2, 2, 0, 0, 2, 0]],
-            ['N11', 'ALFA-S1-X', '2026-09-26 12:00:00', 'qa28alice', [1, 1, 0, 0, 1, 0]],
-            ['N12', 'BRAVO', '2026-09-25 08:00:00', 'qa28erin', [2, 1, 0, 0, 1, 1]],
-            ['N13', 'ALFA', '2026-09-24 07:30:00', 'qa28bob', [3, 3, 0, 0, 3, 0]],
+            ['N03', 'BRAVO', '2031-10-04 14:30:00', 'qa28bob', [1, 1, 0, 0, 1, 0], 0],
+            ['N04', 'BRAVO-T1', '2031-10-03 11:05:00', 'qa28carol', [1, 1, 0, 0, 1, 0], 0],
+            ['N05', 'ALFA-S2', '2031-10-02 08:20:00', 'qa28alice', [1, 1, 0, 0, 1, 0], 0],
+            ['N06', 'BRAVO', '2031-10-01 17:45:00', 'qa28dave', [2, 1, 0, 1, 2, 1], 0],
+            ['N07', 'ALFA-S1', '2031-09-30 10:10:00', 'qa28erin', [2, 2, 0, 0, 2, 0], 0],
+            ['N08', 'BRAVO', '2031-09-29 13:00:00', 'qa28bob', [2, 1, 1, 0, 2, 1], 1],
+            ['N09', 'ALFA', '2031-09-28 09:00:00', 'qa28carol', [3, 2, 0, 0, 2, 1], 0],
+            ['N10', 'BRAVO', '2031-09-27 15:30:00', 'qa28dave', [2, 2, 0, 0, 2, 0], 0],
+            ['N11', 'ALFA-S1-X', '2031-09-26 12:00:00', 'qa28alice', [1, 1, 0, 0, 1, 0], 0],
+            ['N12', 'BRAVO', '2031-09-25 08:00:00', 'qa28erin', [2, 1, 0, 0, 1, 1], 0],
+            ['N13', 'ALFA', '2031-09-24 07:30:00', 'qa28bob', [3, 3, 0, 0, 3, 0], 0],
         ];
-        foreach ($rows as [$key, $folder, $at, $by, $n]) {
-            $s = $session($key, $f($folder), $P . $folder, 0, $at, $by, $n);
+        foreach ($rows as [$key, $folder, $at, $by, $n, $cnt]) {
+            $s = $session($key, $f($folder), $P . $folder, $cnt, $at, $by, $n);
             $folderRow($s, 0, $P . $folder, $f($folder), null, $at);
         }
 
         // N14: folder VIEWONLY (user QA hanya View; user2 tidak punya hak, jadi sesi ini tak terlihat user2)
-        $at = '2026-09-23 06:00:00';
+        $at = '2031-09-23 06:00:00';
         $s = $session('N14', $f('VIEWONLY'), $P . 'VIEWONLY', 0, $at, 'qa28view', [1, 1, 0, 0, 1, 0]);
         $folderRow($s, 0, $P . 'VIEWONLY', $f('VIEWONLY'), null, $at);
 
-        // HID: terkonfirmasi tetapi hanya mencakup SECRET (tak terlihat user QA/user2); draft dan sesi batal tak pernah tampil
-        $at = '2026-10-06 20:00:00';
+        // HID: terkonfirmasi tetapi hanya mencakup SECRET (tak terlihat user QA/user2). Tidak ada draft/sesi batal: tidak ada lagi di DB (ED-1026 FB-3)
+        $at = '2031-10-06 20:00:00';
         $s = $session('HID', $f('SECRET'), $P . 'SECRET', 0, $at, 'qa28hid', [2, 1, 0, 0, 1, 1]);
         $folderRow($s, 0, $P . 'SECRET', $f('SECRET'), null, $at);
-        $at = '2026-10-07 07:00:00';
-        $s = $session('DRAFT', $f('BRAVO'), $P . 'BRAVO', 0, $at, 'qa28draft', [1, 0, 0, 0, 0, 0], 1);
-        $folderRow($s, 0, $P . 'BRAVO', $f('BRAVO'), null, $at);
-        $at = '2026-10-03 07:00:00';
-        $s = $session('CANC', $f('BRAVO'), $P . 'BRAVO', 0, $at, 'qa28cancel', [1, 0, 0, 0, 0, 0], 3);
-        $folderRow($s, 0, $P . 'BRAVO', $f('BRAVO'), null, $at);
     });
 
     $ids['_sessions'] = $sessions;
     file_put_contents($idsFile, json_encode($ids));
-    say('fixture sessions: ' . count($sessions) . ' sesi (14 terkonfirmasi, 13 terlihat user2 + N14 hanya user QA; 1 tersembunyi; draft; batal)');
+    say('fixture sessions: ' . count($sessions) . ' sesi 2031 (14 terkonfirmasi terlihat user QA, 13 terlihat user2 + N14 hanya user QA; 1 tersembunyi HID)');
     exit(0);
 }
 
 if ($cmd === 'down') {
+    $gl = grantRevoke($c, $grantJournal); // sisa grant sementara (run yang mati) dicabut dulu
+    foreach ($gl as $l) {
+        say($l);
+    }
     $old = journalRead($journal);
     if ($old === null) { // tanpa jurnal tidak ada bukti baris mana milik fixture: jangan sentuh apa pun
         $orphans = count(prefixArchiveIds($c));
         say('fixture down: tidak ada jurnal (down tanpa up yang lulus?) -> TIDAK ADA yang dihapus atau dipulihkan'
             . ($orphans ? "; PERIKSA: $orphans baris archives berawalan " . PREFIX . ' tanpa jurnal (bereskan manual)' : ''));
-        exit($orphans ? 1 : 0);
+        exit(($orphans || $gl) ? 1 : 0);
     }
     if (($old['v'] ?? 0) !== JOURNAL_V) {
         say('fixture down: jurnal format lama -> TIDAK ADA yang dihapus; bereskan manual');
@@ -586,6 +651,7 @@ if ($cmd === 'down') {
     foreach ($lines as $l) {
         say($l);
     }
+    $lines = array_merge($lines, $gl);
     if (!$lines) {
         @unlink($journal);
     }
@@ -636,4 +702,49 @@ if ($cmd === 'inspect') {
     exit(0);
 }
 
-fail('pakai: up | sessions | ensure-sessions | reset-sessions | down | ids | inspect | display');
+if ($cmd === 'grant-od') {
+    $stale = grantRevoke($c, $grantJournal);
+    if ($stale) {
+        fail('sisa grant sebelumnya tidak bisa dibereskan: ' . implode('; ', $stale));
+    }
+    $uid = $c->table('users')->where('username', Config::get('QA_USER2'))->value('id_user');
+    if (!$uid) {
+        fail('QA_USER2 tidak ditemukan di DB');
+    }
+    $pid = $c->table('permissions')->where('permission_name', GRANT_PERMISSION)->value('id_permission');
+    if ($pid === null) {
+        fail('permission ' . GRANT_PERMISSION . ' tidak ada (dicari per nama)');
+    }
+    $roles = $c->table('user_roles')->where('id_user', $uid)->pluck('id_role')->all();
+    $before = rpSum($c);
+    journalWrite($grantJournal, ['v' => 1, 'ids' => [], 'before' => $before, 'roles' => $roles]);
+    $made = [];
+    foreach ($roles as $role) {
+        $has = $c->table('role_permissions')->where('id_role', $role)->where('id_permission', $pid)->exists();
+        if ($has) {
+            continue;
+        }
+        $made[] = $c->table('role_permissions')->insertGetId([
+            'id_role' => $role, 'id_permission' => $pid, 'permission_name' => GRANT_PERMISSION,
+            'created_at' => date('Y-m-d H:i:s'), 'created_by' => GRANT_BY,
+        ]);
+        journalAdd($grantJournal, 'ids', [end($made)]);
+    }
+    $users = [];
+    foreach ($roles as $role) {
+        $users[$role] = (int) $c->table('user_roles')->where('id_role', $role)->count();
+    }
+    say(json_encode(['roles' => $roles, 'made' => $made, 'users_per_role' => $users]));
+    exit(0);
+}
+
+if ($cmd === 'revoke-od') {
+    $lines = grantRevoke($c, $grantJournal);
+    foreach ($lines as $l) {
+        say($l);
+    }
+    say($lines ? 'revoke-od: GAGAL' : 'revoke-od: grant dicabut, role_permissions identik dengan sebelum grant');
+    exit($lines ? 1 : 0);
+}
+
+fail('pakai: up | sessions | ensure-sessions | reset-sessions | down | ids | inspect | display | grant-od | revoke-od');

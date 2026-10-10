@@ -164,7 +164,8 @@ return [
                         $r = $time('search nama folder', function () use ($t, $sess) {
                             return q28_hist($t, $sess, ['pagination' => 100, 'search' => ['query' => 'QA28-']]);
                         });
-                        $t->eq($r[1]['result']['total'], count($exp), "$label search nama folder 'QA28-': semua sesi terlihat");
+                        // hanya sesi QA yang namanya berawalan QA28-: total = sesi QA terlihat (sesi developer tidak cocok)
+                        $t->eq($r[1]['result']['total'], q28_hcount($exp, $ids), "$label search nama folder 'QA28-': semua sesi QA terlihat (" . q28_hcount($exp, $ids) . ')');
                         $r = $time('konteks folder P', function () use ($t, $sess, $x) {
                             return q28_hist($t, $sess, ['pagination' => 100, 'id_archive' => $x['P']]);
                         });

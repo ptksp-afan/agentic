@@ -6,11 +6,17 @@
  */
 require_once __DIR__ . '/qa_hist.php';
 
-/** Sesi tambahan R: root + OTH + PRIV + JOGR oleh qa28dave (PRIV tanpa View user2, JOGR lokasi JOG) pada hari -2 12:00:00. */
-$q28_add_r = function ($t, $s, array $x, array &$ids) {
-    $ids['R'] = q28_run($t, $s, null, q28_sel([$x['OTH'], $x['PRIV'], $x['JOGR']]), [q28_n($t, $x['dO1']), q28_n($t, $x['dPR'])]);
-    q28_set_opname($t, $ids['R'], ['confirmed_at' => date('Y-m-d', strtotime('-2 days')) . ' 12:00:00']);
-    q28_set_owner($t, $ids['R'], 'qa28dave');
+/**
+ * Sesi tambahan R: root + OTH + PRIV + JOGR oleh qa28dave (PRIV tanpa View user2, JOGR lokasi JOG) pada hari -2 12:00:00.
+ * (rev) Dibuat di dalam q28_hfix() sebagai extras: confirmed_at fixture baru digeser sesudahnya (irisan OTH dengan C/Z, ARCHIVE414).
+ */
+$q28_r_extra = function ($t, $s, array $x) {
+    return ['R' => [
+        'at' => q28_day(2) . ' 12:00:00', 'owner' => 'qa28dave',
+        'run' => function () use ($t, $s, $x) {
+            return q28_run($t, $s, null, q28_sel([$x['OTH'], $x['PRIV'], $x['JOGR']]), [q28_n($t, $x['dO1']), q28_n($t, $x['dPR'])]);
+        },
+    ]];
 };
 
 /** Oracle pencarian: sesi terlihat $u yang usernamenya atau nama (snapshot) folder-nya (folder terlihat saja bila bukan bypass) mengandung $text. */
@@ -60,15 +66,14 @@ return [
     [
         'id'    => 'AC-4',
         'title' => 'search {"query"}: username (sebagian, tanpa beda huruf), nama folder level 0/1/2 (snapshot), user2 hanya folder yang boleh dilihat (K-3 i), %/_ harfiah, trim, teks non-latin1/aneh tanpa 500',
-        'run'   => function ($t) use ($q28_add_r, $q28_name_oracle, $q28_default_order) {
+        'run'   => function ($t) use ($q28_r_extra, $q28_name_oracle, $q28_default_order) {
             $s = $t->session();
-            q28_guard($t, function () use ($t, $s, $q28_add_r, $q28_name_oracle, $q28_default_order) {
+            q28_guard($t, function () use ($t, $s, $q28_r_extra, $q28_name_oracle, $q28_default_order) {
                 $x = null;
                 $ids = null;
-                q28_with_user($t, ['role' => 1], function () use ($t, $s, $q28_add_r, &$x, &$ids) {
+                q28_with_user($t, ['role' => 1], function () use ($t, $s, $q28_r_extra, &$x, &$ids) {
                     $x = q28_tree($t);
-                    $ids = q28_hfix($t, $s, $x);
-                    $q28_add_r($t, $s, $x, $ids);
+                    $ids = q28_hfix($t, $s, $x, $q28_r_extra($t, $s, $x));
                 });
                 $N = function ($k) use ($t, $x) {
                     return q28_n($t, $x[$k]);
@@ -100,10 +105,11 @@ return [
                     $t->eq($keys($q($s, $N('PRc'))), ['R'], 'superadmin: nama PRc (level 2 R) -> R');
                     $t->eq($keys($q($s, $N('OTH'))), ['R', 'Z', 'C'], 'nama OTH -> R, Z, C');
                     $t->eq($keys($q($s, $N('SJ'))), ['D'], 'nama SJ -> D');
-                    $t->eq(count($q($s, 'QA28-')[1]['result']['data']), 8, 'query "QA28-" cocok dengan nama folder semua 8 sesi');
+                    $t->eq(count($keys($q($s, 'QA28-'))), 8, 'query "QA28-" cocok dengan nama folder semua 8 sesi QA');
                     $t->eq(count($q($s, 'zzz-tidak-ada-' . uniqid())[1]['result']['data']), 0, 'query tanpa hasil: data kosong');
-                    $t->eq(count($q($s, '')[1]['result']['data']), 8, 'query kosong = tanpa filter');
-                    $t->eq(count($q($s, '   ')[1]['result']['data']), 8, 'query spasi saja = tanpa filter');
+                    $t->eq(count($keys($q($s, ''))), 8, 'query kosong = tanpa filter (8 sesi QA terlihat)');
+                    $t->eq($q($s, '')[1]['result']['total'], count(q28_oracle_sessions($t, q28_uu($t, 'super'))), 'query kosong: total = semua sesi terlihat (oracle, termasuk sesi developer)');
+                    $t->eq(count($keys($q($s, '   '))), 8, 'query spasi saja = tanpa filter');
                     // wildcard LIKE harfiah
                     $t->eq($keys($q($s, 'qa28_')), ['Y'], 'query "qa28_": "_" harfiah (hanya qa28_under, bukan wildcard)');
                     $t->eq($keys($q($s, '%')), [], 'query "%": harfiah, tanpa hasil');
@@ -114,7 +120,7 @@ return [
                         q28_no500($t, $o, 'query aneh ' . substr(json_encode($odd), 0, 30));
                         $t->true(in_array($o[0], [200, 422], true), 'query aneh ' . substr(json_encode($odd), 0, 30) . ': 200/422 (' . $o[0] . ')');
                         if ($o[0] === 200) {
-                            $t->eq(count($o[1]['result']['data']), 0, 'query aneh ' . substr(json_encode($odd), 0, 30) . ': tanpa hasil');
+                            $t->eq(count($keys($o)), 0, 'query aneh ' . substr(json_encode($odd), 0, 30) . ': tanpa hasil (sesi QA)');
                         }
                     }
                     // snapshot: nama folder diubah sesudah Confirm -> yang dicari nama saat sesi
@@ -135,7 +141,7 @@ return [
                     }
                 });
 
-                // --- user2 sungguhan (SMR, tanpa Opname Document): nama folder yang tak boleh dilihat tidak mencocokkan
+                // --- user2 sungguhan (SMR, + Opname Document lewat grant sementara guard): nama folder yang tak boleh dilihat tidak mencocokkan
                 $s2 = q28_u2_session($t);
                 $u2 = q28_uu($t, 'user2');
                 $t->eq(q28_hkeys(q28_hids($q($s2, 'qa28')), $ids), q28_hkeys($q28_default_order($t, $q28_name_oracle($t, $u2, 'qa28')), $ids), 'user2: "qa28" = oracle');
@@ -233,7 +239,7 @@ return [
                     $o = q28_hist($t, $s, ['search' => ['confirmedAt' => 'x']]);
                     $t->true(isset($o[1]['errors']['confirmedAt']), 'kunci error = confirmedAt (bukan array): ' . json_encode(array_keys($o[1]['errors'] ?? [])));
                     // sesi tak berubah setelah request salah
-                    $t->eq(count(q28_hids(q28_hist($t, $s, ['pagination' => 100]))), 7, 'setelah 422: list normal 7 sesi');
+                    $t->eq(q28_hcount(q28_hids(q28_hist($t, $s, ['pagination' => 100])), $ids), 7, 'setelah 422: list normal 7 sesi QA');
                 });
             });
         },
@@ -374,9 +380,6 @@ return [
 
                 $db = [];
                 foreach ($ids as $k => $id) {
-                    if (in_array($k, ['H', 'K'], true)) {
-                        continue;
-                    }
                     $db[$k] = q28_opname($t, $id);
                 }
                 // urutan harapan dari nilai DB: kolom, arah, tie-break confirmed_at turun lalu id turun
@@ -466,10 +469,13 @@ return [
                     ]]);
                     $t->eq($keys($r), ['D', 'Z', 'B', 'A', 'Y', 'E', 'C'], 'dua sort: notFound asc lalu total desc (B total 70 > A 10; Y 60 > E 20)');
                     // sort + pagination konsisten
-                    $p1 = $keys(q28_hist($t, $s, ['pagination' => 3, 'page' => 1, 'sorts' => [json_encode(['sortBy' => 'totalDocuments', 'sortType' => 'desc'])]]));
-                    $p2 = $keys(q28_hist($t, $s, ['pagination' => 3, 'page' => 2, 'sorts' => [json_encode(['sortBy' => 'totalDocuments', 'sortType' => 'desc'])]]));
-                    $p3 = $keys(q28_hist($t, $s, ['pagination' => 3, 'page' => 3, 'sorts' => [json_encode(['sortBy' => 'totalDocuments', 'sortType' => 'desc'])]]));
-                    $t->eq(array_merge($p1, $p2, $p3), $expected('total_documents', 'desc'), 'sort total desc lintas halaman (3+3+1) = urutan penuh');
+                    $sortTotal = [json_encode(['sortBy' => 'totalDocuments', 'sortType' => 'desc'])];
+                    $full = q28_hids(q28_hist($t, $s, ['pagination' => 100, 'sorts' => $sortTotal]));
+                    $pa = q28_hids(q28_hist($t, $s, ['pagination' => 3, 'page' => 1, 'sorts' => $sortTotal]));
+                    $pb = q28_hids(q28_hist($t, $s, ['pagination' => 3, 'page' => 2, 'sorts' => $sortTotal]));
+                    $pc = q28_hids(q28_hist($t, $s, ['pagination' => 3, 'page' => 3, 'sorts' => $sortTotal]));
+                    $t->eq(array_merge($pa, $pb, $pc), array_slice($full, 0, 9), 'sort total desc lintas halaman (3+3+3) = 9 baris pertama urutan penuh (sesi developer ikut dihitung)');
+                    $t->eq(q28_hkeys($full, $ids), $expected('total_documents', 'desc'), 'sort total desc: urutan sesi QA dalam urutan penuh = urutan harapan');
                     // sort + filter
                     $r = q28_hist($t, $s, ['pagination' => 100, 'search' => ['query' => 'alice'], 'sorts' => [json_encode(['sortBy' => 'totalDocuments', 'sortType' => 'asc'])]]);
                     $t->eq($keys($r), ['A', 'C'], 'sort total asc + query alice -> A (10), C (30)');
