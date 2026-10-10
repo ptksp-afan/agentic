@@ -38,6 +38,7 @@ first start move the item (Bug: from `BUG`) and its subtasks to In Progress, ass
 | Bug outside the item | not fixed; one new Bug ticket under the epic (label `jira.longRun.labels.found`), mention in the item's comment |
 | Environment failure (server down, preflight FAIL, profile not restored) | **not** a blocker: stop and return `RESULT: env-fail`; the epic loop stops the whole run |
 | Test data (developer's rule 2026-10-08) | delete your own data first (prefix/journal). Deleting or resetting rows QA did not create only as far as the epic Gate 1 § Data uji allows; then record exactly what was deleted. Not allowed → skip that check (MANUAL, reason) - never stop the run for it. A fixture teardown never runs after a failed setup |
+| Permission/classifier denial (developer's rule 2026-10-09) | never worked around: record it in `run.md`, skip that check (MANUAL, reason) or, if the item cannot go on, blocker. One exception: a denied command that only **reads a non-secret file** (spec, contract, code, log, report) may be replaced by the Read tool on that same file; note it in `run.md`. Never for secrets (`config/secrets.env`, any `.env`, BE `config/database.php`, tokens, passwords), writes or deletes, DB or destructive commands |
 
 ## Blocker procedure
 

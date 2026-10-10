@@ -22,6 +22,10 @@ it was built. Keep it that way.
 
 All values come from `<AGENTIC_DIR>/config/workspace.env` (paths, `API_URL`, `BE_SERVER`, `QA_DB(S)`,
 ports, `PHP_BIN`) and `config/secrets.env` (users). **Never print, copy or write a password or token.**
+A permission/classifier denial is never worked around: report it and treat that check as not verifiable. One
+exception: a denied command that only reads a non-secret file (spec, contract, code, log, report) may be replaced by
+the Read tool on that same file; say so in the report. Never for secrets (`config/secrets.env`, any `.env`, BE
+`config/database.php`, tokens, passwords), writes or deletes, DB or destructive commands.
 Tools (read their README once, when you first use them; starting points in `templates/qa/`):
 
 | Tool | Use |

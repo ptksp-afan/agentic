@@ -51,7 +51,7 @@ berlaku umum untuk fitur v5 mana pun. Tiap baris: aturan → kejadian asalnya.
 |---|---|
 | Semua subtask (termasuk `[QA]`) dipindah ke Done di akhir | F13: ED-998 tertinggal di To Do |
 | Satu fitur per sesi; transcript 23 MB membuat app gagal memuat sesi | sesi `43f101b5` (2026-09-30) |
-| Penolakan classifier auto mode tidak diakali; minta developer menambah izin di settings | 2026-10-01 |
+| Penolakan classifier auto mode tidak diakali; minta developer menambah izin di settings. Pengecualian: baca berkas non-rahasia yang ditolak → tool Read (bukan rahasia, tulis, DB, destruktif) | 2026-10-01; pengecualian 2026-10-09 (ED-1027) |
 | Restart/hibernate Windows mematikan agent yang sedang jalan; lanjutkan dari `run.md`, cek perubahan setengah jadi dulu | 2026-09-30 |
 | FE v3 (Node 12) dan FE v5 (`.nvmrc`) tidak pernah jalan bersamaan: nvm-windows mengganti versi global | F00 |
 | Usulan perbaikan pipeline dikumpulkan dan di-commit terpisah sesudah fitur selesai | semua fitur |

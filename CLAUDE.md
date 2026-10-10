@@ -13,6 +13,8 @@ Aturan tetap:
   repo, path eksplisit. Jira Done hanya sesudah developer menyetujui.
 - Tidak pernah build FE ke `build/` developer; tidak pernah mematikan proses developer.
 - Rahasia (`config/secrets.env`, token, password) tidak pernah dicetak atau ditulis ke berkas lain.
-- Penolakan izin/classifier tidak diakali: laporkan dan minta developer memutuskan.
+- Penolakan izin/classifier tidak diakali: laporkan dan minta developer memutuskan. Pengecualian: perintah yang hanya
+  membaca berkas non-rahasia (spec, contract, kode, log, laporan) ditolak → boleh dibaca ulang lewat tool Read, catat.
+  Tidak untuk rahasia (`config/secrets.env`, `.env`, `config/database.php` BE, token, password), tulis/hapus, DB, destruktif.
 - Hemat konteks: kirim path bukan isi, baca per bagian (`scripts/section.sh`), satu fitur per sesi.
 - Skill, agent, dan knowledge tidak diubah di tengah run fitur; usulan dicatat di `run.md`.
