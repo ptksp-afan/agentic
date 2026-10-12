@@ -3,7 +3,7 @@ key: ED-1069
 epic: ED-1022
 title: Archive - celah validasi pindah/rename folder & 500 di select lokasi / transaksi terkait
 slug: archive-validasi-pindah-rename-folder
-phase: gate2
+phase: done
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -14,11 +14,7 @@ agents:
   qa_fe: {id: a5959b835ce69f1b6, at: 2026-10-10 15:30}
 ---
 ## Status ringkas
-Long run ED-1022: QA BE r1 PASS 12/12, QA FE r1 PASS 2 / MANUAL 1; commit lokal BE 878314df7 (FE tanpa perubahan).
-Menunggu review batch (`/v5-epic review ED-1022`); Jira In Progress + label ai-review, Done hanya sesudah developer setuju.
-Untuk review: 4 Perlu dikonfirmasi review BE (Log be-review); MANUAL AC-13 ketik di Cari modal Pindahkan (terhambat ED-1125);
-rename non-latin1 kini 500 (akar ED-1071, dicatat di ED-1071); spec 'Lewat UI: butir 2' tidak berlaku sampai ED-1125 diperbaiki.
-Bug baru: ED-1124 (BE: B-1, B-2, B-4), ED-1125 (FE: B-FE-1).
+**Selesai (Done) - disetujui developer di review batch ED-1022 ronde 2 (2026-10-12).** Jira item + subtask Done, label ai-review dilepas, komentar serah terima ditambahkan.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -40,3 +36,5 @@ Bug baru: ED-1124 (BE: B-1, B-2, B-4), ED-1125 (FE: B-FE-1).
 - 2026-10-10 qa-fe r1: v5-qa (a5959b835ce69f1b6, sonnet) PASS 2 (AC-13, AC-14) / MANUAL 1 (AC-13 ketik Cari modal: B-FE-1) / FAIL 0; build staging OK; Jest Archive 11 suite lulus (sendiri), full 12 gagal beban, 4 non-Archive pra-ada (B-FE-2); e2e --workers 1 5/5, galeri work/e2e/ED-1069-archive-validasi-pindah-rename-folder-20261010-152924/; regresi BE ED-1069 16, 1024 26, 1025 39/1 (X-12 = ED-1071), 1026 39, 1027 28/1 SKIP, 1028 24, 1029 29/1 SKIP; data dihapus hanya fixture 0QA69E-, jumlah archives sama; 0 ditolak
 - 2026-10-10 commit: BE 878314df7 (14 berkas NEW), FE tidak ada perubahan; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
 - 2026-10-10 jira: bug baru ED-1124 (BE B-1/B-2/B-4) dan ED-1125 (FE B-FE-1), label ai-found; komentar B-3 di ED-1071; ED-1069 label ai-review + komentar siap review
+- 2026-10-10 commit agentic: c625f4f (features/ED-1069-*, ED-1025 qa/scenario4 X-8)
+- 2026-10-12 review batch ronde 2: disetujui developer -> Jira Done (item + subtask), label ai-review dilepas, komentar serah terima; phase done

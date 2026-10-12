@@ -3,7 +3,7 @@ key: ED-1072
 epic: ED-1022
 title: Archive FE - klik tombol ⋯ pada baris dokumen ikut memicu klik sel dokumen
 slug: archive-fe-klik-menu-baris
-phase: gate2
+phase: done
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -13,10 +13,7 @@ agents:
   qa_fe: {id: a87e44137fa781b67, at: 2026-10-10 17:31}
 ---
 ## Status ringkas
-Long run ED-1022: QA FE r1 PASS 10/10 AC (0 defect, 1 sub-klaim Enter asli tidak terverifikasi = ED-1126); commit lokal FE 3ed9945af + agentic (BE tanpa perubahan).
-Menunggu review batch (`/v5-epic review ED-1022`); Jira In Progress + label ai-review, Done hanya sesudah developer setuju.
-Untuk review: Daftar tes UI task 021 butir 2 (Tab+Enter) terhambat ED-1126; butir 10 bagian "+N" tidak bisa dengan data nyata (BE 1 referensi/baris, N-2);
-PK convention review: AC-6 ikon Document Verified + AC-9 menu konteks hanya e2e. Bug baru: ED-1126 (FE, N-1).
+**Selesai (Done) - disetujui developer di review batch ED-1022 ronde 2 (2026-10-12).** Jira item + subtask Done, label ai-review dilepas, komentar serah terima ditambahkan.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -38,3 +35,5 @@ PK convention review: AC-6 ikon Document Verified + AC-9 menu konteks hanya e2e.
 - 2026-10-10 17:33 jira: bug baru ED-1126 (FE N-1: Enter/Spasi tidak mengaktifkan tombol Archive, keydown di-preventDefault useBarcodeScanner), label ai-found; N-2 (+N tanpa data nyata) hanya catatan review
 - 2026-10-10 17:33 commit: FE 3ed9945af (6 berkas NEW: 4 kode/test + _module.md + task 021), BE tidak ada perubahan; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
 - 2026-10-10 17:34 jira: ED-1072 label ai-review + komentar siap review (tanpa hash)
+- 2026-10-10 17:35 commit agentic: 0a73649 (features/ED-1072-*)
+- 2026-10-12 review batch ronde 2: disetujui developer -> Jira Done (item + subtask), label ai-review dilepas, komentar serah terima; phase done

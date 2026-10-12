@@ -3,7 +3,7 @@ key: ED-1027
 epic: ED-1022
 title: Archive - Status verifikasi dokumen (kolom Document Verified, tab Verification, detail per transaction type)
 slug: archive-status-verifikasi
-phase: gate2
+phase: done
 qa_round: 2
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -18,10 +18,7 @@ agents:
   qa_fe: {id: a6cff5dff2d50b89e, at: 2026-10-10 08:28 (rev r1)}
 ---
 ## Status ringkas
-**Revisi selesai, siap review batch (2026-10-10).** Commit lokal baru di atas HEAD lama (tanpa amend): BE 3ae86a5c1 (di atas cb2e78b44), FE 5a0c34be1 (di atas 5656a5e83), agentic = commit `[DOC] ED-1027 - revisi review: spec, QA, run log`. Tidak di-push.
-QA BE r2 PASS (17 AC + 1 MANUAL AC-29 BE; qa/ 28 PASS + 1 SKIP), QA FE r2 PASS (13 AC + 1 MANUAL AC-21; D-1 tertutup), e2e 21 OK; galeri `work/e2e/ED-1027-archive-status-verifikasi-20261010-092655/`.
-Jira: ED-1027 + subtask In Progress, label ai-review, komentar siap review. Done hanya lewat `/v5-epic review`.
-Untuk review: § Catatan dev BE / Review BE / FE (baris (rev)); PK convention review BulkMoveModalForm:63 tanpa test sendiri; skenario usang ED-1028 tercatat di qa-be.md & qa-fe.md (pemilik QA 1028).
+**Selesai (Done) - disetujui developer di review batch ED-1022 ronde 2 (2026-10-12).** Jira item + subtask Done, label ai-review dilepas, komentar serah terima ditambahkan.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -108,3 +105,4 @@ Untuk review: § Catatan dev BE / Review BE / FE (baris (rev)); PK convention re
 - 2026-10-10 08:35 fe fix r1 (rev): FE dev (a49452f78735c64ad, general-purpose) D-1: ArchivePage/index.js:324-330 label folder = pola inline :241/:360 (Array.isArray(name) ? name[0].transactionNo : name) untuk subjudul modal + CTA riwayat; ArchiveVerificationModal JSDoc; test ArchivePage folder name larik (listName) + test baru CTA modal folder; task 019 Catatan; eslint 0, Archive runInBand 358/358, build staging OK; tanpa smoke/DB; FE tetap 11 M + 2 baru; -> qa-fe r2
 - 2026-10-10 09:35 qa-fe r2 (rev): v5-qa (a520d6933b646645c, sonnet) PASS - D-1 tertutup (API asli, tanpa ubah respons); AC 13 PASS / 0 FAIL / 1 MANUAL (AC-21); build staging OK; unit Archive 357/358 (1 = flake ED-1025 C-1), full suite 1673/1679 (4 baseline + 2 flake beban, lulus sendiri); e2e 21 OK / 0 GAGAL (default + user2), galeri work/e2e/ED-1027-archive-status-verifikasi-20261010-092655/; Q-1 e2e paralel (state bersama) diperbaiki di qa/e2e item ini (takeStateLock) + test jalur error nyata, fixture set-folder-active -> usulan pipeline; regresi BE ED-1027 28/0/1 SKIP, ED-1024 26/26, ED-1025 40/40, ED-1026 39/39, ED-1029 29+1 SKIP, ED-1028 2/20 usang (dicatat); 500 pra-ada ED-1122/ED-1070/ED-1071 saja; DB identik (17 tabel), grant sementara dicabut; 0 penolakan; tes UI manual rev: 019 (17) + 020 (8) butir
 - 2026-10-10 09:35 commit (rev): BE 3ae86a5c1 (4 berkas NEW), FE 5a0c34be1 (13 berkas NEW), agentic = commit ini; Jira ED-1027 label ai-review + komentar siap review; phase: gate2 (menunggu review batch)
+- 2026-10-12 review batch ronde 2: disetujui developer -> Jira Done (item + subtask), label ai-review dilepas, komentar serah terima; phase done

@@ -3,7 +3,7 @@ key: ED-1026
 epic: ED-1022
 title: Archive - Opname Document per folder (pilih folder, scan, konfirmasi)
 slug: archive-opname-document
-phase: gate2
+phase: done
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -17,10 +17,7 @@ agents:
   fe_dev: {id: ad037f4a43d8cd894, at: 2026-10-09 rev}
 ---
 ## Status ringkas
-**Revisi selesai, siap review batch (2026-10-09).** Commit lokal baru di atas HEAD lama (tanpa amend): BE cb2e78b44, FE 5656a5e83, agentic = commit `[DOC] ED-1026 - revisi review: spec, QA, run log`. Tidak di-push.
-QA BE r2 PASS (23 AC, 39/39 skenario), QA FE r1 PASS (13 + 1 MANUAL AC-3 lisensi), e2e 15 OK; galeri `work/e2e/ED-1026-archive-opname-document-20261009-055322/`.
-Jira: ED-1026 + subtask In Progress, label ai-review, komentar siap review. Done hanya lewat `/v5-epic review`.
-Untuk review: § Catatan dev BE / Review BE / FE (baris (rev)); skenario usang ED-1027/ED-1028 tercatat di qa-be.md & qa-fe.md (pemilik QA 1027/1028).
+**Selesai (Done) - disetujui developer di review batch ED-1022 ronde 2 (2026-10-12).** Jira item + subtask Done, label ai-review dilepas, komentar serah terima ditambahkan.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -99,3 +96,4 @@ Untuk review: § Catatan dev BE / Review BE / FE (baris (rev)); skenario usang E
 - 2026-10-09 qa-fe r1 (rev): v5-qa (af23c1c372884327b, sonnet) PASS 13 / MANUAL 1 (AC-3 lisensi) / FAIL 0; build OK; Jest Archive 336/338 (ED-1027 "Tutup" usang + tooltip flaky), full 1653/1659; e2e main 15 OK/1 SKIP, norole 2 OK, galeri work/e2e/ED-1026-archive-opname-document-20261009-055322/; e2e ditulis ulang tanpa draft + skenario usang dari ED-1029 dibereskan; regresi BE/e2e ED-1024/1025/1029 hijau (ED-1025 e2e :124 usang), ED-1027/1028 usang dicatat; data: tidak ada data developer dihapus, updater_logs 197 dipulihkan; F-1 (AC-3 manual tak di Daftar tes UI), F-2 (Daftar tes UI 004-006 masih alur draft/Segmented) -> perbaikan dok FE
 - 2026-10-09 fe-dok (rev): agent sonnet (aa4f3dc699cc3a278) F-1/F-2: Daftar tes UI 004-006 butir usang dicoret + catatan ke 016-018; butir MANUAL lisensi AC-3 ditambah di 018
 - 2026-10-09 commit (rev): BE cb2e78b44 (14 berkas NEW), FE 5656a5e83 (30 berkas NEW), agentic = commit ini; Jira label ai-review + komentar siap review; phase: gate2 (menunggu review batch)
+- 2026-10-12 review batch ronde 2: disetujui developer -> Jira Done (item + subtask), label ai-review dilepas, komentar serah terima; phase done

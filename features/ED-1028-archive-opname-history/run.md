@@ -3,7 +3,7 @@ key: ED-1028
 epic: ED-1022
 title: Archive - Opname History (semua sesi)
 slug: archive-opname-history
-phase: gate2
+phase: done
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -18,7 +18,7 @@ agents:
   be_dev: {id: aa9ea67666e9a04c0, at: 2026-10-10 rev}
 ---
 ## Status ringkas
-**Revisi selesai, siap review batch (long run ED-1022, 2026-10-10).** QA BE PASS 16/16, QA FE PASS 12 / MANUAL 1 (AC-25), 0 defect. Commit lokal baru di atas commit lama: BE 265c0d1bd, FE 47bb57d1d (docs saja: digest + daftar tes UI 010/011), agentic (lihat Log). Jira ED-1028 In Progress + label ai-review; subtask tetap In Progress. Bug di luar item: ED-1123 (V4 display-columns tanpa saringan). Menunggu `/v5-epic review ED-1022`.
+**Selesai (Done) - disetujui developer di review batch ED-1022 ronde 2 (2026-10-12).** Jira item + subtask Done, label ai-review dilepas, komentar serah terima ditambahkan.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -88,5 +88,6 @@ agents:
 - 2026-10-10 fe (rev): tanpa kode FE (spec §5: FB-8c = ED-1027, FB-10 = ED-1026); FE dev & convention-reviewer dilewati (diff FE hanya _api.md); -> QA FE r1 (rev)
 - 2026-10-10 qa-fe r1 (rev): v5-qa (ab587cdff9aa18cf9, sonnet) PASS 12 / MANUAL 1 (AC-25) / FAIL 0; build staging OK; Jest Archive 358 lulus; full suite 10 gagal = 4 baseline + 6 timeout beban; e2e --workers 1 default+user2 16/16 (tabel kosong) dan 16/16 (5 sesi developer simulasi), galeri work/e2e/ED-1028-archive-opname-history-20261010-121046/; e2e ditulis ulang (CheckableTag, getScopeTag, tanpa footer modal, user2 + OD, AC-27 R0, AC-29, takeStateLock, fixture 2031); regresi BE ED-1028 24/0, ED-1024 26/0, ED-1025 40/0, ED-1026 39/0, ED-1027 28/0/1, ED-1029 29/0/1; data developer dihapus 0, DB identik (count + CHECKSUM); 0 ditolak
 - 2026-10-10 fe docs (rev): general-purpose (af7d8b16ec35bdd8b, sonnet) 010 (Daftar tes UI 25 butir, +1 aturan permission) dan 011 (19 butir, Segmented -> CheckableTag) disesuaikan UI terpasang; _module.md judul 011 oleh orkestrator; 0 ditolak
-- 2026-10-10 commit (rev): BE 265c0d1bd (4 berkas NEW), FE 47bb57d1d (4 berkas docs NEW); Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
+- 2026-10-10 commit (rev): BE 265c0d1bd (4 berkas NEW), FE 47bb57d1d (4 berkas docs NEW), agentic 5dbc99b; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
 - 2026-10-10 jira (rev): ED-1028 label ai-review + komentar siap review (QA, tes UI 44 butir, galeri, ED-1123); subtask ED-1100..ED-1102 tetap In Progress
+- 2026-10-12 review batch ronde 2: disetujui developer -> Jira Done (item + subtask), label ai-review dilepas, komentar serah terima; phase done
