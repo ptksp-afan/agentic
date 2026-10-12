@@ -4,7 +4,7 @@
  * luar item; kontrol latin1 harus 404), X-2 (banyak folder: GET dan PUT satu request), X-3 (pohon dalam, induk berputar / induk diri
  * sendiri), X-4 (target superadmin/diri sendiri, id_archive aneh, spasi). Konkurensi (PUT paralel, D-2): scenario5-concurrency.php.
  */
-require_once __DIR__ . '/qa_lib.php';
+require_once __DIR__ . '/qa_lib_r3.php';
 
 return [
 
@@ -35,12 +35,19 @@ return [
                     $cases["PUT path $x []"]         = [500, 'PUT', $x, ['permissions' => []]];
                     $cases["PUT body id_archive $x"] = [500, 'PUT', $b[0], ['permissions' => [q9_row_body($x, 1)]]];
                     $cases["PUT body [P, $x]"]       = [500, 'PUT', $b[0], ['permissions' => [q9_row_body($f['P'], 1), q9_row_body($x, 1)]]];
+                    // rev3 (O-6, AC-35): `folders` non-latin1 hanya diprobe di sini; 500 sampai ED-1071 (milik ED-1071, bukan defect ED-1029)
+                    $cases["PUT body id_archive $x (folders)"] = [500, 'PUT', $b[0], r3_body([], [r3_fl($x, 1)])];
+                    $cases["PUT body [C2, $x] (folders)"]      = [500, 'PUT', $b[0], r3_body([], [r3_fl($f['C2'], 1), r3_fl($x, 1)])];
+                    $cases["PUT body hak C2 + $x (folders)"]   = [500, 'PUT', $b[0], r3_body([q9_row_body($f['C2'], 1)], [r3_fl($x, 1)])];
                 }
                 foreach (['ü', 'é', '€'] as $x) {     // latin1 / Windows-1252: tidak mengalami kolasi
                     $cases["GET path $x"]            = [404, 'GET', $x, null];
                     $cases["PUT path $x []"]         = [404, 'PUT', $x, ['permissions' => []]];
                     $cases["PUT body id_archive $x"] = [404, 'PUT', $b[0], ['permissions' => [q9_row_body($x, 1)]]];
                     $cases["PUT body [P, $x]"]       = [404, 'PUT', $b[0], ['permissions' => [q9_row_body($f['P'], 1), q9_row_body($x, 1)]]];
+                    $cases["PUT body id_archive $x (folders)"] = [404, 'PUT', $b[0], r3_body([], [r3_fl($x, 1)])];
+                    $cases["PUT body [C2, $x] (folders)"]      = [404, 'PUT', $b[0], r3_body([], [r3_fl($f['C2'], 1), r3_fl($x, 1)])];
+                    $cases["PUT body hak C2 + $x (folders)"]   = [404, 'PUT', $b[0], r3_body([q9_row_body($f['C2'], 1)], [r3_fl($x, 1)])];
                 }
 
                 $before = q9_snap($t, $ids);
@@ -55,7 +62,7 @@ return [
                         $drift[] = ($want === 500 ? 'ED-1071 berubah: ' : 'KONTROL latin1 salah: ') . $label . ' kini HTTP ' . $r[0] . ' (sebelumnya/diharapkan ' . $want . ')';
                     }
                     if ($want === 404 && $r[0] === 404) {
-                        $expected = strpos($label, 'body id_archive') !== false || strpos($label, 'body [P') !== false ? 'ARCHIVE400' : 'ARCHIVE440';
+                        $expected = strpos($label, 'body') !== false ? 'ARCHIVE400' : 'ARCHIVE440';
                         if (q9_code($r) !== $expected) {
                             $drift[] = 'KONTROL latin1: ' . $label . ' code ' . q9_code($r) . ' (diharapkan ' . $expected . ')';
                         }

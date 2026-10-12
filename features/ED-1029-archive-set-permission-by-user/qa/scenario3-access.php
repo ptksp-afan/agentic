@@ -173,7 +173,7 @@ return [
 
     [
         'id'    => 'AC-13b',
-        'title' => '(rev K-15 b) Penegakan 02 dengan dua pengguna nyata: A = QA_USER (pembuat P, role 3), B = QA_USER2 (adi, role 5: Update Folder tanpa Folder Permissions): B buka P 403 ARCHIVE407; A PUT {B} View -> B buka P 200; B (View, V+U sekalipun) GET/PUT user-permissions = 403 GE0114 "Folder Permissions" (hak folder tidak menggantikan permission); B diberi role ber-Folder Permissions sementara -> GET/PUT {user lain} 200 walau hanya View, bahkan setelah View dicabut (tanpa 408); role sementara dilepas -> 403 GE0114 lagi',
+        'title' => '(rev K-15 b) Penegakan 02 dengan dua pengguna nyata: A = QA_USER (pembuat P, role 3), B = QA_USER2 (adi; rev3/F-1: role aslinya kini memegang Folder Permissions, jadi SEMENTARA diganti role preset QA29-ROLE-DW = Update Folder + Allow Access Website, tanpa Folder Permissions, lalu dipulihkan persis): B buka P 403 ARCHIVE407; A PUT {B} View -> B buka P 200; B (View, V+U sekalipun) GET/PUT user-permissions = 403 GE0114 "Folder Permissions" (hak folder tidak menggantikan permission); B diberi role ber-Folder Permissions sementara -> GET/PUT {user lain} 200 walau hanya View, bahkan setelah View dicabut (tanpa 408); role sementara dilepas -> 403 GE0114 lagi',
         'run'   => function ($t) {
             q9_recover($t);
             q9_role_purge($t);
@@ -196,7 +196,12 @@ return [
                 $t->blocked('QA_USER2 tidak bisa bind ke ' . q9_dbname($t) . ' (HTTP ' . $bind[0] . ')');
             }
 
+            $u2snap = null;
             try {
+                $roles = q9_roles_profile($t);
+                // F-1: role 5 milik developer kini memegang Folder Permissions; skenario ini butuh B TANPA Folder Permissions
+                $roles['DW'] = q9_role($t, 'DW', q9_perms_profile('DW'));   // Update Folder + Allow Access Website, tanpa Folder Permissions
+                $u2snap = q9_u2_swap($t, $adi, [$roles['DW']]);
                 $P = q9_folder($t, 'P', ['perm' => 1, 'by' => $meName]);     // A pembuat: semua hak di P
                 $pName = q9_row($t, $P)['name'];
                 $open = function () use ($t, $s2, $P) {
@@ -238,7 +243,6 @@ return [
                 $t->status($r, 200, 'A kembali ke View saja');
 
                 // B diberi role ber-Folder Permissions (profil M) sementara: mengelola P walau hanya View
-                $roles = q9_roles_profile($t);
                 q9_with_extra_role($t, $adi, $roles['M'], function () use ($t, $s2, $other, $P, $pName, $adi) {
                     $r = q9_get($t, $s2, $other[0]);
                     $t->status($r, 200, 'B + Folder Permissions: GET {user lain}');
@@ -266,6 +270,9 @@ return [
                 });
                 q9_assert_no408($t, 'AC-13b user-permissions');
             } finally {
+                if ($u2snap !== null) {
+                    q9_u2_restore($t, $u2snap);
+                }
                 q9_purge($t);
                 q9_role_purge($t);
             }
@@ -276,7 +283,7 @@ return [
 
     [
         'id'    => 'X-PERM',
-        'title' => '(rev FB-4b) Permission per route (GET dan PUT user-permissions/{id}) = Folder Permissions: role yang memegangnya (dicari lewat nama permission di role_permissions: 1, 2, 3) 200; role tanpa (termasuk 5 dan 26 yang ber-Update Folder; juga 6, 16, 18, 19, 20, 25, 29) 403 GE0114 parameter "Folder Permissions", data tidak berubah; tanpa token 401 GE0111; QA_USER2 (role 5) 403',
+        'title' => '(rev FB-4b) Permission per route (GET dan PUT user-permissions/{id}) = Folder Permissions: role yang memegangnya (dicari lewat nama permission di role_permissions: 1, 2, 3) 200; role tanpa (dicari dari DB; mis. 26 yang ber-Update Folder; juga 6, 16, 18, 19, 20, 25, 29) 403 GE0114 parameter "Folder Permissions", data tidak berubah; tanpa token 401 GE0111; QA_USER2: 403 bila role-nya tanpa FP, 200 bila memegangnya (rev3/F-1: role 5 milik developer kini memegang Folder Permissions, jadi 200)',
         'run'   => function ($t) {
             q9_recover($t);
             $s = $t->session();
@@ -364,7 +371,7 @@ return [
 
     [
         'id'    => 'AC-20',
-        'title' => '(rev, bagian BE, cara seragam EPIC K-2 b) role tanpa Folder Permissions (6, 29, juga 5 yang ber-Update Folder): GET/PUT 403 GE0114 (bukan 500), data tetap; item ini tidak menambah seed (Folder Permissions satu-satunya di permission_salesman.sql, tidak ada permission "Set Permission by User"); kode BE/QA ED-1029 tanpa id permission literal (grep)',
+        'title' => '(rev, bagian BE, cara seragam EPIC K-2 b) role tanpa Folder Permissions (dicari dari DB: 6, 29; role 5 sudah memegangnya sejak data developer F-1): GET/PUT 403 GE0114 (bukan 500), data tetap; item ini tidak menambah seed (Folder Permissions satu-satunya di permission_salesman.sql, tidak ada permission "Set Permission by User"); kode BE/QA ED-1029 tanpa id permission literal (grep)',
         'run'   => function ($t) {
             q9_recover($t);
             $s = $t->session();

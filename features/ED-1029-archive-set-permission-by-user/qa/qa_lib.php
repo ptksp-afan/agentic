@@ -151,6 +151,68 @@ if (!function_exists('q9_dbname')) {
             }
             @unlink(q9_journal());
         }
+
+        // rev3 (F-1): role user kedua (QA_USER2) yang sempat diganti role preset
+        if (is_file(q9_journal_u2())) {
+            $snap = json_decode(file_get_contents(q9_journal_u2()), true);
+            if (is_array($snap) && isset($snap['uid'])) {
+                q9_u2_write($t, $snap['uid'], $snap['rows']);
+            }
+            @unlink(q9_journal_u2());
+        }
+    }
+
+    // ------------------------------------------------------------------ role user kedua (QA_USER2) sementara (rev3, data F-1)
+
+    function q9_journal_u2()
+    {
+        return __DIR__ . '/.restore-journal-q9u2.json';
+    }
+
+    /** Ganti SEMUA baris user_roles $uid dengan $rows (array kolom penuh), lewat koneksi tulis. */
+    function q9_u2_write($t, $uid, array $rows)
+    {
+        q9_w($t, function ($c) use ($uid, $rows) {
+            $c->table('user_roles')->where('id_user', $uid)->delete();
+            if ($rows) {
+                $c->table('user_roles')->insert($rows);
+            }
+        });
+    }
+
+    function q9_u2_rows($t, $uid)
+    {
+        return q9_rows($t->db()->table('user_roles')->where('id_user', $uid)->orderBy('id_user_role')->get());
+    }
+
+    /**
+     * QA_USER2 sekarang memegang Folder Permissions lewat role 5 (data developer F-1, baseline - TIDAK diubah). Skenario yang butuh
+     * QA_USER2 tanpa Folder Permissions memakai role preset QA29-ROLE-*: ganti semua role user itu dengan $roleIds selama
+     * skenario, lalu q9_u2_restore() memulihkan baris user_roles persis (id_user_role, created_at, ... sama). Jurnal dipakai q9_recover().
+     * @return array snapshot untuk q9_u2_restore()
+     */
+    function q9_u2_swap($t, $uid, array $roleIds)
+    {
+        $snap = ['uid' => $uid, 'rows' => q9_u2_rows($t, $uid)];
+        file_put_contents(q9_journal_u2(), json_encode($snap));
+        $now = date('Y-m-d H:i:s');
+        $new = [];
+        foreach ($roleIds as $role) {
+            $new[] = ['id_user' => $uid, 'id_role' => $role, 'is_all_location' => 1, 'id_location' => null, 'created_at' => $now, 'updated_at' => $now];
+        }
+        q9_u2_write($t, $uid, $new);
+
+        return $snap;
+    }
+
+    function q9_u2_restore($t, array $snap)
+    {
+        q9_u2_write($t, $snap['uid'], $snap['rows']);
+        $after = q9_u2_rows($t, $snap['uid']);
+        @unlink(q9_journal_u2());
+        if (json_encode($after) !== json_encode($snap['rows'])) {
+            $t->fail('pemulihan user_roles QA_USER2 tidak persis sama dengan sebelumnya');
+        }
     }
 
     /**
@@ -602,6 +664,8 @@ if (!function_exists('q9_dbname')) {
             'M' => ['List Archive', 'View Folder', 'Folder Permissions'],
             'D' => ['List Archive', 'View Folder', 'Update Folder'],
             'E' => ['List Archive', 'View Folder'],
+            // rev3 (F-1): pengganti role 5 untuk QA_USER2 (bukan karyawan: tanpa 'Allow Access Website' tokennya dicabut middleware)
+            'DW' => ['List Archive', 'View Folder', 'Update Folder', 'Allow Access Website'],
         ];
 
         return $p[$profile];

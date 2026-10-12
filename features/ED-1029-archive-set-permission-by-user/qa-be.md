@@ -3,151 +3,106 @@ key: ED-1029
 scope: be
 round: 1
 verdict: PASS
-counts: {pass: 17, fail: 0, manual: 0, not_verifiable: 2}
+counts: {pass: 26, fail: 0, manual: 0, not_verifiable: 2}
 be_server: fpm
 ---
 ## Ringkasan
 
-Ronde 1 dari **run revisi** (rev 2026-10-08, subtask ED-1103 [BE] dan ED-1105 [QA]; commit lama BE 44bea5136 tetap, perubahan = 3 berkas
-BE di atas HEAD 8ea8ebcf2: `Routes/DocumentArchive/api.php`, `UserPermissionService.php`, `UserPermission/UpdateRequest.php`). Semua AC [BE]
-yang ber-"(rev)" (4, 9, 11, 20-23, 25, 27, 28 sisi BE) dan AC [BE] lama (5-8, 10, 12, 13) **PASS**; **tanpa defect**.
+Ronde 1 dari **revisi 3** (subtask ED-1128 [BE], ED-1130 [QA]; kode: 4 berkas BE di atas HEAD 581569981, semua NEW pada `changed.txt`:
+`UserPermission/UpdateRequest.php`, `ArchivePermissionService.php` (`saveFolderFlag` baru, EPIC K-5 b), `ArchiveService.php` (memakai `saveFolderFlag`),
+`UserPermissionService.php`). **Tanpa defect.** Semua AC [BE] (4-13, 21-23, 27, 32-35) dan sisi BE dari AC [BE+FE]/[FE] yang diserahkan ke QA BE
+(AC-9, 14, 19, 20, 25, 28, 31, 36, 37) **PASS**. Sisi FE/e2e AC-29..31, 36, 37 = tahap fe.
 
-- Server BE: php-fpm, kode terbaru terbaca tanpa reload. Tanpa 500 baru dari endpoint ini: 500 yang terlihat hanya dari karakterisasi sengaja yang sudah
-  dilacak, bukan defect ronde ini: ED-1029 X-1 (ED-1071, id non-latin1, 16 dari 28 kasus), ED-1025 X-12 (ED-1071, 75 dari 80 kasus) dan X-13 (ED-1070, 13 bentuk
-  `pagination`/`sorts`/`search` salah). Log Laravel seluruh ronde (05:48-06:33 lokal, 203 baris ERROR) dipilah per jenis: kolisi 1267/1270 = X-1 + X-12 (3 x 16 + 75);
-  Illegal offset / Unsupported operand / json_decode / Array to string / `showRelatedTransaction` / SQL 1064 = X-13 (06:04-06:05, bersamaan dengan run ED-1025);
-  `websockets_statistics_entries` tidak ada (infra, bukan Archive); penolakan OAuth token yang memang dicabut runner; satu galat `route:list` dari perintah saya.
-  Tidak ada galat dari `UserPermission*` di luar X-1.
-- Skenario ED-1029: **30 skenario, PASS 29, SKIP 1 (X-ISO), FAIL 0, 2066 asersi** (`work/qa29rev-r1-full.txt`, JSON
-  `work/qa-http/ED-1029-20261009055953.json`). Sebelum diperbarui, run yang sama gagal 6 (AC-4, 11, 13, 13b, X-PERM, AC-20: tepat di titik yang
-  diubah revisi; `work/qa29rev-r1-pre.txt`), jadi asersi baru memang membedakan perilaku lama dan baru.
-- Skenario milik sendiri: **7 baru** (AC-21, AC-21b, AC-22, AC-23, AC-25, AC-26-BE, AC-27 di `qa/scenario6-rev.php`), **7 diperbarui** (AC-4, AC-9,
-  AC-11, AC-13, AC-13b, X-PERM, AC-20), 16 tidak berubah. Dua run penuh berturut-turut sesudah pembaruan sama-sama hijau, 29 PASS + 1 SKIP (`work/qa29rev-r1-full.txt`, `work/qa29rev-r1-full2.txt`; re-runnable).
-- Regresi ED-1024..ED-1028 (skenario di working tree): ED-1024 26/26, ED-1025 40/40, ED-1026 31 PASS + 6 gagal (4 usang, 2 terkait data
-  developer), ED-1027 19 PASS + 1 gagal (usang/tak idempoten) + 1 SKIP, ED-1028 22/22. **Tidak ada regresi nyata**; rincian dan file:line di
-  bagian "Skenario usang milik item lain".
-- Isolasi tenant tetap `not_verifiable` (`QA_DBS` hanya `api_sidomaju`).
-- Data uji: satu-satunya penghapusan = 3 baris yatim `archive_documents` `QA01-R2-*` (milik QA ED-1024); DB lain identik sebelum/sesudah
-  (hitungan tabel). Penolakan izin/classifier: tidak ada.
-- Kode aplikasi, spec, kontrak tidak diubah. Yang diubah hanya `qa/qa_lib.php`, `scenario1-read.php`, `scenario2-write.php`,
-  `scenario3-access.php` dan berkas baru `scenario6-rev.php` (semua di folder ED-1029). E2E `qa/e2e/*` **tidak** disentuh (tahap fe).
+- Suite ED-1029 akhir: **41 skenario: 40 PASS, 1 SKIP (X-ISO), 0 FAIL, 3.099 asersi**, dua kali berturut-turut hijau (`work/qa29r3/full-r2.txt`,
+  `work/qa29r3/full-final.txt`; JSON `work/qa-http/ED-1029-20261012163353.json`). Rev3 menambah **11 skenario baru (1.049 asersi)**; 30 skenario lama (29 ber-asersi, 2.050 asersi, + X-ISO SKIP)
+  = regresi (body tanpa `folders` = perilaku lama): 28 hijau tanpa perubahan, 2 diperbarui (AC-13b usang oleh data developer F-1; X-1 diperluas untuk `folders`, O-6). Sebelum pembaruan, suite lama
+  = 28 PASS / 1 FAIL (AC-13b) / 1 SKIP (`work/qa29r3/pre-full.txt`), jadi **rev3 tidak mengubah perilaku lama**.
+- Server: php-fpm, kode terbaru terbaca tanpa reload. **Tanpa 500 baru.** Log Laravel selama sesi (15:52-16:33 lokal) dipilah per entri: 128 galat dari `UserPermission*`
+  semuanya X-1 (kolasi 1267/1270, id non-latin1: 16 di run awal + 28 x 4 run; milik ED-1071, termasuk 12 kasus `folders` baru per run, O-6); 80 kolasi + 12 bentuk
+  `pagination`/`sorts`/`search` = ED-1025 X-12 (ED-1071) dan X-13 (ED-1070) dari run ED-1025 penuh; 14 penolakan OAuth = token yang sengaja dicabut `force_login`. Tidak ada galat lain.
+- Regresi EPIC K-5 b: ED-1025 QA BE `--only=AC-5,AC-38` **PASS** (61 + 165 asersi; `work/qa29r3/ed1025-ac5-ac38.txt`). Ekstra: suite ED-1025 penuh 38 PASS / 2 FAIL
+  (`work/qa29r3/ed1025-full.txt`): X-12 (diketahui, ED-1071) dan AC-25 (usang, bukan dari diff ini; lihat "Skenario usang milik item lain").
+- Isolasi tenant: **tidak bisa diverifikasi** (`QA_DBS` hanya `api_sidomaju`; X-ISO SKIP).
+- Data: hanya data berprefiks QA (`QA29-`, role `QA29-ROLE-*`), semuanya dibuang oleh skenario; hash 12 tabel sebelum vs sesudah **identik** (bagian Data).
+- Kode aplikasi, spec, kontrak, Jira tidak disentuh. `qa/e2e/*` tidak disentuh (tahap fe).
 
 ## Hasil per AC
 
 | AC | Cara cek | Hasil | Bukti |
 |---|---|---|---|
-| AC-4 (rev) | `scenario1-read` AC-4: GET `{B}` oleh A (QA_USER role 3, lokasi SMR), fixture P/C1/C2/Q/R/R1/QC/N/L/LC/M; himpunan+urutan DFS vs SQL; `access` menurut ED-1025 BR-4; `manage_permission` di setiap node | PASS | 492 asersi. C2 (Off di bawah P V+U) `access` 1/1/1/1 (K-12 a); Q (A View saja) `manage_permission` true; N tanpa View tetap ada, view false; `manage_permission` true di SEMUA node; L tidak ada, LC di level teratas. Run awal (rev code, skenario lama) gagal tepat di C2 `[1,1,0,0]` |
-| AC-5 | `scenario1-read` AC-5: role 1 dan 2 | PASS | 83 asersi: L ikut, jumlah+urutan = semua folder aktif SQL, `access` true di semua node |
-| AC-6 | AC-6 (GET, 72), AC-6b (PUT, 47), X-1 kontrol latin1 | PASS | 404 `ARCHIVE440` id/en; 12 kontrol latin1 = 404; non-latin1 = 500 dilacak ED-1071 (karakterisasi X-1, bukan defect ronde ini) |
-| AC-7 | `scenario2-write` AC-7 | PASS | 52 asersi: PUT `[P V+S, C1 V]` 200 `ARCHIVE207`; baris lain utuh; riwayat +1 oleh A; GET `archives/{P}` memuat baris B sama (dua arah) |
-| AC-8 | `scenario2-write` AC-8 | PASS | 32 asersi: hapus baris, nilai sama = tanpa riwayat, `[]` = 200 |
-| AC-9 (rev) | `scenario2-write` AC-9 (en+id) | PASS | 57 asersi: C2 dan R (Off) 400 `ARCHIVE441` parameter = nama; kombinasi dengan P/C1 sah (4 urutan) = tidak ada yang tersimpan (data+riwayat+jumlah baris). C2 dinyalakan: A tanpa baris sendiri di C2 tetap 200 (K-15 b); dimatikan lagi: hapus baris pun 441 |
-| AC-10 | `scenario2-write` AC-10 | PASS | 166 asersi: `ARCHIVE411`, rollback penuh |
-| AC-11 (rev) | `scenario2-write` AC-11 ditulis ulang | PASS | 173 asersi: Q (View saja), N (tanpa View), QCh (induk Q membatasi) PUT = **200**, baris + riwayat +1 (dulu 408); body tidak sah + Q = 422 (bukan 408); P sah + Q = 200 dua-duanya; L = 403 `ARCHIVE407` tanpa `parameter`, mendahului 422/404, juga `Q + L`; dokumen/tidak ada/nonaktif 404 `ARCHIVE400`; 14 kasus 422 + 5 bentuk `permissions` salah; data tidak berubah pada semua penolakan; **0 x `ARCHIVE408`** |
-| AC-12 | `scenario2-write` AC-12 | PASS | 14 asersi: R1 (On di bawah R Off) 200; R tetap 441 |
-| AC-13 | `scenario3-access` AC-13 (diperbarui) dan AC-13b (diperbarui, dua pengguna nyata) | PASS | 34 + 44 asersi. Membuka folder tetap butuh View (403 `ARCHIVE407` -> View -> 200 -> cabut -> 403). Rev K-15 b: B ber-Folder Permissions dengan View saja, lalu tanpa View, **PUT `{user lain}` 200 (bukan 408)**; `PUT archives/{P}` kelompok detail tetap 403 `ARCHIVE408` (aturan ED-1025). 13b: QA_USER2 (role 5, Update Folder tanpa Folder Permissions) GET/PUT = 403 `GE0114` "Folder Permissions" walau punya V/U/D/S di P; diberi role fixture ber-FP sementara = 200 dan riwayat atas nama QA_USER2; dilepas = 403 lagi. Riwayat P: 6 entri tepat (hanya perubahan nyata) |
-| AC-20 (rev, sisi BE) | `scenario3-access` AC-20 (ditulis ulang) | PASS | 37 asersi. Role tanpa Folder Permissions (6, 29, juga 5 yang ber-Update Folder): GET/PUT 403 `GE0114` parameter "Folder Permissions", tanpa `result`, data tetap. DB: tepat satu permission bernama `Folder Permissions`, tidak ada "Set Permission"; seed: nama itu hanya di `app/Sql/data/permission_salesman.sql`; grep: `UserPermissionService.php`, `UpdateRequest.php`, baris route `user-permissions`, dan semua `qa/*.php` ED-1029 **tanpa id permission literal** (1082-1085, 1133-1149). Sisi FE/lisensi nyata = tahap fe / Gate 2 epic (grep informatif: `ksp-react/src/containers/Archive` juga bersih) |
-| AC-21 (rev) | `scenario6-rev` AC-21 (baru) + `scenario3` X-PERM | PASS | AC-21 203 asersi, X-PERM 189. D (Update Folder tanpa FP) dan E, en+id: GET dan 9 bentuk PUT (sah, flag 9, tanpa `permissions`, `[]`, user tidak ada sah/tidak sah, folder L, folder Off, id tidak ada) = 403 `GE0114` parameter "Folder Permissions", tanpa `result`, snapshot data+riwayat+jumlah baris utuh. A, M (tanpa Update Folder), superadmin 1 dan 2: GET 200, PUT `[P: View]` 200 + baris + riwayat oleh pemanggil. X-PERM: 401 `GE0111` tanpa token; role ber-FP (dicari lewat nama di `role_permissions`: 1, 2, 3) 200; 9 role tanpa FP (5, 26, 6, 16, 18, 19, 20, 25, 29) 403; QA_USER2 403 |
-| AC-22 (rev) | `scenario6-rev` AC-22 (baru), data J | PASS | 50 asersi. GET: J, JA, JB, JC tampil, `manage_permission` true x4; `access` J 1/0/0/0, JA 1/1/1/1, JB semua false, JC (Off) 1/1/1/1. PUT `[JA V+S]`, `[J V]`, `[JB V]` = 200, baris benar, riwayat +1 masing-masing oleh A. `[JC]` = 400 `ARCHIVE441` parameter JC (bukan 408), `[JA+JC]` dan `[JC,JA]` = 400 dan JA tidak tersimpan (snapshot utuh) |
-| AC-23 (rev) | `scenario6-rev` AC-23 (baru) | PASS | 37 asersi. Baris A di J dihapus: GET `{B}` 200, J/JA/JB/JC tampil, `access.view` false, `manage_permission` true; PUT `[JA: V+U]` 200 + riwayat JA oleh A (action `permission`); `[JC]` 441; GET `archives?id_archive=` J/JA/JB/JC oleh A tetap 403 `ARCHIVE407` (sebelum dan sesudah PUT) |
-| AC-25 (rev, sisi BE) | `scenario6-rev` AC-25 (baru) | PASS | 21 asersi. F Off tanpa baris A; `PUT archives/{F}` (nyalakan Izin + baris A 1/1/1/1, bentuk tab Izin) 200; GET `user-permissions/{A}`: F On, 1/1/1/1; PUT `{A}` `[F: V,U,S]` 200; `GET archives/{F}` memuat A V/U/S (tanpa Delete); riwayat +1 tiap langkah; F dimatikan lagi -> 441. Sisi FE (e2e) = tahap fe |
-| AC-26 (pendukung BE) | `scenario6-rev` AC-26-BE | PASS (bukan klaim AC [FE]) | 16 asersi: A mencabut semua hak sendiri di JA via PUT `{A}` = 200 langsung; GET sesudahnya JA tampil, view false, `manage_permission` true; bisa memberi View lagi |
-| AC-27 (rev) | `scenario6-rev` AC-27 (baru) | PASS | 24 asersi. Badan = `status, msg_code, message, result{user,data}`; `user` = `id_user, username`; node di semua kedalaman tepat 9 kunci kontrak (+`children`); tidak ada `created_by`/`created_at`/`updated_by`/`updated_at`/`history` di node maupun `access`; sama untuk A, M, superadmin 1 dan 2; string `created_by` tidak ada di badan mentah |
-| AC-28 (rev, sisi BE) | Skenario usang milik sendiri diperbarui, semua skenario ED-1029 + D-4 dijalankan ulang, X-1 tetap karakterisasi | PASS | Lihat "Skenario milik sendiri yang diperbarui". 30 skenario: 29 PASS, 1 SKIP. `scenario5-concurrency` X-5/6/7: 210 + 172 + 330 request, **0 x 5xx**, terlama 1,4 s. X-1: 28 kasus, 12 x 404 dan 16 x 500 (ED-1071) = karakterisasi hijau. Bagian e2e AC-28 (`routes.json:4-5`, spec `:10,872,913`, `fixture.php:18`) = tahap fe |
-| AC-1..3, 14-19, 24, 26 | - | bukan [BE] | tahap fe |
-
-## Skenario milik sendiri yang diperbarui (AC-28, gate1 §5)
-
-- `qa_lib.php`: `q9_access_is` (`manage_permission` default true, parameter opsional); pencatat kode respons `q9_codes_reset` / `q9_assert_no408`
-  (ARCHIVE408 tidak boleh muncul dari `user-permissions`); fixture role BERNAMA `q9_role` / `q9_roles_profile` (A, M, D, E sesuai spec §6, dibuang
-  `q9_role_purge`), `q9_roles_by_permission` (cari role lewat nama permission), `q9_with_extra_role` (role sementara bagi QA_USER2), `q9_fixture_j`
-  (data J/JA/JB/JC), `q9_node_vals`. Tidak ada id permission literal.
-- `scenario1-read.php` AC-4 (baris 124 dan 132 lama): C2 `1/1/1/1`, Q dan semua node `manage_permission` true.
-- `scenario2-write.php` AC-9 (baris A di C2 dibuang) dan AC-11 (403 `ARCHIVE408` -> 200/422/407, lihat tabel; dulu `:403-475`).
-- `scenario3-access.php`: AC-13 dan AC-13b (dulu `:115-118,145,208-231`: 408 -> 200 / `GE0114`), X-PERM dan AC-20 (dulu `:241-346`: permission route
-  = `Folder Permissions`, daftar role dicari lewat nama, tanpa 1085/1133). AC-5b, X-ISO tetap.
-- `scenario6-rev.php` baru: AC-21, AC-21b (urutan penolakan BR-13: `GE0114` -> `ARCHIVE440` -> `ARCHIVE407` -> 422 -> `ARCHIVE400` -> `ARCHIVE441` ->
-  `ARCHIVE411`, 44 asersi, termasuk `Q (A View saja) + D tanpa View` = 411 bukan 408), AC-22, AC-23, AC-25, AC-26-BE, AC-27.
-- Kebersihan: setiap skenario membuang folder `QA29-*` dan role `QA29-ROLE-*` di `finally`, memulihkan role/lokasi/bahasa QA_USER dari jurnal dan
-  memverifikasinya; user_roles QA_USER2 kembali ke jumlah awal. Sisa: nol (cek akhir `QA* leftovers: archives=0 docs=0 roles=0`).
+| AC-4..13 (lama, 10 AC) | skenario 1-3 tidak diubah (kecuali AC-13b) dijalankan ulang sebagai regresi dengan kode rev3 | PASS | AC-4 492, AC-5 83, AC-6 72, AC-6b 47, AC-7 52, AC-8 32, AC-9 57, AC-10 166, AC-11 173, AC-12 14, AC-5b 49, AC-13 34, AC-13b 44 asersi |
+| AC-21, 22, 23, 27 (lama) | `scenario6-rev.php` ulang | PASS | 203 + 44 (AC-21b) + 50 + 37 + 24 asersi; urutan 440/407/422/400/441/411 lama utuh |
+| AC-9 (rev, sisi BE) | AC-9 lama + AC-34 d/d2: hak C2 (Off) tanpa `folders` dan dengan `folders: []` = 441 parameter C2; bersama P sah tidak tersimpan | PASS | 57 + 90 asersi; snapshot data+riwayat+jumlah baris identik |
+| AC-14 (sisi BE) | AC-4 + AC-34 a: GET node memuat `is_folder_permission`, nilai B tersimpan tetap tampil di folder Off, `access.manage_permission` true di semua node | PASS | 492 + 90 asersi |
+| AC-32 | `scenario7-rev3-flag.php` AC-32 | PASS | 118 asersi. F (Off, tanpa baris): PUT `{B}` `folders [F:1]` + `[F:View]` = 200 `ARCHIVE207` (`result.id_user`=B); F flag 1, `updated_by`=A; (F,B) View; (F,A) 1/1/1/1 (`created_by`/`updated_by`=A); tepat 1 baris A dan 2 baris F; riwayat +1 `permission` oleh A; folder lain utuh. Kirim ulang = F tanpa perubahan. G (A View): baris yang **sama** (`id_archive_permission` tetap) dinaikkan 1/1/1/1, satu baris, tanpa (G,B). X (A pembuat) dan Y (A sudah 1/1/1/1: baris tidak ditulis ulang). H/K/Z sekaligus + hak B 0000 = tanpa baris; riwayat +1 per folder. Off->On->Off->On: baris A turun ke View lalu naik lagi, tetap 1 baris. Superadmin 1 dan 2: (H2/K, superadmin) 1/1/1/1, `updated_by` dan riwayat = user login. camelCase `idArchive`/`isFolderPermission` diterima |
+| AC-33 | AC-33 | PASS | 42 asersi. Target = user login: `folders [F:1]` + `[F:1/1/0/1]` -> (F,A) 1/1/0/1 satu baris (tidak dinaikkan); `folders [K:1]` tanpa hak -> K tanpa baris sama sekali; (G,A) View tidak dinaikkan; hak 0000 = tanpa baris; folder sudah On tanpa baris otomatis |
+| AC-34 | AC-34 (+AC-34b) | PASS | 90 + 22 asersi. `folders [P:0]` -> flag 0, (P,B) dan (P,A) tak tersentuh, tanpa baris otomatis, riwayat +1; K-10 b `[P:0]` + `[P:V+U]` -> (P,B) V+U, riwayat +1; 0000 pada folder yang dimatikan menghapus baris; `[C2:1]` + `[C2:View]` = 200 (+ baris A otomatis); `[C2:0]` (sudah Off) + `[C2:View]` = 400 `ARCHIVE441` parameter C2, data identik; 441 tetap bila folder lain dinyalakan/dimatikan di request yang sama (atomik); `[Q:1]` (sudah On) dan `[C2:0]` (sudah Off) = 200 tanpa tulisan/riwayat/baris. AC-34b: flag NULL di DB dibaca Off |
+| AC-35 | `scenario8-rev3-reject.php` AC-35, AC-35b, X-8; X-1 | PASS | 487 + 28 + 32 asersi. D/E (en+id, 9 bentuk) = 403 `GE0114` parameter "Folder Permissions" tanpa `result` (mendahului 440/422/407); QA_USER2 dengan role preset tanpa FP juga 403 (AC-35b). A: 440 > 407 (permissions ATAU folders, tanpa parameter, mendahului 422) > 422 (22 bentuk: id ganda, flag 2/-1/"abc"/null/"", hilang, id int/array/"", folders string/angka/null/""/elemen string/null/[]/objek, tanpa `permissions`) > 400 `ARCHIVE400` (dokumen, tidak ada, nonaktif; juga bersama F sah) > 441 > 411; `folders [JB:1]`/`[JB:0]`/`[JC:1]` (A tanpa View) = 200; profil M 200; superadmin 1/2 `[L:1]` = 200 + baris otomatis; **atomik: 411 di tengah transaksi (flag + baris otomatis sudah ditulis) -> snapshot identik** (2.13-2.14). Fuzz id 16 bentuk tanpa non-latin1 x 3 mode: 0 x 5xx |
+| AC-19 (sisi BE) | AC-19 | PASS | 34 asersi. P dimatikan lewat `PUT archives/{P}` (jalur method bersama): `updated_by`=A, baris tidak dihapus; Save hak P + C1 sah = 400 `ARCHIVE441` (en+id, pesan memuat nama), snapshot identik; `folders [P:1]` + hak -> 200, (P,A) V+U dinaikkan 1/1/1/1, satu baris |
+| AC-20 (sisi BE) | AC-20 (judul/komentar diperbarui, logika dinamis) | PASS | 35 asersi; role tanpa FP dicari dari DB (6, 29; role 5 sudah memegangnya, F-1); tanpa id permission literal di semua `qa/*.php` termasuk berkas baru |
+| AC-25 (sisi BE) | AC-25 lama + AC-37b | PASS | 21 + 36 asersi |
+| AC-28 (sisi BE) | skenario usang milik sendiri diperbarui; semua skenario dijalankan ulang; X-1 tetap karakterisasi | PASS | lihat "Skenario milik sendiri"; X-1 49 kasus: 21 x 404, 28 x 500 (ED-1071), data utuh |
+| AC-31 (sisi BE) | AC-33 butir 1 | PASS | body `folders [F:1]` + `permissions [F:1/1/0/1]` oleh A untuk A: flag 1, (F,A) 1/1/0/1; sisi e2e = tahap fe |
+| AC-36 | AC-36 (dua pengguna nyata: A dan QA_USER2) | PASS | 41 asersi. Sesudah `folders [F:1]` untuk B2: `GET archives/{F}` flag 1, `folder_permissions` A 1/1/1/1 + B2 View; QA_USER2 (tanpa baris) buka F = 403 `ARCHIVE407`; diberi View = 200; dicabut = 403; F dimatikan dari halaman: tab Izin Off, baris tetap, QA_USER2 = 200; dinyalakan di tab Izin: halaman ini F On (nilai B2), QA_USER2 403 lagi; list: perisai (`is_folder_permission` baris F) 1/0/1 mengikuti. Sisi e2e = tahap fe |
+| AC-37 | `scenario9-rev3-concurrency.php` AC-37, AC-37b + regresi penuh + ED-1025 | PASS | AC-37: 6 jenis putaran x 3 + stres 40 request = 19 putaran, 136 request, **0 x 5xx**, terlama 2,6 s. Dua user nyata (A + QA_USER2, role aslinya memegang FP): `folders [F:1]` identik 3 x 2 user -> tepat satu baris otomatis, milik pengaktif pertama (berganti antar putaran), hasil + status tiap request = SATU urutan serial dari model semua permutasi (2-110 hasil sah per jenis); hak berbeda, tab Izin (`PUT archives/{F}`) bersamaan, saklar bolak-balik (441 hanya bila urutan serial memungkinkan), dua folder urutan berlawanan (tanpa deadlock), tiga folder; tanpa baris ganda, riwayat JSON valid. X-5/6/7 ulang: 210 + 172 + 330 request, 0 x 5xx. AC-37b (EPIC K-5 b via `PUT archives/{id}`): flag saja = riwayat `permission` saja dan tanpa baris otomatis (O-3); nilai sama = tanpa tulisan; detail + flag satu request = `update` + `permission`; flag + `folder_permissions` = persis kiriman; flag 0 + `[]` = semua baris dihapus; hasil sama dengan PUT user-permissions. ED-1025 `--only=AC-5,AC-38` PASS. Sisi e2e = tahap fe |
 
 ## Defect
 
 Tidak ada.
 
-Catatan review diff BE (bukan defect; pengamatan):
-- Kontrak vs respons aktual cocok: GET (bentuk node, `manage_permission` true di semua node, tanpa `created_by`), 403 `GE0114` `{message, code, parameter:"Folder
-  Permissions"}` (en+id, kedua kode ada di `en_EN.php`/`id_ID.php`), 400 `ARCHIVE441` `parameter:[nama]`, urutan penolakan = kontrak §2, `ARCHIVE408` tidak
-  pernah dikirim (diperiksa lewat pencatat di 9 skenario). Tanpa tabel/Updater/seed baru (diff = 3 berkas; `Folder Permissions` hanya di `permission_salesman.sql`).
-- Atomik: ARCHIVE441/411/407 pada kombinasi baris sah+tidak sah tidak meninggalkan baris, riwayat, `updated_at` (snapshot byte-sama). Kunci `lockFolders`
-  tetap query pertama; 0 x 5xx pada ~710 request paralel.
-- Biaya: `context()` dihitung beberapa kali per PUT (authorize, update, assertCanManage) tetapi terukur murah (GET 193 folder 0,28 s, PUT 160 baris 0,47 s).
-- Cadangan `GE0114` di `authorize()`/`assertCanManage` hanya berpengaruh untuk user customer (middleware mem-bypass); `show()` tidak punya cek cadangan,
-  jadi GET oleh customer lolos seperti route Archive lain. Tidak bisa diuji di sini (lihat bawah).
-- Cutover bergantung seed ED-1025: tenant yang role 1/2/3-nya belum mendapat `Folder Permissions` menolak semua orang termasuk superadmin (403 `GE0114`).
-  Di `api_sidomaju` sudah ter-seed (role 1, 2, 3 ber-FP).
+Pengamatan (bukan defect):
+- Kontrak vs respons aktual cocok: 200 `ARCHIVE207` `{result:{id_user}}`, 403 `GE0114` `{message, code, parameter:"Folder Permissions"}`, 403 `ARCHIVE407` tanpa `parameter`, 400 `ARCHIVE441`
+  `parameter:[nama]` (en+id), `folders: null` / bukan array = 422, urutan penolakan = kontrak §2. `ARCHIVE408` tidak pernah dikirim (pencatat kode di setiap skenario).
+- `is_folder_permission` diterima sebagai `"1"`, `true`, `"01"`, `1.0` (aturan `in:0,1` Laravel membandingkan sebagai string) dan flag mengikuti nilainya; tidak ada 5xx. Sama dengan aturan flag `is_view`.. yang sudah ada.
+- Id dengan spasi/tab/newline/NUL di tepi dipangkas middleware `TrimStrings` dan diperlakukan sebagai id yang sah (200 untuk F), bukan 404; hanya F yang berubah.
+- `updated_by` bertipe varchar(30) (pra-ada): username > 30 karakter akan gagal tulis di semua penulis flag (juga `PUT archives/{id}`); tidak diuji.
+- Kode: tidak ada `static`/cache/`$GLOBALS` baru di diff (grep); satu transaksi, `lockFolders` id gabungan tetap query pertama; hak otomatis hanya di `UserPermissionService::update`.
+- `role_permissions.permission_name` NULL pada 312 dari 3.794 baris (data developer F-1, termasuk role 3 dan 5 untuk Folder Permissions): middleware membaca lewat id sehingga tidak berdampak pada ED-1029.
 
 ## Isolasi tenant & permission
 
-- Permission (AC-21, AC-21b, X-PERM, AC-13b, AC-20): tanpa token 401 `GE0111`; tanpa `Folder Permissions` (termasuk role ber-Update Folder 5 dan 26, QA_USER2)
-  GET dan PUT 403 `GE0114` parameter "Folder Permissions", mendahului 404/422/407, data tidak berubah; pemegang FP (role 1, 2, 3, profil A, profil M tanpa Update
-  Folder) 200. Superadmin 1/2 boleh PUT di folder On (AC-5b, AC-21), folder Off tetap 441.
-- Isolasi tenant (X-ISO): **TIDAK BISA DIVERIFIKASI**, `QA_DBS` hanya `api_sidomaju` (SKIP otomatis). Tinjauan kode: diff revisi tidak menambah `static`/singleton/cache;
-  `context()` dihitung per request dan diteruskan sebagai argumen.
+- Permission (PUT `folders`): D (Update Folder tanpa FP) dan E, en+id, 9 bentuk = 403 `GE0114` "Folder Permissions"; QA_USER2 diberi role preset tanpa FP = 403; pemegang FP
+  (A, M tanpa Update Folder, superadmin 1 dan 2, QA_USER2 dengan role aslinya) = 200 dan baris otomatis atas nama user login masing-masing. Tidak ada endpoint baru.
+- Isolasi tenant: **TIDAK BISA DIVERIFIKASI** (`QA_DBS` hanya `api_sidomaju`; dua DB tidak tersedia). Tinjauan kode: diff tidak menambah state statis/cache; `context()` dan folder
+  dihitung per request.
 
-## Galeri e2e & regresi BE
+## Skenario milik sendiri yang diperbarui (AC-28, AC-37)
 
-E2E: bukan scope be (e2e ED-1029 yang usang menunggu tahap fe). Regresi BE (`work/qa29rev-reg-ED-10xx.txt`):
-
-| Item | Hasil | Catatan |
+| Berkas | Perubahan | Sebab |
 |---|---|---|
-| ED-1024 | PASS 26, FAIL 0 | run pertama gagal 19 (asersi kebersihan `archive_documents` mendapat 3 baris `QA01-R2-*`: data yatim QA sendiri, lihat "Data"); sesudah dibuang 26/26 |
-| ED-1025 | PASS 40, FAIL 0 | termasuk skenario rev (`ArchiveService::update`, seed, `lockFolders`) |
-| ED-1026 | PASS 31, FAIL 6 | 4 usang + 2 data developer, bukan regresi (di bawah) |
-| ED-1027 | PASS 19, FAIL 1, SKIP 1 | X-1 usang/tak idempoten; X-3 SKIP isolasi |
-| ED-1028 | PASS 22, FAIL 0 | bersih (tabel opname kosong, baseline/cleanup lolos) |
+| `qa/scenario3-access.php` AC-13b | QA_USER2 sementara diganti role preset `QA29-ROLE-DW` (List Archive, View Folder, Update Folder, Allow Access Website; tanpa Folder Permissions), `user_roles` dipulihkan persis (jurnal `.restore-journal-q9u2.json`, diverifikasi) | **Data developer F-1**: role 5 kini memegang Folder Permissions, jadi asersi "B tanpa FP = 403 GE0114" gagal (200). Bukan perubahan perilaku rev3. Tanpa `Allow Access Website` middleware mencabut token user bukan-karyawan (QA_USER2 tipe 1): preset memuatnya |
+| `qa/scenario3-access.php` X-PERM, AC-20 | hanya judul/komentar (logika sudah dinamis lewat nama permission) | role 5 tidak lagi "tanpa FP" |
+| `qa/scenario4-robust.php` X-1 | +12 kasus `folders` (4 non-latin1 x 3 bentuk = 500 karakterisasi ED-1071, 3 latin1 x 3 = 404 `ARCHIVE400`); aturan kode ARCHIVE400 untuk label "body" | O-6: probe non-latin1 `folders` hanya di X-1 |
+| `qa/qa_lib.php` | `q9_recover` juga memulihkan jurnal user kedua; `q9_u2_swap/restore`; profil `DW` | pendukung AC-13b |
+| baru | `qa/qa_lib_r3.php`, `scenario7-rev3-flag.php` (AC-32, 33, 34, 34b, 19, 36), `scenario8-rev3-reject.php` (AC-35, 35b, X-8), `scenario9-rev3-concurrency.php` (AC-37, 37b) | rev3 |
 
-### Skenario usang milik item lain (DICATAT, TIDAK diubah; gate1 §5)
+Tidak ada skenario lama yang perlu diubah karena perilaku rev3 (semua kecuali AC-13b hijau sebelum dan sesudah).
 
-| Item | Skenario (file:baris) | Sebab | Pemilik |
-|---|---|---|---|
-| ED-1026 | `scenario1-schema-seed.php:154` (AC-1) | "kunci config.php lebih besar dari semua Updater lain": Updater item berikut (ED-1027) kini lebih besar | QA 1026 |
-| ED-1026 | `scenario1-schema-seed.php:257` (AC-2) | tuple seed `(1133,...,'Opname Document',...)`: sekarang 1139 (EPIC K-4 a, ED-1025 rev) | QA 1026 |
-| ED-1026 | `scenario4-session-access.php:82` (AC-12) | "terkonfirmasi user lain, non-superadmin: show" diharapkan 404, kini 200 (perubahan akses ED-1028) | QA 1026 |
-| ED-1026 | `scenario4-session-access.php:157` (AC-15) | daftar kunci `result` kini juga memuat `result_counts` dan `is_partial` (ED-1028) | QA 1026 |
-| ED-1026 | `scenario2-folders-store.php:30` (AC-5), `scenario5-confirm.php:313` (AC-20) | **terkait data developer**: oracle mengira folder root bebas Izin Folder; developer menyalakan Izin di "CABANG - SEMARANG" dan "Folder A" lewat UI (`archives.updated_at` 2026-10-08 14:36, `kevinsudjadi.adm`) dan QA_USER tidak punya baris View, jadi BE benar menyembunyikannya (children hanya "Backup Arsip" dari 3 yang diharapkan). Bukan regresi dan bukan dari ED-1029; data developer tidak diubah | QA 1026 |
-| ED-1027 | `scenario1-columns-updater.php:169` (X-1) | `updater_logs` tidak kembali persis: baris log Updater itu (`key_id` 1791357196, id 197) sudah ada sebelum run, sedangkan skenario hanya menghapus bila belum ada (`$hadLog`, `:148-149`/`:161-166`); `executeUpdater` menulis ulang baris yang ada, tanpa snapshot-pulih. Akibat nyata: kolom `executed_at` baris itu kini `2026-10-09 06:15:28` (nilai lama tidak tercatat; status tetap `success`) | QA 1027 |
+## Skenario usang milik item lain (DICATAT, TIDAK diubah)
 
-Dicek khusus catatan Gate 1 (`ba2-notes` "Pengaman data uji"): `q26/q27/q28_baseline`/`_cleanup` yang menegaskan tabel opname kosong **lolos** (tiga tabel
-`archive_opname*` = 0 baris sebelum dan sesudah); `q26_sweep` hanya menyentuh baris berjurnal QA.
-
-## Data
-
-Hitungan tabel sebelum vs sesudah seluruh ronde (archives, archive_permissions, archive_locations, archive_documents, archive_opname_*, stock_opname_*, user_roles,
-employees, employee_locations, users, roles, role_permissions, permissions, locations; `work/qa29rev-baseline-counts.txt`): **identik, kecuali `archive_documents`
-49129 -> 49126 (tepat -3 di bawah)**. Role QA_USER kembali `[3]` (all location). `roles.id_role` AUTO_INCREMENT maju (role fixture dibuat lalu dihapus; max id tetap 30, 27 role).
-
-Dihapus (urutan: data QA sendiri dulu; Gate 1 § Data uji + K-3 a): 3 baris yatim `archive_documents` milik QA ED-1024 (induk `archives` sudah tidak ada, dibuat
-2026-10-09 02:35:38 oleh ronde ED-1024 R2), `transaction_no` / `id_archive_document`:
-- `QA01-R2-DD` / 250224000117914881382026153402
-- `QA01-R2-DA` / 250224000117914881386518197010
-- `QA01-R2-DS` / 250224000117914881388974061964
-Isi penuh baris: `work/qa29rev-deleted-rows.json`. Tidak ada data developer yang dihapus atau direset.
-
-Diubah di luar kendali skenario ED-1029: baris `updater_logs` di atas (ED-1027 X-1, `executed_at`); token lain QA_USER di DB yang sama dicabut oleh `force_login=1` runner
-(peringatan standar runner).
+| Item | Skenario | Sebab |
+|---|---|---|
+| ED-1025 | `qa/scenario9-rev-seed-fuzz.php:168` (AC-25, "DB: role 3 memegang Folder Permissions (1140)") dan `:172` | memfilter `role_permissions.permission_name = 'Folder Permissions'`; di data developer baris (role 3, Folder Permissions) memiliki `permission_name` NULL (join lewat id tetap benar). Bukan regresi |
+| ED-1025 | `qa/scenario9-rev-seed-fuzz.php` X-12 (kasus `rename name` omega/cjk/emoji/aksen/rtl 200 -> 500; kini 80 dari 80 kasus 500) | milik ED-1071 (diketahui). Selisih 5 kasus rename berasal dari commit ED-1069 (878314df7: `RenameFolderRequest`/`UniqueNameRule`), bukan dari diff ini |
 
 ## Yang tidak bisa diverifikasi (dan kenapa)
 
-1. **Isolasi tenant** (`QA_DBS` hanya `api_sidomaju`): dua DB tidak tersedia; ditinjau lewat kode saja.
-2. **Jalur user customer** (middleware `permission_v5` mem-bypass customer; cadangan `GE0114` di `authorize()`/`assertCanManage`, dan GET tanpa cadangan): tabel `customers`
-   tidak punya user terhubung (`id_user` terisi = 0) dan tidak ada kredensial; tidak membuat user. Hanya tinjauan kode.
-3. Bagian lisensi AC-20 (tukar lisensi sungguhan; `PROFILES` kosong) = Gate 2 epic. `php artisan route:list` gagal karena galat lain di repo
-   (`ProfitLossReportService.php:29`, bukan denial dan bukan Archive); permission kedua route dibuktikan lewat HTTP (X-PERM, AC-21).
+1. **Isolasi tenant**: `QA_DBS` hanya satu DB.
+2. **Jalur user customer** (middleware `permission_v5` mem-bypass customer; cadangan `GE0114` di `authorize()`/`assertCanManage`): tidak ada user customer ber-kredensial; tinjauan kode saja (tidak berubah sejak ronde lalu).
+3. Sisi FE/e2e AC-29..31, 36, 37 dan penukaran lisensi AC-20 = tahap fe / Gate 2 epic.
+
+## Data
+
+- Dibuat dan dibuang oleh skenario sendiri: folder `QA29-*` (fixture ~30 folder per skenario, 120 anak di X-8), baris `archive_permissions`/`archive_locations`/`archive_documents` terkait,
+  role `QA29-ROLE-A/M/D/E/DW`. Pemeriksaan akhir tiap skenario: `archives` berprefiks = 0, jumlah `archive_permissions` kembali, role fixture = 0.
+- Hash sebelum vs sesudah seluruh ronde (`work/qa29r3/counts-before.json` vs `counts-final2.json`): jumlah baris 16 tabel, md5 `archives` (id, flag, `updated_at`, `updated_by`),
+  `archive_permissions`, `role_permissions`, `user_roles`, `employees`, `users` (bahasa, aktif) **identik**. Tidak ada baris selain milik QA yang dihapus atau di-reset; data developer F-1 tidak diubah.
+- Diubah sementara dan dipulihkan persis: role/lokasi/bahasa QA_USER (jurnal), `user_roles` QA_USER2 (AC-13b, AC-35b), `users.is_active` target B (satu kasus 2.17). Efek samping tak terhindarkan:
+  `force_login=1` runner mencabut token lain QA_USER; satu percobaan AC-13b tanpa `Allow Access Website` membuat middleware mencabut token QA_USER2 dan menulis `is_login=0` (+`updated_at`) pada user itu
+  (keadaan sama dengan log-out biasa). Penolakan izin/classifier: tidak ada.
 
 ## Riwayat ronde
 
-- Ronde 1-2 (2026-10-07, run awal): R1 FAIL (AC-6 D-1 id non-latin1 -> 500; D-2 PUT paralel -> 500 `1062`); R2 PASS: D-2 diperbaiki (`lockFolders`, ~4.030 request, 0 x 5xx),
-  D-1 dipindah ke ED-1071 (X-1 karakterisasi); regresi ED-1024..1028 tanpa regresi nyata.
-- Review batch 2026-10-08 minta perbaikan; revisi spec/kontrak (FB-4b, ED-1025 K-15 b/K-12 a, K-8 c).
-- Ronde 1 revisi (2026-10-09 05:4x-06:29 lokal): lihat di atas. PASS, 0 defect, 17 AC [BE] PASS, 2 not_verifiable.
+- Ronde 1-2 (2026-10-07, run awal): R1 FAIL (id non-latin1 -> 500 = ED-1071; PUT paralel -> 500 `1062`); R2 PASS setelah `lockFolders`.
+- Revisi 2026-10-08/09 (FB-4b, FB-9, FB-5, K-15 b): ronde 1 PASS, 17 AC [BE] PASS, 0 defect, 2 not_verifiable.
+- Revisi 3 (2026-10-12), ronde 1 (ini): PASS, 0 defect; 11 skenario baru (1.049 asersi), regresi 29 skenario, ED-1025 AC-5/AC-38 PASS.

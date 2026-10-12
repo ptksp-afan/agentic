@@ -36,8 +36,9 @@
  *     0QA29-J-JA   On   A V+U+D+S;  B kosong
  *     0QA29-J-JB   On   tanpa baris A (A tanpa View); B kosong
  *     0QA29-J-JC   Off  tanpa baris A;  B View+Store (nilai tersimpan, terkunci karena Off)
- *   0QA29-F        Off  root; tanpa baris siapa pun (AC-25: A menyalakan Izin di tab Izin)
- * Nilai awal (initialRows): A: J=1000, J-JA=1111, P=1111, P-C1=1111, Q=1000, R-R1=1111; B: P=1000, C2=1001, Q=1100, J-JC=1001; E: P=1000;
+ *   0QA29-F        Off  root; tanpa baris siapa pun (AC-25: A menyalakan Izin di tab Izin; rev3 AC-30/31: saklar)
+ *   0QA29-G        Off  root; A View saja (rev3, ED-1130: saklar dinyalakan A atas dirinya = baris A dinaikkan, tetap satu baris)
+ * Nilai awal (initialRows): A: J=1000, J-JA=1111, P=1111, P-C1=1111, Q=1000, R-R1=1111, G=1000; B: P=1000, C2=1001, Q=1100, J-JC=1001; E: P=1000;
  * B2: tanpa baris.
  *
  * Yang ditulis: archives, archive_documents(0), archive_locations, archive_permissions (hanya baris folder berawalan 0QA29-),
@@ -240,7 +241,7 @@ function initialA()
 {
     $full = [1, 1, 1, 1];
 
-    return ['J' => [1, 0, 0, 0], 'J-JA' => $full, 'P' => $full, 'P-C1' => $full, 'Q' => [1, 0, 0, 0], 'R-R1' => $full];
+    return ['J' => [1, 0, 0, 0], 'J-JA' => $full, 'P' => $full, 'P-C1' => $full, 'Q' => [1, 0, 0, 0], 'R-R1' => $full, 'G' => [1, 0, 0, 0]];
 }
 
 function initialE()
@@ -251,7 +252,7 @@ function initialE()
 /** Flag Izin Folder awal semua folder uji. */
 function initialFlags()
 {
-    return ['L' => 1, 'P' => 1, 'P-C1' => 1, 'P-C2' => 0, 'Q' => 1, 'R' => 0, 'R-R1' => 1, 'J' => 1, 'J-JA' => 1, 'J-JB' => 1, 'J-JC' => 0, 'F' => 0];
+    return ['L' => 1, 'P' => 1, 'P-C1' => 1, 'P-C2' => 0, 'Q' => 1, 'R' => 0, 'R-R1' => 1, 'J' => 1, 'J-JA' => 1, 'J-JB' => 1, 'J-JC' => 0, 'F' => 0, 'G' => 0];
 }
 
 if ($cmd === 'up') {
@@ -380,6 +381,7 @@ if ($cmd === 'up') {
         $add('J-JB', $J, 1);
         $add('J-JC', $J, 0);
         $add('F', null, 0);
+        $add('G', null, 0); // (rev3) Off, A View saja (baris A dipasang di bawah)
     });
 
     $ids['_userA'] = ['id_user' => $userA->id_user, 'username' => $userA->username];
@@ -392,7 +394,7 @@ if ($cmd === 'up') {
     foreach (initialB() as $suffix => $r) {
         insertPerm($c, $ids[$suffix], $userB->id_user, $r);
     }
-    foreach (['J', 'J-JA'] as $suffix) {
+    foreach (['J', 'J-JA', 'G'] as $suffix) {
         insertPerm($c, $ids[$suffix], $userA->id_user, initialA()[$suffix]);
     }
     foreach (initialE() as $suffix => $r) {
@@ -451,7 +453,7 @@ if ($cmd === 'state') {
             $byId[$v] = $k;
         }
     }
-    $out = ['rows' => ['A' => [], 'B' => [], 'B2' => []], 'history' => [], 'flags' => [], 'total_permissions' => (int) $c->table('archive_permissions')->count()];
+    $out = ['rows' => ['A' => [], 'B' => [], 'B2' => []], 'history' => [], 'flags' => [], 'updated_by' => [], 'dups' => [], 'total_permissions' => (int) $c->table('archive_permissions')->count()];
     foreach (['A' => '_userA', 'B' => '_userB', 'B2' => '_userB2'] as $label => $key) {
         foreach ($c->table('archive_permissions')->where('id_user', $ids[$key]['id_user'])->whereIn('id_archive', array_keys($byId))->get() as $r) {
             $out['rows'][$label][$byId[$r->id_archive]] = [(int) $r->is_view, (int) $r->is_update, (int) $r->is_delete, (int) $r->is_store];
@@ -459,14 +461,20 @@ if ($cmd === 'state') {
         ksort($out['rows'][$label]);
         $out['rows'][$label] = (object) $out['rows'][$label]; // kosong tetap {} di JSON
     }
-    foreach ($c->table('archives')->whereIn('id_archive', array_keys($byId))->get(['id_archive', 'is_folder_permission', 'history']) as $a) {
+    // (rev3) tanpa baris ganda per (folder, user): grup (id_archive, id_user) dengan lebih dari satu baris di folder uji
+    foreach ($c->table('archive_permissions')->whereIn('id_archive', array_keys($byId))->select('id_archive', 'id_user', $c->raw('COUNT(*) AS n'))->groupBy('id_archive', 'id_user')->havingRaw('COUNT(*) > 1')->get() as $d) {
+        $out['dups'][] = $byId[$d->id_archive] . '/' . $d->id_user . ' x' . $d->n;
+    }
+    foreach ($c->table('archives')->whereIn('id_archive', array_keys($byId))->get(['id_archive', 'is_folder_permission', 'history', 'updated_by']) as $a) {
         $h = $a->history ? json_decode($a->history, true) : [];
         $perm = array_values(array_filter(is_array($h) ? $h : [], function ($e) {
             return ($e['action'] ?? null) === 'permission';
         }));
         $out['history'][$byId[$a->id_archive]] = ['count' => count($perm), 'last_by' => $perm ? ($perm[count($perm) - 1]['related_username'] ?? null) : null];
         $out['flags'][$byId[$a->id_archive]] = (int) $a->is_folder_permission;
+        $out['updated_by'][$byId[$a->id_archive]] = $a->updated_by;
     }
+    ksort($out['updated_by']);
     ksort($out['history']);
     ksort($out['flags']);
     jsonLast($out);
