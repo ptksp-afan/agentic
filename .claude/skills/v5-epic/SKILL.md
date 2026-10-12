@@ -80,6 +80,7 @@ Shared working trees and BE server: never two items in parallel. For each approv
    You are the story runner for <KEY> (<type>) of epic <EPIC>, long-run mode. Invoke the Skill
    `v5-feature` with args `<KEY> --long-run --epic <EPIC>` and follow it, including
    references/long-run.md, until this one item ends. Its spec is approved; start at its run.md phase (be, or fe for FE-only).
+   Spawn every child agent with `run_in_background: false` and wait for it; never end your turn while one runs.
    Items blocked earlier in this run: <KEY - scope, one line each, or "none">.
    Return exactly the block described in long-run.md § Return.
    ```

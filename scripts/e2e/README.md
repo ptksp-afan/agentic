@@ -14,7 +14,8 @@ scripts/e2e/run.sh --doctor [--login]           # cek config, Chrome, build, BE,
 scripts/e2e/run.sh ED-1234 -- --grep logo       # argumen sesudah -- ke playwright
 ```
 
-Argumen pertama: `<KEY>` (folder `features/<KEY>-*`), path folder fitur, atau `none`. Opsi lain: `--workers N`,
+Argumen pertama: `<KEY>` (folder `features/<KEY>-*`), path folder fitur, atau `none`. Opsi lain: `--workers N` (default 1;
+lebih dari 1 hanya untuk spec yang tidak saling mengubah data bersama),
 `--include-add` (`--all-routes` ikut layar `/add`). Exit: 0 lulus/skip, 1 ada GAGAL, 2 config/infra sebelum
 Playwright (build staging tidak ada, argumen salah, `npm ci` gagal), 3 `--doctor` dengan profil yang akan di-SKIP.
 

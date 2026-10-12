@@ -58,7 +58,9 @@ module.exports = defineConfig({
   timeout: Number(config.get('E2E_TEST_TIMEOUT', '120000')),
   expect: { timeout: 15000 },
   fullyParallel: true,
-  workers: Number(config.get('E2E_WORKERS', '2')),
+  // default 1: spec berstate bersama (display setting, grant role, opname) gagal acak bila paralel (ED-1027 QA FE Q-1);
+  // `--workers N` hanya untuk spec yang tidak saling mengubah data
+  workers: Number(config.get('E2E_WORKERS', '1')),
   retries: 0,
   forbidOnly: true,
   reporter: [[require.resolve('./lib/reporter.js')]],

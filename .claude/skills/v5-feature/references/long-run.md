@@ -12,8 +12,9 @@ first start move the item (Bug: from `BUG`) and its subtasks to In Progress, ass
 
 ## Agents inside the runner
 
-- Spawn every agent with `run_in_background: false`, **one at a time**, in the SKILL.md order
-  (BE → QA BE → FE → QA FE). Never return while a child agent is still running.
+- Spawn every agent with `run_in_background: false` (the Agent tool defaults to background - pass it
+  explicitly), **one at a time**, in the SKILL.md order (BE → QA BE → FE → QA FE). Never end your turn or
+  return while a child agent is still running: a runner that does is cut off early (ED-1027, 2026-10-09).
 - Same models, same reuse rules (`references/agents.md`).
 - Add to every dev prompt: "Do not modify files listed as dirty in `<feature dir>/baseline/*.status`
   (the developer's own uncommitted work). If the task needs one, stop with `BLOCKED:`."
