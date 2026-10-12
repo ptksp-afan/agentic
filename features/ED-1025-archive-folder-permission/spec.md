@@ -12,31 +12,30 @@ contract: contract.md
 depends_on: [ED-1024]
 ---
 
-## Revisi review 2026-10-08 (+ jawaban Gate 1 ronde 2)
-Sumber: `epics/ED-1022-review-feedback.md` § ED-1025; jawaban Gate 1: `epics/ED-1022-gate1.md` §9b. Kode sekarang = acuan (BE
-9fec7c427..44bea5136, FE 89b3b98a6..7fa63869d). BR/AC tanpa "(rev)" sudah terimplementasi dan tetap berlaku.
+## Revisi ronde 3 (review batch 2026-10-12)
+Sumber: `epics/ED-1022-review-feedback.md` § "Review batch ronde 2" (ED-1025, P6). Acuan: BE HEAD 581569981, FE HEAD 41480e37c (termasuk
+commit UI developer). BR/AC lama tetap; baru = "(rev3)". **Hanya FE + QA; BE, skema, permission, contract tetap.** Gate 1 ronde 3:
+`epics/ED-1022-gate1.md` §9 (disetujui 2026-10-12).
 
-| Kode | Perubahan | BR / AC | Layer |
+| Kode | Masalah | Akar / data | BR / AC |
 |---|---|---|---|
-| FB-4a + K-15 b | Permission baru `Folder Permissions` (id 1140). Tab Izin tampil **dan bisa diubah** hanya dengannya, tanpa syarat Update; PUT memisah kelompok detail (Update) dan izin (`Folder Permissions`) | BR-7, 9, 15, 18, 22; AC-4, 12, 18, 23, 25, 29, 30, 38 | BE+FE |
-| FB-5 + K-14 a | Yang menyalakan Izin Folder otomatis punya baris V/U/D/S (FE, sebelum Save) | BR-16, 19; AC-17, 31 | FE |
-| FB-6 | Kolom **All** sesudah Pengguna | BR-20; AC-32 | FE |
-| FB-7 | Tooltip perisai "Restricted Access" / "Akses Terbatas" | BR-10; AC-20, 34 | FE |
-| FB-9 + K-12 a, K-13 a | Induk superior hanya untuk View; folder Off tidak dibatasi; pindah folder = Update di folder + Store tujuan | BR-1, 4, 6, 9, 22; AC-9, 11, 26-28, 35, 37 | BE (+teks FE) |
-| D-2 + K-16 b | Simpan yang mencabut **View** sendiri → modal, hanya di tab Izin | BR-21; AC-33 | FE |
-| N-3 | id-ID `archive.Back to Archive` = "Kembali ke Arsip" | BR-11; AC-19, 34 | FE |
-| EPIC K-4 a | `Opname Document` 1133 → **1139**, `Folder Permissions` **1140** di `permission_salesman.sql` (oleh item ini); QA seed ulang + grant ulang role uji | BR-18; AC-25 | BE+QA |
-| QA usang | AC-1 (`qa/scenario1-schema-read.php:95`); e2e jumlah tab & item "+" (`qa/e2e/ED-1025-folder-permission.spec.js:113,198`); gate1 §5 | AC-1, 3, 36 | QA |
+| FB2-1 | Perubahan **hanya** lewat kolom Semua → Save: "Tidak ada perubahan untuk disimpan", drawer tertutup, perubahan hilang | Checkbox Semua bukan `Form.Item` (`ArchiveFolderPermission/index.js:94-104`); `onChangeAll` (`:50-53`) = `form.setFieldValue` → `setFields` tanpa `touched` (rc-field-form 1.38.2 `lib/useForm.js:655-660`; `touched` hanya lewat trigger `Form.Item` `lib/Field.js:462-464` / `setFields` ber-`touched` `:189-192`). `useUpdate.onFinish` (`src/hooks/apiHook.js:611-620`): `isFieldsTouched()` false → `message.info` + `onClose()` tanpa PUT | BR-23; AC-39 |
+| FB2-5 | Picker tujuan Pindahkan & pindah massal tanpa perisai | List: `ArchivePage/index.js:382-390`. Kedua picker = `ArchiveTable` (`ArchiveTable/index.js:123-135`, tanpa perisai), data GET `document-archive/archives` yang sama → `is_folder_permission` sudah per baris (`ArchiveService.php:81`, `:134`): **BE tetap**. Konfirmasi pindah massal memakai kolom list → sudah berperisai | BR-24; AC-40 |
+| P6 a | Oracle e2e usang | `qa/e2e/ED-1025-folder-permission.spec.js:124`: `set-permission` masih `Update Folder`; FE = `Folder Permissions` | AC-41 |
+| G1-r3 #1 | Hak otomatis tanpa baris ganda (syarat developer pada ED-1029 K-9 a, juga tab Izin) | Ganda tidak terjadi di alur normal (`grantOwnFolderPermission` `archive.function.js:241-252` menaikkan baris sendiri; "+ Add User" `excepts` `ArchiveFolderPermission/index.js:41`), tetapi `add()` (`:169-171`) tanpa penjaga dan pencocokan FE peka huruf/spasi. BE sudah menolak/menyatukan (`UpdateRequest.php:54` `distinct` 422; `saveUserRow` + UNIQUE) → **BE tetap** | BR-25; AC-42 |
+| catatan | X-12 (latin1) | di `qa/scenario5-input-types.php:358` (bukan scenario4); diubah ED-1071 (AC-9), tidak di sini | - |
 
-Tetap: `ARCHIVE407` dua bentuk body; `_module.md`; Detail read-only penuh tanpa Update. Imbas: ED-1029 (`Folder Permissions`, BR-4), ED-1026 (id
-1139), ED-1026..1028 hanya View → regresi.
+## Revisi review 2026-10-08 (ronde 2, terimplementasi: BE 8ea8ebcf2, FE e5355a9c6)
+FB-4a/K-15 b, FB-5/K-14 a, FB-6, FB-7, FB-9/K-12 a/K-13 a, D-2/K-16 b, N-3, EPIC K-4 a → BR/AC bertanda "(rev)". Tetap: `ARCHIVE407` dua
+bentuk body; `_module.md`; Detail read-only penuh tanpa Update.
 
 ## 1. Ringkasan
 Folder Archive bisa dibatasi per user lewat tab **Izin** di drawer folder: toggle *Aktifkan Izin Folder* (default mati) dan tabel Pengguna ×
 All/View/Update/Delete/Store; superadmin selalu lolos. **(rev)** Hanya View yang mengikuti folder induk; Update/Delete/Store dinilai di folder
 itu sendiri dan folder Izin nonaktif tidak membatasinya. Tanpa View user melihat layar "Anda tidak punya akses ke folder ini"; dokumennya tetap
 bisa dicari dan dipindahkan. **(rev)** Tab Izin hanya dan selalu bisa diubah oleh role ber-*Folder Permissions*; yang menyalakan Izin otomatis
-mendapat semua hak; mencabut akses lihat sendiri meminta konfirmasi. Sumber: S2 (01, 02, 06), S4 hal.1-3; PK-1 b; review & Gate 1 2026-10-08.
+mendapat semua hak; mencabut akses lihat sendiri meminta konfirmasi. **(rev3)** Perubahan lewat kolom Semua tersimpan; picker tujuan
+pindah berperisai seperti list. Sumber: S2 (01, 02, 06), S4 hal.1-3; PK-1 b; review 2026-10-08 dan 2026-10-12.
 
 ## 2. Aturan bisnis
 | # | Aturan | Sumber |
@@ -59,39 +58,39 @@ mendapat semua hak; mencabut akses lihat sendiri meminta konfirmasi. Sumber: S2 
 | BR-16 (rev) | Baris tabel Izin menggantikan seluruh isi folder saat disimpan; baris tanpa hak tidak disimpan; toggle nonaktif tidak menghapus baris; "+ Add User" default View saja, baris otomatis BR-19 = keempat hak; perubahan dicatat di riwayat (aksi `permission`) | K-10; FB-5 |
 | BR-17 | Tanpa folder Izin On, perilaku Archive sama dengan sebelum fitur ini | D-5 |
 | BR-18 (rev) | Permission baru **`Folder Permissions`** (id **1140**, label "Folder Permissions"/"Perizinan Folder", module 1266, seed lisensi Salesman Activity). Mencentangnya ikut mencentang `List Archive` & `View Folder`; `All Archive` ikut mencentangnya; melepas `All Archive`/`List Archive`/`View Folder` melepasnya, melepasnya melepas `All Archive`; tidak terkait `Update Folder` (K-15 b). Role 1/2/3 mendapatnya saat seed ulang. Dipakai ulang ED-1029 | FB-4a/4b; K-15 b; EPIC K-4 a |
-| BR-19 (rev) | Menyalakan toggle (Off→On) langsung menambah baris user login dengan V/U/D/S tercentang, atau menaikkan barisnya; tampil sebelum Save, masih bisa diubah (lepas View sendiri → BR-21). Juga superadmin & pembuat (gate1 C-6) | FB-5; K-14 a |
+| BR-19 (rev) | Menyalakan toggle (Off→On) langsung menambah baris user login dengan V/U/D/S tercentang, atau menaikkan barisnya; tampil sebelum Save, masih bisa diubah (lepas View sendiri → BR-21). Juga superadmin & pembuat (gate1-r2 C-6) | FB-5; K-14 a |
 | BR-20 (rev) | Kolom **All** ("Semua") sesudah Pengguna: tercentang bila keempat hak, indeterminate bila sebagian; centang = keempatnya, lepas = keempatnya lepas (baris tetap; tetap kosong saat Save = tidak disimpan). Tanpa centang-semua-baris di header | FB-6 |
 | BR-21 (rev) | Save drawer saat sesudah simpan user login (bukan superadmin 1/2, bukan pembuat) di folder Izin On tidak lagi punya **View** di barisnya (baris dihapus atau View dilepas) → modal konfirmasi; **Ya** = simpan; **Tidak** = tanpa request API, drawer tetap terbuka dengan perubahannya. Lepas U/D/S saja = tanpa modal. Hanya di tab Izin (ED-1029 tanpa modal) | D-2; K-16 b; ED-1029 K-8 c |
 | BR-22 (rev) | Teks tab Izin: bantuan toggle "Default nonaktif. Saat aktif, akses folder ini dibatasi sesuai izin di bawah. Bisa diubah oleh user dengan izin Perizinan Folder."; peringatan "Hanya izin Lihat di folder induk yang berlaku: user tanpa izin Lihat di folder induk tetap tidak bisa membuka folder ini walaupun dicentang di sini. Ubah, Hapus, dan Letakkan dinilai di folder ini. Superadmin EQUAL selalu bypass." (en setara; tanpa kalimat folder nonaktif, K-12 a) | FB-4a; FB-9; K-12 a; K-15 b |
+| BR-23 (rev3) | Centang/lepas kolom **Semua** = perubahan, sama dengan centang hak satu per satu: Save drawer mengirim PUT, tanpa "Tidak ada perubahan untuk disimpan"/"No changes to save" dan tanpa menutup drawer. BR-16 (baris tanpa hak tidak disimpan) dan BR-21 (lepas Semua di baris sendiri = cabut View → modal) tetap | FB2-1 |
+| BR-24 (rev3) | Picker folder tujuan modal **Pindahkan** dan langkah **Pilih Folder** pindah massal menampilkan perisai bertooltip "Restricted Access"/"Akses Terbatas" di samping nama setiap folder Izin On, sama dengan list (BR-10), juga folder yang tidak bisa dipilih/dibuka dan hasil pencarian picker; folder Off & dokumen tanpa ikon; aturan pilih/buka tetap (AC-21) | FB2-5 |
+| BR-25 (rev3) | Tabel Izin satu folder: **paling banyak satu baris per user**. Hak otomatis BR-19 memakai/menaikkan baris user login yang sudah ada (dimuat atau ditambah lewat "+ Add User"), tidak menambah baris kedua; "+ Add User" tidak menawarkan/menambahkan user yang sudah di tabel. User sama = `idUser` sama tanpa beda huruf besar/kecil & spasi akhir (setara kolasi DB). BE tetap menolak ganda (AC-5) | Gate 1 r3 #1 (ED-1029 K-9 a + syarat) |
 
 ## 3. Model data (DB tenant)
 | Perubahan | Detail |
 |---|---|
-| Skema (ada, ED-1031) | `archives.is_folder_permission`, tabel `archive_permissions` (`UNIQUE (id_archive,id_user)`, `KEY id_user`), Updater `2026_10_07_04_25_27_AddArchiveFolderPermission.php`, model `ArchivePermission`. **(rev) Tanpa perubahan skema → tanpa Updater baru** |
-| Permission seed (rev) | `app/Sql/data/permission_salesman.sql` (EPIC K-4 a). `Opname Document` 1133 → **1139** di `:82` (INSERT), `:138` `(1139,1082)`, `:147` `(1081,1139)`, `:216` `(1139,1081)`, `:227` `(1081,1139),(1082,1139)`. Baru: `(1140,1266,'Folder Permissions','Perizinan Folder','Folder Permissions',11,1)`; `permission_checks` `(1081,1140)`, `(1140,1082)`, `(1140,1084)`; `permission_unchecks` `(1140,1081)`, `(1081,1140)`, `(1082,1140)`, `(1084,1140)` (tanpa pasangan dengan 1085, K-15 b). Id 1133-1138 tidak dipakai lagi di berkas (branch AI). Tenant lama: seed ulang (`ApplicationSetupService.php:223-238`, D-7); role 1/2/3 lewat `role_permissions.sql`, role lain manual |
-| `ArchivePermissionService` (rev) | `deniedBy()` (`:114-133`): jalur root→F dinilai untuk View (tetap); untuk U/D/S hanya bila View lolos, lalu `grants(F, hak)` (`:398-416`; Off = true → K-12 a). `context()` + flag `can_manage` = user konteks memegang `Folder Permissions` (`MyHelper::hasPermission`, `MyHelper.php:521`; diisi sebelum keluar bypass `:57`); `access()` `manage_permission` = `can_manage` (`:100-101`, dulu = `update`). Tanda tangan tetap, pemakai tidak diubah (`assertCanManage` diubah ED-1029). Tanpa static/properti lintas request (D-3) |
-| `UpdateRequest` + `ArchiveService::update` (rev) | Kelompok detail & izin dinilai terpisah (K-15 b, contract §3): detail → `Update Folder` (`GE0114`) + `ARCHIVE408`/`410`, aturan wajib lama; izin → `Folder Permissions` (`GE0114`); tanpa keduanya → 422; riwayat `update` hanya dengan detail. Di `authorize()` (`UpdateRequest.php:70-82`) dan service (`ArchiveService.php:278-319`) |
-| Kode pesan | tidak ada yang baru: `GE0114` (`parameter` = nama permission, seperti `PermissionVersion5`) dipakai ulang; `ARCHIVE401`, `407`-`411`, `418` tetap |
+| Skema (ED-1031, ada) | `archives.is_folder_permission`, `archive_permissions` (`UNIQUE (id_archive,id_user)`), Updater `2026_10_07_04_25_27_AddArchiveFolderPermission.php` |
+| Seed (rev, selesai) | `app/Sql/data/permission_salesman.sql`: `Opname Document` 1139, `Folder Permissions` 1140 (module 1266, label BR-18); checks `(1081,1140)`, `(1140,1082)`, `(1140,1084)`; unchecks `(1140,1081)`, `(1081,1140)`, `(1082,1140)`, `(1084,1140)`. Tenant lama: seed ulang (`ApplicationSetupService.php:223-238`); role 1/2/3 lewat `role_permissions.sql` |
+| Service (rev, selesai) | `ArchivePermissionService::deniedBy()`, `context()['can_manage']`; PUT dua kelompok (contract §3) |
+| Kode pesan | tidak ada yang baru: `GE0114` (`parameter` = nama permission) dipakai ulang; `ARCHIVE401`, `407`-`411`, `418` tetap |
+| (rev3) | tanpa perubahan skema, seed, permission, kode pesan, Updater, kode BE |
 
 ## 4. Endpoint v5 (`api/v5`, `auth:api`; `Routes/DocumentArchive/api.php:22-34`)
 | Route | Controller@method | FormRequest | Service | Hak folder / permission | Status |
 |---|---|---|---|---|---|
-| GET `document-archive/archives` | `ArchiveController@index` | - | `ArchiveService::index` | buka folder = View → 403 `ARCHIVE407` + `denied_by`; `access` per baris **(rev) menurut BR-4, `manage_permission` = BR-7** | ubah (rev) |
+| GET `document-archive/archives` | `ArchiveController@index` | - | `ArchiveService::index` | buka folder = View → 403 `ARCHIVE407` + `denied_by`; `access` per baris **(rev) menurut BR-4, `manage_permission` = BR-7**; (rev3) `is_folder_permission` dipakai picker (ada) | ubah (rev) |
 | GET `document-archive/archives/{id}` | `@show` | - | `ArchiveService::show` | View → 403 `ARCHIVE407`; **(rev)** tanpa `Folder Permissions`: `folder_permissions`=[], `manage_permission` false | ubah (rev) |
-| PUT `document-archive/archives/{id}` | `@update` | `UpdateRequest::authorize()` | `ArchiveService::update` | **(rev)** route `permission_v5:Update Folder\|Folder Permissions` (`api.php:27`, dulu `Update Folder`); kelompok detail: `Update Folder` (`GE0114`) → `ARCHIVE408` → induk baru Store `ARCHIVE410`; kelompok izin: `Folder Permissions` (`GE0114`), tanpa cek hak folder | ubah (rev) |
+| PUT `document-archive/archives/{id}` | `@update` | `UpdateRequest::authorize()` | `ArchiveService::update` | **(rev)** route `permission_v5:Update Folder\|Folder Permissions`; detail: `Update Folder` (`GE0114`) → `ARCHIVE408` → induk baru Store `ARCHIVE410`; izin: `Folder Permissions` (`GE0114`), tanpa cek hak folder | ubah (rev) |
 | PUT `archives/rename/{id}`, DELETE `archives/delete/{id}`, POST `archives/create-folder`, POST `documents/put-in`, GET `archives/history/{id}` | tetap | tetap | tetap | `ARCHIVE401`, `407`-`410`, `418` (contract §4), **(rev)** menurut BR-4 (K-12 a, K-13 a) | ubah (rev, aturan) |
 | POST `documents/hand-over`, `receive`; GET `select/.../archive/users` | tetap | - | tetap | tidak dicek | sudah ada |
 
 ## 5. Perubahan FE per module - `src/containers/Archive` (master, aksi baris kustom `archiveActionColumn`)
 | Bagian | Perubahan |
 |---|---|
-| `ArchiveDrawer` (rev) | `canManagePermission` = `usePermission(permissions.FolderPermissions)` && `hasFolderRight(access, 'managePermission')` (`ArchiveDrawer/index.js:38`, dulu `canUpdate` && ...); tab Izin (`:72-78`) hanya bila true, tidak read-only; Save (`DrawerUpdate canUpdate`, `:46`) = `canUpdateFolder \|\| canManagePermission`; `disabled` `Form` (`ArchiveForm/index.js:136`) pindah ke isi tab Detail agar tab Izin tidak ikut terkunci |
-| `toArchiveRequest` (rev) | `archive.function.js:160-182` menerima `{ canUpdateFolder, canManagePermission }`: tanpa `canUpdateFolder` kelompok detail tidak dikirim; tanpa `canManagePermission` kelompok izin tidak dikirim (tetap) |
-| `ArchiveFolderPermission` (rev) | kolom All (BR-20) sesudah kolom User (`ArchiveFolderPermission/index.js:66-70`, judul `common.All`); `Switch` On → fungsi baru `grantOwnFolderPermission(rows, user)` di `archive.function.js` (`useAppProvider().app.user`: `idUser`, `username`); teks BR-22 |
-| Simpan (rev) | `useArchiveController` (`archive.function.js:22-30`): fungsi murni baru `willLoseOwnFolderAccess(values, { user, createdBy })` = folder On sesudah simpan, user login bukan superadmin (`findLowestSuperadminLevel`, `helpers/authHelper.js:274`)/pembuat (`createdBy`, tanpa beda huruf), barisnya tanpa View (K-16 b); true → `modal.confirm` (pola `ArchivePermissionPage/index.js:102-108`), `onOk` = `onFinish`; batal = tanpa request. Hanya drawer; ekspor per baris untuk ED-1029 tidak perlu (O-10 gugur, ED-1029 K-8 c) |
-| `ArchivePage` | **(rev)** tooltip perisai `archive.Restricted Access` (`ArchivePage/index.js:359-366`) |
-| Menu baris, "+", picker | mengikuti `access` BE (`archive.function.js:227-241`, `:260-284`); **(rev)** tanpa ubah kode, hasil menurut BR-4 (AC-35). Item "+" Set Permission by User → ED-1029 |
-| Registrasi (rev) | `routes/permissions.js` (dekat `:332`) `FolderPermissions: 'Folder Permissions'` (nama, bukan id; dipakai ED-1029); `archive.locale.js` en+id: `archive.Back to Archive` id "Kembali ke Arsip" (`:202`), `archive.Restricted Access`, isi modal (id "Sesudah disimpan, Anda tidak lagi bisa melihat folder ini. Lanjutkan?"), teks BR-22 (`:50-56`, `:189-195`) |
+| Rev (selesai) | `ArchiveDrawer` (`canManagePermission`, Save), `toArchiveRequest` per kelompok, `ArchiveFolderPermission` (kolom All, `grantOwnFolderPermission`, teks BR-22), modal `willLoseOwnFolderAccess`, perisai list, `permissions.FolderPermissions`, locale |
+| `ArchiveFolderPermission` (rev3, BR-23) | `onChangeAll` (`:50-53`) menulis keempat hak dengan `form.setFields` per field hak terdaftar (`['folderPermissions', name, right]`) + `touched: true`, bukan `setFieldValue` satu baris, lewat **fungsi murni baru** (mis. `toFolderPermissionRowFields(name, row)` → entri `setFields`); tanda tangan & hasil `getFolderPermissionAllState`/`onChangeAllFolderPermission` **tetap** (dipakai ED-1029, gate1 O-1). `DrawerUpdate`/`useUpdate` tidak diubah |
+| Satu baris per user (rev3, BR-25) | pencocokan user (`grantOwnFolderPermission`, penjaga "+ Add User" `onChange` `:169-171`) lewat satu fungsi murni (mis. `isSameFolderPermissionUser(a, b)`: trim akhir + tanpa beda huruf); "+ Add User" user yang sudah ada = tanpa baris baru. Tanda tangan `grantOwnFolderPermission` tetap |
+| Perisai bersama (rev3, BR-24) | komponen kecil baru di `archive-components` (mis. `ArchiveRestrictedIcon`, diekspor `index.js`): `SafetyCertificateTwoTone` + `Tooltip` `archive.Restricted Access` bila `type === 'Folder'` && `Number(isFolderPermission) === 1`; dipakai `ArchivePage/index.js:382-390` (ganti inline, tampilan sama) dan render nama `ArchiveTable/index.js:125-135` (`render: (text, row)`). Tanpa request/locale baru |
 
 ## 6. Acceptance criteria
 Profil: QA_DB `api_sidomaju` (lisensi Salesman Activity). **(rev)** Seed ulang permission (1139/1140) lalu grant ulang role uji (selain 1/2/3;
@@ -137,61 +136,47 @@ JB (On, tanpa baris A), JC (Off); folder X (A Store).
 | AC-33 (rev) | [K-16 b] A (bukan superadmin/pembuat) di F On: hapus baris A atau lepas View A, Save → modal; **Tidak** → tanpa PUT `archives/{F}` (monitor jaringan), drawer tetap terbuka dengan perubahannya; **Ya** → PUT 200. Lepas U/D/S A saja, superadmin, pembuat, toggle Off → tanpa modal | [FE] | 21 | e2e (A, superadmin) + unit `willLoseOwnFolderAccess` |
 | AC-34 (rev) | Bahasa en lalu id: tooltip perisai "Restricted Access"/"Akses Terbatas", tombol layar 06 "Back to Archive"/"Kembali ke Arsip", teks bantuan & peringatan BR-22 | [FE] | 10, 11, 22 | e2e + `manual (Gate 2)` |
 | AC-35 (rev) | Data AC-26, A buka J: menu ⋯ JA dan JC memuat Pindahkan & Hapus; drawer JA dan JC (K-12 a) Detail bisa diubah, Save sukses; "+" di dalam JA dan JC memuat Add Folder & Store Document, di dalam J tidak | [FE] | 4, 9 | e2e (A) |
-| AC-36 (rev) | Regresi (gate1 §5): QA BE ED-1024 dijalankan ulang, ekspektasi usang karena item ini (FB-9, K-12 a, K-15 b, 1139/1140) diperbarui di folder ED-1024 oleh QA ini; skenario & e2e sendiri diperbarui (AC-1, e2e `:113,198`). QA BE ED-1026..ED-1029 + e2e ED-1029 = regresi: yang usang hanya **dicatat** di qa-be.md/qa-fe.md. Karakterisasi bug terbuka tetap, tidak dibalik: X-8 bagian search, X-13, X-12 (+ probe D-1 ED-1029); X-8 induk = diri sendiri milik QA ED-1069. Tanpa 500 baru | [BE+FE] | 4, 7 | http + e2e |
+| AC-36 (rev) | Regresi (gate1-r2 §5): QA BE ED-1024 dijalankan ulang, ekspektasi usang karena item ini (FB-9, K-12 a, K-15 b, 1139/1140) diperbarui di folder ED-1024 oleh QA ini; skenario & e2e sendiri diperbarui (AC-1, e2e `:113,198`). QA BE ED-1026..ED-1029 + e2e ED-1029 = regresi: yang usang hanya **dicatat** di qa-be.md/qa-fe.md. Karakterisasi bug terbuka tetap, tidak dibalik: X-8 bagian search, X-13, X-12 (+ probe D-1 ED-1029); X-8 induk = diri sendiri milik QA ED-1069. Tanpa 500 baru | [BE+FE] | 4, 7 | http + e2e |
 | AC-37 (rev) | [K-13 a] A Update di JA, View saja di J, Store di X: put-in JA ke X / ke root, PUT `archives/{JA}` `id_archive_parent`=X → 200 (induk asal tidak dicek); tujuan tanpa Store → 403 `ARCHIVE410`; JB put-in ke X oleh A → 403 `ARCHIVE408` parameter JB; [K-12 a] JC put-in ke X oleh A → 200 | [BE] | 9 | http |
 | AC-38 (rev) | [K-15 b] D: PUT `archives/{F}` kelompok izin saja → 200, baris diganti, riwayat hanya `permission`; + kelompok detail → 403 `GE0114` (`parameter` "Update Folder"), DB tetap. A: kelompok izin saja ke JB (tanpa View) dan J → 200 (GET `archives/{JB}` tetap 403 `ARCHIVE407`); kelompok detail ke J → 403 `ARCHIVE408` parameter J. Folder di luar scope lokasi → 403 `ARCHIVE407`; tanpa kedua kelompok → 422 | [BE] | 7, 9, 15 | http + DB |
+| AC-39 (rev3) | [FB2-1] Folder fixture F On, A V/U/D/S, B View saja. A di drawer F tab Izin **hanya** centang Semua B, Save → PUT `archives/{F}` terkirim (monitor jaringan) 200 `ARCHIVE207`, tanpa pesan "No changes to save"/"Tidak ada perubahan untuk disimpan", DB (F, B) = 1/1/1/1, buka ulang = Semua B tercentang. **Hanya** lepas Semua B, Save → PUT 200, baris (F, B) hilang. Unit: Semua saja + Save → PUT, tanpa `message.info`; lepas Semua baris sendiri (A bukan pembuat/superadmin) → modal BR-21, Tidak = tanpa PUT | [FE] | 16, 20, 21, 23 | e2e (A) + DB + unit |
+| AC-40 (rev3) | [FB2-5] A buka Pindahkan (⋯ dokumen) dan pindah massal (Konfirmasi + Pilih Folder): folder Izin On di picker (root, dalam folder wadah, hasil pencarian; termasuk tanpa View/Store) berikon perisai, hover → "Restricted Access" (en) / "Akses Terbatas" (id); folder Off & dokumen tanpa ikon; klik ikon = klik nama; AC-21 tetap; tanpa error konsol & tanpa request tambahan. Unit `ArchiveTable`/`ArchiveMoveModal`: `isFolderPermission` 1 → ikon + tooltip, 0/dokumen → tanpa; list tetap berikon (AC-20) | [FE] | 10, 24 | e2e (A) + unit |
+| AC-41 (rev3) | [P6] e2e `expectedPlus` (`qa/e2e/ED-1025-folder-permission.spec.js:124`): `set-permission` = `Folder Permissions` (`getArchiveAddKeys`), bukan `Update Folder`; di semua pemanggilnya (AC-3 A/C, AC-35): A → "+" memuat Set Permission by User/Atur Izin per User, C (ber-`Update Folder`, tanpa `Folder Permissions`) → tidak. Seluruh e2e ED-1025 (1 worker) + unit Archive lulus; oracle usang lain milik item ini diperbarui di folder ini saja; X-12 tidak disentuh (ED-1071). Tanpa 500 baru | [FE] | 15 | e2e (A, C) + unit |
+| AC-42 (rev3) | [Gate 1 r3 #1] F On tanpa baris A: A "+ Add User" dirinya (View), toggle Off lalu On → tetap **satu** baris A, naik ke V/U/D/S; Save → body memuat A sekali, 200, DB satu baris (F, A) 1/1/1/1; "+ Add User" tidak menawarkan A. Unit: `grantOwnFolderPermission` dengan baris A beda huruf/spasi akhir → dinaikkan, tidak ditambah; `onChange` "+ Add User" dengan user yang sudah ada → jumlah baris tetap. BE: AC-5 (`id_user` ganda 422) tetap | [FE] | 16, 19, 25 | e2e (A) + DB + unit |
 
-## 7. Subtask (rev) - hanya pekerjaan perbaikan; subtask lama ED-1031..ED-1066 tetap
+## 7. Subtask (rev3)
 | # | Judul | Layer | AC | Module |
 |---|---|---|---|---|
-| 1 (rev) | [BE] Hak folder efektif: induk hanya dominan untuk View, folder Izin nonaktif tidak dibatasi | BE | 9, 11, 26, 27, 28, 37 | DocumentArchive |
-| 2 (rev) | [BE] Permission Folder Permissions: seed id 1140 & Opname Document 1139, manage_permission, kelompok detail/izin di ubah folder | BE | 4, 12, 23, 25, 29, 38 | `app/Sql`, DocumentArchive |
-| 3 (rev) | [FE] Archive - tab Izin: permission Perizinan Folder, kolom All, hak otomatis saat Izin Folder dinyalakan | FE | 3, 17, 18, 30, 31, 32 | Archive |
-| 4 (rev) | [FE] Archive - konfirmasi cabut akses lihat sendiri, tooltip Akses Terbatas, teks aturan induk, Kembali ke Arsip | FE | 19, 20, 33, 34, 35 | Archive |
-| 5 (rev) | [QA] Skenario revisi folder permission, perbarui skenario usang, regresi ED-1024/ED-1026..ED-1029 | QA | 1, 3, 36 + semua (rev) | Archive |
+| 6 (rev3, ED-1131) | [FE] Archive - tab Izin: kolom Semua tercatat sebagai perubahan, satu baris per user saat Izin dinyalakan | FE | 39, 42 | Archive |
+| 7 (rev3, ED-1132) | [FE] Archive - ikon perisai Akses Terbatas di picker Pindahkan dan pindah massal | FE | 40 | Archive |
+| 8 (rev3, ED-1133) | [QA] Skenario revisi ronde 3: simpan lewat kolom Semua, baris tunggal per user, perisai di picker, oracle "+" e2e | QA | 39-42 | Archive |
 
-**Jira subtask (rev), dibuat 2026-10-08 (sprint 46):** ED-1083 [BE] hak folder efektif · ED-1084 [BE] permission Folder Permissions/seed · ED-1085 [FE] tab Izin · ED-1086 [FE] konfirmasi/tooltip/teks · ED-1087 [QA]
+Subtask lama ED-1031..ED-1066 dan (rev) ED-1083..ED-1087 selesai. Subtask rev3 (6-8) dibuat orkestrator.
 
 ## 8. Keputusan untuk developer
-### Revisi (Gate 1 ronde 2, dijawab 2026-10-08)
-| # | Pertanyaan (opsi; rekomendasi; risiko) | Jawaban |
-|---|---|---|
-| K-12 | Folder Izin Off di bawah induk On: siapa boleh U/D/S (juga put-in, buat subfolder)? (a tidak dibatasi, cukup View efektif; b ikut folder On terdekat; rek. b; tinggi) | Jawaban Gate 1 (2026-10-08): a - folder Off tidak dibatasi induknya; siapa pun ber-View (dalam scope lokasi) boleh U/D/S, hapus tetap harus kosong; hanya View diwarisi (BR-1, 4, 9; AC-28, 35, 37) |
-| K-13 | Pindah folder F (put-in, ganti induk, ke root)? (a Update di F + Store tujuan; b a + Update di induk asal; rek. a; tinggi) | Jawaban Gate 1 (2026-10-08): a - induk asal tidak dicek (BR-9; AC-37) |
-| K-14 | Mekanisme hak otomatis FB-5? (a FE tambah/naikkan baris user login; b BE paksa saat 0→1; c a tanpa menaikkan; rek. a; rendah) | Jawaban Gate 1 (2026-10-08): a - FE, terlihat & bisa diubah sebelum Simpan; juga superadmin/pembuat (BR-19; AC-31) |
-| K-15 | Siapa membuka & mengubah tab Izin? (a `Folder Permissions` + `Update Folder` + Update efektif; b `Folder Permissions` saja, route PUT `Update Folder\|Folder Permissions`, field dipisah; rek. a; tinggi) | Jawaban Gate 1 (2026-10-08): b - `Folder Permissions` saja; semua folder dalam scope lokasi, termasuk tanpa View (lewat ED-1029) (BR-7, 15, 18; AC-4, 18, 29, 30, 38) |
-| K-16 | Pemicu modal cabut akses sendiri (D-2)? (a kehilangan View atau Update; b hanya View; rek. a; rendah) | Jawaban Gate 1 (2026-10-08): b - hanya View, hanya di tab Izin; ED-1029 tanpa modal (K-8 c) (BR-21; AC-33) |
-| EPIC K-4 | Id permission bentrok branch AI 1133-1138? (a Archive mengalah 1139/1140; b tetap; c rentang per branch; rek. a; tinggi) | Jawaban Gate 1 (2026-10-08): a - `Opname Document` 1139, `Folder Permissions` 1140; berkas seed diubah item ini (§3; AC-25) |
+### Revisi ronde 3 (dijawab Gate 1 2026-10-12, `epics/ED-1022-gate1.md` §9)
+| # | Pertanyaan | Opsi (akibat) | Jawaban |
+|---|---|---|---|
+| K-17 | Luas QA rev3 (diff hanya FE Archive) | a) unit Archive + seluruh e2e ED-1025, tanpa suite BE; b) a + suite BE ED-1025 (+20-30 menit; X-12 **sudah FAIL di HEAD** sejak ED-1069 B-3 - rename 200 `?` → 500 - dicatat milik ED-1071, gate1 C-2); c) b + e2e ED-1024, ED-1029 (oracle 1029 usang). Rek. a, rendah | **a** |
+| G1 #1 | ED-1029 K-9 (hak otomatis by User) | a + syarat developer: hak otomatis tidak pernah membuat baris ganda untuk user yang sama, juga di tab Izin | **a + syarat** → BR-25, AC-42 (FE; BE sudah menolak) |
+| EPIC K-5 | Tulis flag Izin dari halaman by User | a tulis sendiri di 1029; b ekstrak dari `ArchiveService::update` | **b** - lihat § Di luar cakupan |
 
-### Gate 1 2026-10-06 (sudah dijawab)
-K-1 a (semua hak dominan dari induk) **(rev) digantikan FB-9/K-12 a: hanya View** · K-2 a (superadmin 1 dan 2) · K-3 a (pembuat: semua hak;
-(rev) View tunduk induk) · K-4 a (kelola = Update efektif) **(rev) digantikan FB-4a + K-15 b** · K-5 a (hak folder + permission module; (rev)
-kelompok izin: BR-7) · K-6 a (tampil + perisai, layar 06) · K-7 (pemetaan aksi; subfolder tanpa Delete → `ARCHIVE418`) · K-8 a (aksi dokumen
-tidak dibatasi) · K-9 a ("+ Add User") · K-10 ya ×4 · K-11 gugur (ED-1024) · EPIC K-2 b (AC-23).
+### Sudah dijawab
+Gate 1 ronde 2 (`epics/ED-1022-gate1-r2.md` §9b): K-12 a · K-13 a · K-14 a · K-15 b · K-16 b · EPIC K-4 a (isi: BR-1, 4, 7, 9, 18, 19, 21).
+Gate 1 2026-10-06: K-1 a (→ K-12 a) · K-2 a · K-3 a · K-4 a (→ K-15 b) · K-5 a · K-6 a · K-7 · K-8 a · K-9 a · K-10 ya ×4 · K-11 gugur · EPIC
+K-2 b (AC-23).
 
 ## 9. Di luar cakupan
-- Halaman **Set Permission by User**, item "+", `assertCanManage` = `Folder Permissions` (FB-4b), aturan sel & teks info (BR-4, K-12 a) →
-  **ED-1029** (memakai permission, konstanta, `manage_permission`, `ArchivePermissionService` dari sini; tanpa modal, K-8 c).
-- Penguncian dengan `Opname Document` (FB-8, EPIC K-3 a) → ED-1026/1027/1028 (id 1139 diubah di sini; AC ED-1026 menyesuaikan).
-- Scope lokasi, `permission_v5` route Archive → ED-1024. Pindah ke turunan, rename nama kembar, induk = diri sendiri → ED-1069; klik ⋯ dokumen
-  → ED-1072 (berkas sama: `UpdateRequest`, `PutInFolderRequest`, `RenameFolderRequest`, `ArchiveService::update`; urutan = rank).
-- Ditunda di Gate 1 (task lain, bukan run ini; tidak ditunggu): parameter list v5 salah bentuk (`search`/`sorts`/`pagination` = 500) dan
-  kolasi latin1. Karakterisasinya di QA item ini tetap (AC-36).
-- Pewarisan baris permission ke subfolder baru; centang semua baris di header All; `POST archives/add-document` (ED-1023, dilewati).
+- Halaman **Set Permission by User** (+ rev3 kolom Semua & saklar Izin FB2-2/3) → **ED-1029**; memakai `getFolderPermissionAllState`/
+  `onChangeAllFolderPermission` apa adanya (O-1); perisai bersama milik item ini (O-2).
+- **EPIC K-5 b → ED-1029:** tulis flag Izin di `ArchiveService::update` (`:415-424`) diekstrak ke satu method `ArchivePermissionService`
+  (dipakai juga `UserPermissionService::update`); hak otomatis K-9 tidak di sana (O-3). ED-1029 mengulang QA BE ED-1025 `--only` AC-5, AC-38.
+- **(rev3)** Deteksi "tidak ada perubahan" generik `DrawerUpdate`/`useUpdate` (semua module) tidak diubah (P-7).
+- `Opname Document` → ED-1026/1027/1028; scope lokasi → ED-1024; pindah ke turunan/nama kembar/induk diri sendiri → ED-1069; ⋯ dokumen →
+  ED-1072; list v5 salah bentuk → ditunda (ED-1070; X-8 search, X-13 tetap); kolasi latin1 → **ED-1071** (P1, sesudah item ini; ubah X-12).
+- Pewarisan baris ke subfolder baru; centang semua baris di header All; `POST archives/add-document`.
 
 ## Catatan implementasi (kode sekarang)
-- (BE) `ArchivePermissionService::context()` memuat sekali semua folder + baris user, diteruskan pemanggil (`$context`), tanpa static/properti.
-  Tambahan: `assertFolders()`, `folderRows()`, `replaceFolderRows()`, `userRows()`/`lockFolders()` (ED-1029, D-4 tetap). Baris U/D/S tanpa View
-  tidak memberi hak. Pembuat: `created_by` vs username tanpa beda huruf besar/kecil.
-- (BE) GET `archives` 403 hak folder = `Message::formatResponse`; error lain = `ErrorMessageException` (developer: tetap). Put-in folder ke root
-  butuh Update di folder itu (folder Off: cukup View, K-12 a). Hapus: 404/`ARCHIVE407` → `ARCHIVE409` → `ARCHIVE418` → 400 `ARCHIVE401`.
-- (BE, fix ronde 1-2) tipe salah di request Archive = 422, bukan 500 (`hasScalarLocations()`; rule melewati nilai bukan skalar).
-- (BE, rev ED-1083/ED-1084) `ArchivePermissionService::deniedBy()` menilai View di seluruh jalur lalu U/D/S hanya di folder itu;
-  `context()['can_manage']` = `MyHelper::hasPermission('Folder Permissions')` (tanpa bypass customer seperti middleware); konstanta
-  `ArchivePermissionService::FOLDER_PERMISSIONS` + `assertCanManagePermission($context)` (403 `GE0114`) siap dipakai ED-1029.
-  PUT: kelompok = key dikirim (`ArchiveService::DETAIL_FIELDS`/`PERMISSION_FIELDS`, `sendsFields()`), dinilai di `assertCanUpdate()`
-  (authorize + service). Kelompok izin saja tanpa perubahan = 200 tanpa tulisan. `UserPermissionService` (ED-1029) tidak diubah:
-  `access.manage_permission` di halaman by User kini = `Folder Permissions`, route & `assertCanManage` masih `Update Folder`/Update efektif
-  sampai revisi ED-1029.
-- (FE) `ArchiveForm` meneruskan `disabled` (`isUsed` / tanpa Update = Detail read-only penuh); `access` null tidak membatasi di FE; pindah massal
-  tidak menyaring folder tanpa Update (BE 403 `ARCHIVE408`).
+- (BE) `ArchivePermissionService::context()` sekali per request, diteruskan, tanpa static (D-3); `can_manage` = `MyHelper::hasPermission`
+  (tanpa bypass customer). GET `archives` 403 hak folder = `Message::formatResponse`, lain `ErrorMessageException`. Hapus: 404/`407` → `409`
+  → `418` → 400 `401`. Kelompok izin tanpa perubahan = 200 tanpa tulisan; PUT izin ke id dokumen menulis flag (pra-ada, QA O-1).

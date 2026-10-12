@@ -15,7 +15,7 @@
  *
  * Pengguna: A = QA_USER (profil default), B = QA_USER2 (profil user2). Keduanya non-superadmin pada keadaan asli (role 3 dan 5).
  * Peran uji (revisi ED-1025, spec 6): A = List Archive, Update/Delete Folder, Add Folder, Add Document, Move Archive, View Folder,
- * Handover/Receive Document, Folder Permissions; C = A tanpa Folder Permissions; D = List Archive, View Folder, Folder Permissions;
+ * Handover/Receive Document, Folder Permissions (+ Opname Document, supaya tab Verification tetap ada); C = A tanpa Folder Permissions; D = List Archive, View Folder, Folder Permissions (+ Opname Document);
  * SUPER = role 1 (Super Admin EQUAL, is_superadmin 1). Semua role uji memuat `Allow Access Website`: QA_USER2 bukan karyawan,
  * tanpa permission itu middleware `permission_v5` menolak 403 dan MENCABUT tokennya. Spec memanggil `role` sebelum membuka layar (FE membaca ulang auth/info).
  *
@@ -28,6 +28,8 @@
  *     AUTO Off (tanpa baris), AUTO2 Off (A V), ALL On (A VUDS, B V), DP On (A V, B V), CED Off
  *   Y      Off, wadah kedua (daftar dipaginasi ~10 baris, jadi dipecah):
  *     SUPAUTO Off, OWN, OWN2, OWN3 On (A VUDS, B V), OWNC On (pembuat A; A VUDS, B V), OWNS On (B V)
+ *   W      Off, wadah ketiga (rev3, ED-1133):
+ *     SEM On (A VUDS, B V; pembuat bukan A) = AC-39 simpan lewat kolom Semua; F42 On (pembuat A, TANPA baris A, B V) = AC-42
  */
 
 namespace QaHttp;
@@ -46,9 +48,11 @@ const TABLES = ['archives', 'archive_documents', 'archive_locations', 'archive_p
 const INFO_TABLES = ['roles', 'role_permissions', 'user_roles'];
 
 const PERMS = [
-    'A' => ['List Archive', 'Update Folder', 'Delete Folder', 'Add Folder', 'Add Document', 'Move Archive', 'View Folder', 'Handover Document', 'Receive Document', 'Folder Permissions', 'Allow Access Website'],
-    'C' => ['List Archive', 'Update Folder', 'Delete Folder', 'Add Folder', 'Add Document', 'Move Archive', 'View Folder', 'Handover Document', 'Receive Document', 'Allow Access Website'],
-    'D' => ['List Archive', 'View Folder', 'Folder Permissions', 'Allow Access Website'],
+    // 'Opname Document' ada di semua peran uji: tab Verification (hanya untuk pemegangnya, ED-1027 BR-18) dan item "+" Opname tetap tampil
+    // seperti sebelum ED-1027 (rev3: oracle jumlah tab Detail [+ Izin] + Verification tetap benar)
+    'A' => ['List Archive', 'Update Folder', 'Delete Folder', 'Add Folder', 'Add Document', 'Move Archive', 'View Folder', 'Handover Document', 'Receive Document', 'Folder Permissions', 'Opname Document', 'Allow Access Website'],
+    'C' => ['List Archive', 'Update Folder', 'Delete Folder', 'Add Folder', 'Add Document', 'Move Archive', 'View Folder', 'Handover Document', 'Receive Document', 'Opname Document', 'Allow Access Website'],
+    'D' => ['List Archive', 'View Folder', 'Folder Permissions', 'Opname Document', 'Allow Access Website'],
 ];
 
 function say($line)
@@ -169,7 +173,9 @@ function makeRole($c, $label, array $names)
 
 function permissionNames($c, array $roleIds)
 {
-    return $c->table('role_permissions')->whereIn('id_role', $roleIds)->orderBy('permission_name')->pluck('permission_name')->all();
+    // nama dari tabel permissions lewat id_permission: baris role_permissions hasil centang lewat UI role bisa ber-permission_name NULL
+    return $c->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')
+        ->whereIn('rp.id_role', $roleIds)->orderBy('p.permission_name')->pluck('p.permission_name')->all();
 }
 
 function recover($c, $journal)
@@ -310,6 +316,14 @@ if ($cmd === 'up') {
         $perm($oc, $b, 1, 0, 0, 0);
         $os = $add(PREFIX . 'OWNS', 1, $y, 1, $E);
         $perm($os, $b, 1, 0, 0, 0);
+
+        // --- rev3: wadah W (Off) + SEM (AC-39: simpan lewat kolom Semua) + F42 (AC-42: satu baris per user)
+        $w = $add(PREFIX . 'W', 1, null, 0, $E);
+        $sem = $add(PREFIX . 'SEM', 1, $w, 1, $E); // On, A VUDS, B View saja; pembuat bukan A
+        $perm($sem, $a, 1, 1, 1, 1);
+        $perm($sem, $b, 1, 0, 0, 0);
+        $f42 = $add(PREFIX . 'F42', 1, $w, 1, $userA->username); // On, pembuat A, TANPA baris A; B View saja
+        $perm($f42, $b, 1, 0, 0, 0);
 
         foreach (PERMS as $label => $names) {
             $roleIds[$label] = makeRole($c, $label, $names);

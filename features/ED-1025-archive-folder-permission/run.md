@@ -11,15 +11,17 @@ agents:
   analyst: {id: abdb886b9da10fc6a, at: 2026-10-06 16:20}
   qa_be: {id: a98b5d7f91511bb97, at: 2026-10-08 17:28}
   be_dev: {id: af75bddd604985321, at: 2026-10-08 15:57}
-  fe_dev: {id: a1d205900d36921cf, at: 2026-10-08 18:29}
-  qa_fe: {id: a9b2761fda0d516d7, at: 2026-10-08 19:45}
+  fe_dev: {id: aa9d0be7fd76a0d9b, at: 2026-10-12 (rev3)}
+  qa_fe: {id: a64bc7ff2a53a2f4e, at: 2026-10-12 (rev3)}
 ---
 ## Status ringkas
-**Revisi selesai, commit lokal, menunggu review batch (long run ED-1022).** QA BE rev r1 PASS (25/0/1 MANUAL), QA FE rev r1 PASS (13/0/1 MANUAL).
-Commit perbaikan: BE 8ea8ebcf2, FE e5355a9c6 (di atas 44bea5136 / 7fa63869d, tanpa amend). Jira ED-1025 In Progress + label ai-review + komentar siap review.
-**INSIDEN DB uji (QA FE D-1):** teardown fixture e2e ED-1026 menghapus seluruh tabel opname + kolom verifikasi `archives` di api_sidomaju (data developer: 13 sesi). Tidak dipulihkan AI.
-Long run dihentikan (RESULT env-fail): developer memulihkan data; fixture e2e ED-1026/1027/1028 + harness diperbaiki sebelum QA item itu jalan lagi.
-Sisa: 6 baris `QA01-R2-*` di `archives` (pembersihan ditolak classifier, tidak diulang).
+**Rev3 selesai, siap review batch (phase gate2).** QA FE rev3 r1 PASS: AC-39..42 PASS, 4 PASS / 0 FAIL / 1 MANUAL (tampilan visual, Gate 2);
+unit Archive 405/405 (in-band), e2e ED-1025 21/21 (galeri `work/e2e/ED-1025-archive-folder-permission-20261012-082117/`).
+Commit lokal rev3: FE f1fd4f69e (di atas 41480e37c, tanpa amend); BE tanpa perubahan (HEAD 581569981). Jira ED-1025 In Progress + label ai-review
++ komentar siap review; ED-1131/1132/1133 In Progress. Done hanya lewat `/v5-epic review`.
+Untuk ED-1029 (berikutnya): helper `getFolderPermissionAllState`/`onChangeAllFolderPermission` tetap; baru `toFolderPermissionRowFields`,
+`isSameFolderPermissionUser`, `ArchiveRestrictedIcon`. Data QA DB (QA F-1): role 3 & 5 memegang `Folder Permissions` dgn `permission_name` NULL
+-> `qa/scenario9-rev-seed-fuzz.php:168,172` diperkirakan FAIL (data, bukan kode) bila suite BE ED-1025 dijalankan; ED-1029 mengulang `--only` AC-5, AC-38.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -37,6 +39,9 @@ Sisa: 6 baris `QA01-R2-*` di `archives` (pembersihan ditolak classifier, tidak d
 | ED-1085 | [FE] (rev) Archive - tab Izin: Perizinan Folder, kolom All, hak otomatis | FE | In Progress |
 | ED-1086 | [FE] (rev) Archive - konfirmasi cabut View sendiri, tooltip, teks induk, Kembali ke Arsip | FE | In Progress |
 | ED-1087 | [QA] (rev) Skenario revisi, skenario usang, regresi | QA | In Progress |
+| ED-1131 | [FE] (rev3) Archive - tab Izin: kolom Semua tercatat sebagai perubahan, satu baris per user saat Izin dinyalakan | FE | In Progress |
+| ED-1132 | [FE] (rev3) Archive - ikon perisai Akses Terbatas di picker Pindahkan dan pindah massal | FE | In Progress |
+| ED-1133 | [QA] (rev3) Skenario revisi ronde 3: Semua, baris tunggal, perisai picker, oracle "+" e2e | QA | In Progress |
 
 ## Keputusan developer
 - G1 (gabungan ED-1022, 19:24): semua rekomendasi diterima - EPIC K-1 a, EPIC K-2 b, grup G-1..G-7 (epics/ED-1022-gate1.md §6), K-n lain = rekomendasi analyst; jawaban tertulis di spec § Keputusan
@@ -74,7 +79,13 @@ Sisa: 6 baris `QA01-R2-*` di `archives` (pembersihan ditolak classifier, tidak d
 
 - QA FE rev: F-1 AC-23 tukar lisensi tidak ada di Daftar tes UI task mana pun; C-1 `ArchivePage/index.test.js:110-117` tooltip timeout 1 dtk (flake); C-2/C-3 menu "+" Atur Izin per User + sel by User masih gerbang Update Folder (revisi ED-1029)
 
+- Rev3 FE: `willLoseOwnFolderAccess` (BR-21) ikut memakai `isSameFolderPermissionUser` (di luar §5, agar baris sendiri beda huruf/spasi akhir dikenali); test tooltip list pra-ada flaky distabilkan (hanya test)
+- Rev3 FE review: Catatan saja - `_module.md:107` tidak menyebut fungsi baru; prettier 3 berkas test gagal hanya di baris lama (HEAD)
+- QA FE rev3 F-1: di api_sidomaju role 3 & role 5 (QA_USER2) kini memegang `Folder Permissions` (role 5 juga seluruh permission Archive termasuk `Opname Document`), baris `permission_name` NULL - bukan dari QA, tidak diubah; fixture e2e membaca nama lewat id_permission. Skenario usang dicatat: BE `qa/scenario9-rev-seed-fuzz.php:168,172` (data), e2e ED-1029 `:364/:370`, `:499`, `:654`, profil `[user2]` e2e ED-1027/1028/1029; picker search tidak bisa dipakai (ED-1125, pra-ada)
+
 ## Usulan pipeline
+- (rev3) FE dev: `testing.md` "Jebakan" - sebelum hover/tooltip baris `VirtualTable`, tunggu baris terakhir dirender + timeout `findByRole('tooltip')`; satu commit prettier untuk test Archive yang tidak rapi di HEAD
+- (rev3) QA: unit Archive paralel pada load mesin ~9 timeout 8 test; v5-qa/testing: jalankan `--runInBand` sebagai angka resmi bila mesin sibuk
 - (insiden rev) e2e `fixture.php` ED-1026/1027/1028 `purge()` menghapus seluruh tabel opname + reset kolom verifikasi tanpa cek milik fixture, dan harness `scripts/e2e/lib/fixtures.js` menjalankan `down` walau `up` gagal di prasyarat -> `down` hanya baris berprefiks/jurnal, tolak `down` tanpa jurnal, harness tanpa teardown bila `up` gagal; v5-qa: jangan jalankan e2e item lain bila QA sebelumnya mencatat prasyaratnya gagal karena data developer
 - (rev) QA BE/FE: prasyarat "tabel kosong" di suite ED-1026/1027/1028 tidak cocok untuk DB uji bersama; perlu DB uji khusus QA atau prasyarat berbasis fixture
 - QA BE `scope: be` memperluas fuzzing tipe/karakter tiap ronde (r2: 435 kasus baru) sehingga 500 pra-ada lintas v5 (CustomizeBuilder, kolasi latin1) muncul sebagai FAIL item; usul: aturan baku di v5-qa - 500 pra-ada di luar baris diff = "Dilacak di luar item" + usulan tiket, tidak menentukan verdict; ronde 2+ dibatasi ke kegagalan + regresi
@@ -84,20 +95,12 @@ Sisa: 6 baris `QA01-R2-*` di `archives` (pembersihan ditolak classifier, tidak d
 
 ## Log
 - 2026-10-06..07 run awal (diringkas): baseline BE 42f3e07cb/FE 6afd19054; BA 17 BR/24 AC/8 subtask; Gate 1 gabungan; BE+QA BE r1-r3 PASS (found ED-1070, ED-1071); FE task 001/002; QA FE r1 PASS; found ED-1072; commit BE 9fec7c427, FE 89b3b98a6, agentic 7c11743
-- 2026-10-08 09:25 review batch: Minta perbaikan → phase: ba (BA revisi menunggu instruksi developer); feedback di epics/ED-1022-review-feedback.md § ED-1025; label ai-review dilepas
-- 2026-10-08 13:20 ba (rev): spec.md + contract.md diperbarui untuk FB-4a/5/6/7/9, D-2, N-3 - BR 8 diubah + 5 baru (BR-18..22), AC 10 diubah + 13 baru (AC-25..37), 5 subtask (rev) (2 BE, 2 FE, 1 QA), K-12..K-16 baru; permission baru `Folder Permissions` (seed 1134, tanpa Updater); spec 29 KB
-- 2026-10-08 15:27 gate1 (rev): jawaban diterapkan (K-12 a, K-13 a, K-14 a, K-15 b, K-16 b, EPIC K-4 a 1139/1140) - 22 BR / 38 AC (AC-38 baru) / 5 subtask (rev); contract §3 PUT dua kelompok, §7 id
-- 2026-10-08 15:37 gate1 (rev) Jira: subtask baru ED-1083 [BE] hak folder efektif · ED-1084 [BE] permission Folder Permissions/seed · ED-1085 [FE] tab Izin · ED-1086 [FE] konfirmasi/tooltip/teks · ED-1087 [QA] (sprint 46, To Do; story tetap In Progress)
-- 2026-10-08 gate1 ronde 2 disetujui developer (epics/ED-1022-gate1.md §9b); spec status approved; phase: be (long run)
-- 2026-10-08 15:39 long-run rev: mulai fase be; preflight OK; rebaseline BE 44bea5136 / FE 7fa63869d (0 kotor); ED-1083, ED-1084 -> In Progress
-- 2026-10-08 15:57 be (rev): v5-be-dev (af75bddd604985321) ED-1083+ED-1084 selesai; 5 berkas BE M (ArchivePermissionService, ArchiveService, UpdateRequest, api.php, permission_salesman.sql 1139/1140); contract §3 2 presisi; seed 1139/1140 diterapkan ke api_sidomaju (tanpa TRUNCATE; role 1/2/3); smoke dev PASS 4/4 (qa/dev-smoke-rev, data uji dibersihkan); suite ED-1025 lama 18/13 FAIL = skenario usang revisi + AC-1/2 data developer di QA DB (4 folder Izin On, kevinsudjadi.adm/sam)
-- 2026-10-08 16:04 be-review (rev): v5-be-reviewer (a865e07cdae8c8cf2, sonnet) Harus diperbaiki 0, Perlu dikonfirmasi 3 (R-4..R-6); ED-1087 -> In Progress; phase qa-be r1
-- 2026-10-08 17:28 qa-be (rev) r1: PASS - 25 PASS / 0 FAIL / 1 MANUAL (AC-23 tukar lisensi); suite ED-1025 40/40 (9 skenario baru scenario7/8/9/1b); seed QA DB sudah sesuai (0 langkah); usang diperbarui: ED-1025 milik sendiri + ED-1024 (26/26); usang dicatat: ED-1026/1027/1028/1029 (qa-be.md); T-1 data developer
-- 2026-10-08 17:38 fe digest (rev): api-contract-analyst (a422b74e0fdbe9cd3, sonnet) memperbarui ksp-react docs/specs/Archive/_api.md (#1-#8, §7 id); 1 Perlu dikonfirmasi (22) dijawab orkestrator dari kode BE; 0 blocker; ED-1085/1086 -> In Progress
-- 2026-10-08 18:29 fe (rev): FE dev (a1d205900d36921cf) ui-plan -> task 013 (ED-1085) + 014 (ED-1086) logic-done; 10 berkas src/test M + 2 task baru + _module.md; eslint 0, build staging OK x4, test Archive 317/318 (1 pra-ada ArchiveVerificationModal), full suite efektif 1634/1639 (5 pra-ada)
-- 2026-10-08 18:33 fe-review (rev): convention-reviewer (a1bcf941769a5e938, sonnet) Harus diperbaiki 1 (prettier archive.function.js:227, ArchiveForm/index.js:145-151) -> FE dev via SendMessage; Perlu dikonfirmasi 2 (ConfigProvider componentDisabled, isFolderPermissionBypass) = sudah di daftar review
-- 2026-10-08 18:35 fe fix (rev): prettier 2 berkas diperbaiki FE dev; prettier --check OK, eslint 0, test Archive 317/318 (1 pra-ada); phase qa-fe r1
-- 2026-10-08 19:45 qa-fe (rev) r1: PASS - 13 PASS / 0 FAIL / 1 MANUAL (AC-23); e2e ED-1025 17/17 (galeri work/e2e/ED-1025-archive-folder-permission-20261008-190715/), ED-1024 e2e 3/3 (diperbarui), ED-1029 e2e 13 OK / 3 usang (dicatat); unit Archive 316/318 (1 pra-ada, 1 flake); full suite = HEAD bersih; regresi BE ED-1025 40/40, ED-1029 18/4 usang/1 skip; tes UI manual 34 butir (task 013/014)
-- 2026-10-08 19:45 INSIDEN (QA FE D-1): QA menjalankan e2e ED-1026/1027/1028; teardown `down` ED-1026 menghapus seluruh archive_opnames/_folders/_documents + kolom verifikasi archives di api_sidomaju (data developer, 13 sesi); tidak ada cadangan, tidak dipulihkan; classifier menolak pembersihan 6 baris QA01-R2-* (tidak diulang)
-- 2026-10-08 19:45 smoke dev qa/dev-smoke-rev dihapus (data uji sudah dibersihkan dev)
-- 2026-10-08 19:45 commit (rev): BE 8ea8ebcf2, FE e5355a9c6; Jira ED-1025 label ai-review + komentar siap review (dengan catatan insiden); phase: gate2 (menunggu review batch); RESULT env-fail karena insiden DB uji
+- 2026-10-08 revisi ronde 2 (diringkas; 17 baris): review batch Minta perbaikan -> BA rev (22 BR/38 AC, subtask ED-1083..1087, K-12..K-16) -> Gate 1 r2 -> rebaseline 44bea5136/7fa63869d -> BE (ArchivePermissionService, seed 1139/1140) + review R-4..R-6 -> QA BE r1 PASS 25/0/1 (suite ED-1025 40/40) -> digest -> FE task 013/014 + review (prettier) -> QA FE r1 PASS 13/0/1 (e2e 17/17) -> INSIDEN QA FE D-1 (teardown e2e ED-1026 menghapus tabel opname developer) -> commit BE 8ea8ebcf2, FE e5355a9c6, agentic 6b494b5; label ai-review; RESULT env-fail
+- 2026-10-12 ba (rev3): spec.md diperbarui untuk review batch ronde 2 (FB2-1 akar `setFieldValue` tanpa touched -> `useUpdate` "No changes to save"; FB2-5 picker = `ArchiveTable`, `is_folder_permission` sudah dari GET archives, BE tidak diubah; P6 oracle `expectedPlus` :124) - 24 BR / 41 AC (BR-23/24, AC-39..41 baru), 3 subtask rev3 (2 FE, 1 QA), K-17 (lingkup QA, rendah); contract tetap; X-12 ada di scenario5-input-types.php:358 (milik ED-1071); spec 30 KB, status draft
+- 2026-10-12 gate1 (rev3): jawaban `epics/ED-1022-gate1.md` §9 diterapkan - K-17 a (opsi b dikoreksi C-2); syarat ED-1029 K-9 a -> BR-25/AC-42 (FE: penjaga "+ Add User" + pencocokan user tanpa beda huruf/spasi; BE sudah menolak ganda: `distinct` + `saveUserRow`/UNIQUE); EPIC K-5 b dicatat (§9); koreksi §8 rujukan gate1-r2 (C-5), helper All tetap + fungsi murni baru (O-1). 25 BR / 42 AC / 3 subtask rev3 (2 FE, 1 QA); spec approved; phase: fe
+- 2026-10-12 gate1 ronde 3 (epic loop): Jira subtask rev3 ED-1131 [FE], ED-1132 [FE], ED-1133 [QA] (sprint 46) + komentar Gate 1 di ED-1025
+- 2026-10-12 long-run rev3: preflight OK; rebaseline BE 581569981 / FE 41480e37c (0 kotor); ED-1131, ED-1132, ED-1133 -> In Progress; digest API dilewati (contract tetap, BE tetap); phase fe
+- 2026-10-12 fe (rev3): FE dev (aa9d0be7fd76a0d9b) ui-plan -> task 022 (ED-1131, fix/logic) + 023 (ED-1132, enh/ui) logic-done; 6 src M/1 baru (ArchiveRestrictedIcon) + 5 test; tes Archive 402/405 (3 timeout beban mesin, lulus saat diulang sendiri), eslint 0, build staging OK; beda: `willLoseOwnFolderAccess` ikut pencocok baru, test tooltip list pra-ada flaky distabilkan; full suite tidak dijalankan (K-17 a)
+- 2026-10-12 fe-review (rev3): convention-reviewer (ad2e906c7c4cd4530, sonnet, general-purpose dgn definisi agent) Harus diperbaiki 0, Perlu dikonfirmasi 0, Catatan 3 (tanpa test sendiri ArchiveFolderPermission/ArchiveTable = diuji lewat Drawer/MoveModal; `_module.md:107` tak memuat fungsi baru; prettier gagal hanya baris lama); phase qa-fe r1
+- 2026-10-12 qa-fe (rev3) r1: v5-qa (a64bc7ff2a53a2f4e, sonnet) PASS - AC-39/40/41/42 PASS, 4/0/1 MANUAL; unit Archive 405/405 in-band (8 timeout beban saat paralel, lulus diulang); e2e ED-1025 21/21 (+4 flow baru, oracle :124 -> Folder Permissions), kontrol negatif HEAD: AC-39/40 gagal; data: hanya teardown fixture QA (30 baris `0QA25-`, 3 role `QA25-ROLE-`), archive* = baseline; `QA01-R2-*` sudah 0 baris; penolakan 0
+- 2026-10-12 commit (rev3): FE f1fd4f69e (14 berkas, path eksplisit); BE tidak berubah; agentic: commit [DOC] ED-1025 rev3 (hash di laporan runner)

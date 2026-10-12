@@ -12,6 +12,9 @@
  * Jalankan dengan `--workers 1` (tukar peran satu user tidak boleh berebut antar test): scripts/e2e/run.sh ED-1025 --profile default,user2 --workers 1
  *
  * Mutasi hanya pada data fixture (dibuang di teardown). Tombol Pindahkan/Hapus tidak pernah dikonfirmasi.
+ *
+ * Revisi ronde 3 (ED-1133): AC-39 (simpan lewat kolom Semua saja, W > SEM), AC-40 (perisai di picker Pindahkan & pindah massal, id dan en),
+ * AC-41 (oracle `expectedPlus`: Set Permission by User = `Folder Permissions`), AC-42 (satu baris per user, W > F42).
  */
 
 const fs = require('fs');
@@ -121,7 +124,8 @@ function expectedPlus(perms, { inFolder, access }) {
   if (has('Receive Document')) keys.push('receive');
   if (has('Add Document') && inFolder && store) keys.push('add-document');
   if (has('Opname Document') && view) keys.push('opname');
-  if (has('Update Folder')) keys.push('set-permission');
+  // AC-41 (rev3, P6): Set Permission by User digerbangi `Folder Permissions` (`getArchiveAddKeys` canSetPermission), bukan `Update Folder`
+  if (has('Folder Permissions')) keys.push('set-permission');
   return keys;
 }
 
@@ -331,6 +335,9 @@ test.describe('ED-1025 folder permission', () => {
     monitor.note(`"+" di P (${tag}): ${plus.join(' | ')}`);
     const expectedKeys = expectedPlus(perms, { inFolder: true, access: inP.body.result.access });
     expect(plusKeysOf(plus).sort(), `"+" di P untuk ${tag} = item menurut permission role`).toEqual(expectedKeys.sort());
+    // AC-41 (rev3): gerbang Set Permission by User/Atur Izin per User = `Folder Permissions`; C ber-`Update Folder` tanpa itu -> tidak ada
+    expect(plusKeysOf(plus).includes('set-permission'), `AC-41: "+" ${tag} memuat Set Permission by User/Atur Izin per User = ${hasFP}`).toBe(hasFP);
+    expect(perms.includes('Update Folder'), `${tag} ber-Update Folder (bukan penentu menu Set Permission)`).toBe(true);
     await app.screenshot(`AC3-02-dalam-folder-P-${preset}`);
     // menu baris folder anak P-C (Off, K-12 a): Info, Move, View, Delete
     const itemsC = (await rowMenuItems(page, '0QA25-P-C')).items;
@@ -979,7 +986,7 @@ test.describe('ED-1025 folder permission', () => {
 
   // ------------------------------------------------------------------------------------------------ AC-18/30 (B tanpa Folder Permissions) + AC-20 (B, EN)
   test('[user2] ED-1025 AC-18/20/30 B (tanpa Folder Permissions, View saja di P): Detail read-only, tanpa tab Izin, Save tidak ada, menu baris & "+" mengikuti hak, tooltip EN', async ({ app, page, monitor, session }) => {
-    setRole('user2', 'orig');
+    setRole('user2', 'C'); // role asli QA_USER2 (role 5) sudah ber-Folder Permissions/Opname Document (diubah developer di DB bersama); C = peran uji tanpa Folder Permissions
     traceApi(page, monitor);
     const fx0 = ids();
     monitor.note(`DB sesi ${session.dbName}; user B (role 5, non-superadmin; bahasa EN)`);
@@ -1076,7 +1083,7 @@ test.describe('ED-1025 folder permission', () => {
 
   // ------------------------------------------------------------------------------------------------ AC-19 + AC-20 (B)
   test('[user2] ED-1025 AC-19/AC-20 B tanpa View: layar akses ditolak (tanpa toast), ikon perisai, menu baris tanpa tombol, Back to Archive', async ({ app, page, monitor, session }) => {
-    setRole('user2', 'orig');
+    setRole('user2', 'C'); // role asli QA_USER2 (role 5) sudah ber-Folder Permissions/Opname Document (diubah developer di DB bersama); C = peran uji tanpa Folder Permissions
     traceApi(page, monitor);
     const fx0 = ids();
     monitor.note(`DB sesi ${session.dbName}; user B tanpa baris di 0QA25-DENY`);
@@ -1263,7 +1270,7 @@ test.describe('ED-1025 folder permission', () => {
 
   // ------------------------------------------------------------------------------------------------ AC-21 (B)
   test('[user2] ED-1025 AC-21 B: picker modal Pindahkan & pindah massal - folder tanpa Store tidak bisa dipilih, tanpa View tidak bisa dibuka', async ({ app, page, monitor, session }) => {
-    setRole('user2', 'orig');
+    setRole('user2', 'C'); // role asli QA_USER2 (role 5) sudah ber-Folder Permissions/Opname Document (diubah developer di DB bersama); C = peran uji tanpa Folder Permissions
     traceApi(page, monitor);
     const fx0 = ids();
     monitor.note(`DB sesi ${session.dbName}; user B`);
@@ -1342,5 +1349,481 @@ test.describe('ED-1025 folder permission', () => {
     await noToast(page, 'AC-21');
     noServerError(monitor);
     monitor.check();
+  });
+
+  // ====================================================================================================================
+  // REVISI RONDE 3 (ED-1133): AC-39 (kolom Semua), AC-42 (satu baris per user), AC-40 (perisai di picker). AC-41 = `expectedPlus` di atas.
+  // ====================================================================================================================
+  const byUser = (...rows) => rows.sort((x, y) => (x[0] < y[0] ? -1 : 1));
+  const NO_CHANGES_RE = /No changes to save|Tidak ada perubahan untuk disimpan/;
+  const sentRow = (rows, id) => (rows || []).filter((r) => (r.idUser ?? r.id_user) === id);
+  const rightsOf = (r) => [r.isView ?? r.is_view, r.isUpdate ?? r.is_update, r.isDelete ?? r.is_delete, r.isStore ?? r.is_store];
+
+  // ------------------------------------------------------------------------------------------------ AC-39 (A)
+  test('[default] ED-1025 AC-39 A: tab Izin - HANYA kolom Semua (centang / lepas) lalu Save = PUT 200 tanpa "No changes to save", DB 1/1/1/1 lalu baris hilang; lepas Semua sendiri = modal BR-21', async ({ app, page, monitor, session }) => {
+    setRole('default', 'A');
+    fx('lang', 'default', 'ID');
+    traceApi(page, monitor);
+    const fx0 = ids();
+    const A = fx0._userA.username;
+    const B = fx0._userB.username;
+    const puts = trackPuts(page);
+    const noChanges = page.locator('.ant-message-notice').filter({ hasText: NO_CHANGES_RE });
+    monitor.note(`DB sesi ${session.dbName}; A (peran A, bukan pembuat) di W > SEM (On, A VUDS, B View saja)`);
+
+    await openArchive(app, page);
+    await enter(page, app, ['0QA25-W']);
+    expect(fxJson('perm', '0QA25-SEM'), 'awal SEM: On, A 1/1/1/1, B View saja').toEqual({ is_folder_permission: 1, rows: byUser([A, 1, 1, 1, 1], [B, 1, 0, 0, 0]) });
+
+    // (a) HANYA lepas Semua baris sendiri (A bukan pembuat/superadmin) -> Save -> modal BR-21; Tidak = tanpa PUT, drawer tetap
+    await openDrawerView(page, '0QA25-SEM');
+    await openPermissionTab(page);
+    await expect(permRows(page), 'SEM: dua baris (A, B)').toHaveCount(2);
+    let rowA = permRow(page, A);
+    expect(await rowAllBoxes(rowA), 'SEM awal: baris A All + V U D S').toEqual([true, true, true, true, true]);
+    await box(rowA, 'all').uncheck();
+    expect(await rowAllBoxes(rowA), 'lepas Semua A: keempatnya lepas').toEqual([false, false, false, false, false]);
+    const n0 = puts.length;
+    await saveBtn(page).click();
+    const modal = confirmModal(page);
+    await modal.waitFor({ state: 'visible', timeout: 10000 });
+    const mtxt = (await modal.innerText()).replace(/\s+/g, ' ');
+    monitor.note(`modal (ID) dari lepas Semua A: ${mtxt}`);
+    expect(mtxt, 'modal BR-21 muncul dari lepas Semua').toContain('Sesudah disimpan, Anda tidak lagi bisa melihat folder ini. Lanjutkan?');
+    await app.screenshot('AC39-01-lepas-semua-sendiri-modal');
+    await modal.locator('.ant-modal-confirm-btns button:not(.ant-btn-primary)').click();
+    await page.waitForTimeout(1500);
+    await expect(confirmModal(page), 'Tidak: modal menutup').toHaveCount(0);
+    expect(puts.length - n0, 'Tidak: tanpa PUT archives/{id} (monitor jaringan)').toBe(0);
+    await expect(drawer(page), 'Tidak: drawer tetap terbuka').toBeVisible();
+    expect(await rowAllBoxes(permRow(page, A)), 'Tidak: perubahan Semua A tetap di form').toEqual([false, false, false, false, false]);
+    await expect(noChanges, 'Tidak: tanpa pesan "No changes to save"').toHaveCount(0);
+    await closeTopLayer(page);
+    expect(fxJson('perm', '0QA25-SEM').rows, 'DB SEM utuh (belum ada tulisan)').toEqual(byUser([A, 1, 1, 1, 1], [B, 1, 0, 0, 0]));
+    await app.settle();
+
+    // (b) HANYA centang Semua baris B -> Save -> PUT 200 ARCHIVE207, tanpa "No changes to save"
+    await openDrawerView(page, '0QA25-SEM');
+    await openPermissionTab(page);
+    let rowB = permRow(page, B);
+    expect(await allState(rowB), 'B View saja: Semua indeterminate').toEqual({ checked: false, indeterminate: true });
+    await box(rowB, 'all').check();
+    expect(await rowAllBoxes(rowB), 'centang Semua B: keempat hak + Semua').toEqual([true, true, true, true, true]);
+    await app.screenshot('AC39-02-centang-semua-B');
+    const nB = puts.length;
+    const s1 = await saveDrawer(page);
+    monitor.note(`PUT (centang Semua B saja): ${JSON.stringify(s1.body).slice(0, 400)}`);
+    expect(s1.status, 'Semua saja + Save: PUT 200').toBe(200);
+    expect(s1.json.msg_code, 'msg_code').toBe('ARCHIVE207');
+    expect(puts.length - nB, 'tepat satu PUT terkirim (monitor jaringan)').toBe(1);
+    const rowsSent = s1.body.folderPermissions || s1.body.folder_permissions;
+    expect(sentRow(rowsSent, fx0._userB.id_user).map(rightsOf), 'body: baris B 1/1/1/1').toEqual([[1, 1, 1, 1]]);
+    expect(sentRow(rowsSent, fx0._userA.id_user).map(rightsOf), 'body: baris A tetap 1/1/1/1').toEqual([[1, 1, 1, 1]]);
+    await expect(page.locator('.ant-drawer-open'), 'sukses: drawer menutup').toHaveCount(0, { timeout: 15000 });
+    await expect(noChanges, 'tanpa pesan "No changes to save"/"Tidak ada perubahan untuk disimpan"').toHaveCount(0);
+    expect(fxJson('perm', '0QA25-SEM').rows, 'DB (SEM, B) = 1/1/1/1').toEqual(byUser([A, 1, 1, 1, 1], [B, 1, 1, 1, 1]));
+    await app.settle();
+    // buka ulang: Semua B tercentang
+    await openDrawerView(page, '0QA25-SEM');
+    await openPermissionTab(page);
+    rowB = permRow(page, B);
+    expect(await rowAllBoxes(rowB), 'buka ulang: baris B All + V U D S tercentang').toEqual([true, true, true, true, true]);
+    expect(await allState(rowB), 'buka ulang: Semua B tercentang (bukan indeterminate)').toEqual({ checked: true, indeterminate: false });
+    await app.screenshot('AC39-03-buka-ulang-semua-B');
+    await closeTopLayer(page);
+    await app.settle();
+
+    // (c) HANYA lepas Semua baris B -> Save -> PUT 200, baris (SEM, B) hilang
+    await openDrawerView(page, '0QA25-SEM');
+    await openPermissionTab(page);
+    rowB = permRow(page, B);
+    await box(rowB, 'all').uncheck();
+    expect(await rowAllBoxes(rowB), 'lepas Semua B: keempatnya lepas, baris tetap tampil').toEqual([false, false, false, false, false]);
+    await expect(permRows(page), 'baris B masih di tabel sebelum Save').toHaveCount(2);
+    const nC = puts.length;
+    const s2 = await saveDrawer(page);
+    monitor.note(`PUT (lepas Semua B saja): ${JSON.stringify(s2.body).slice(0, 400)}`);
+    expect(s2.status, 'lepas Semua saja + Save: PUT 200').toBe(200);
+    expect(s2.json.msg_code, 'msg_code').toBe('ARCHIVE207');
+    expect(puts.length - nC, 'tepat satu PUT').toBe(1);
+    expect(sentRow(s2.body.folderPermissions || s2.body.folder_permissions, fx0._userB.id_user).map(rightsOf), 'body: baris B 0/0/0/0').toEqual([[0, 0, 0, 0]]);
+    await expect(page.locator('.ant-drawer-open'), 'sukses: drawer menutup').toHaveCount(0, { timeout: 15000 });
+    await expect(noChanges, 'tanpa pesan "No changes to save"').toHaveCount(0);
+    expect(fxJson('perm', '0QA25-SEM').rows, 'DB: baris (SEM, B) hilang (baris tanpa hak tidak disimpan, BR-16); A utuh').toEqual([[A, 1, 1, 1, 1]]);
+    await app.settle();
+    await openDrawerView(page, '0QA25-SEM');
+    await openPermissionTab(page);
+    await expect(permRows(page), 'buka ulang: hanya baris A').toHaveCount(1);
+    await expect(permRow(page, B), 'buka ulang: baris B tidak ada').toHaveCount(0);
+    await app.screenshot('AC39-04-buka-ulang-B-hilang');
+
+    // (d) kontrol negatif: tanpa perubahan apa pun -> Save = "Tidak ada perubahan untuk disimpan", tanpa PUT (perilaku DrawerUpdate lama)
+    const nD = puts.length;
+    await saveBtn(page).click();
+    await expect(noChanges, 'tanpa perubahan: pesan "Tidak ada perubahan untuk disimpan" tampil (kontrol)').toHaveCount(1, { timeout: 10000 });
+    await page.waitForTimeout(1000);
+    expect(puts.length - nD, 'tanpa perubahan: tanpa PUT').toBe(0);
+    await app.screenshot('AC39-05-kontrol-tanpa-perubahan');
+    await page.waitForTimeout(3500); // toast hilang sebelum akhir test
+    await page.locator('.ant-drawer-open').count().then(async (n) => { if (n) await closeTopLayer(page); });
+    noServerError(monitor);
+    monitor.check();
+  });
+
+  // ------------------------------------------------------------------------------------------------ AC-42 (A)
+  test('[default] ED-1025 AC-42 A: satu baris per user - "+ Add User" dirinya, toggle Off lalu On = tetap satu baris naik ke V/U/D/S, Save = A sekali, DB satu baris; "+ Add User" tidak menawarkan A lagi', async ({ app, page, monitor, session }) => {
+    setRole('default', 'A');
+    fx('lang', 'default', 'ID');
+    traceApi(page, monitor);
+    const fx0 = ids();
+    const A = fx0._userA.username;
+    const B = fx0._userB.username;
+    const puts = trackPuts(page);
+    monitor.note(`DB sesi ${session.dbName}; A (pembuat) di W > F42 (On, tanpa baris A, B View saja)`);
+
+    await openArchive(app, page);
+    await enter(page, app, ['0QA25-W']);
+    expect(fxJson('perm', '0QA25-F42'), 'awal F42: On, hanya baris B').toEqual({ is_folder_permission: 1, rows: [[B, 1, 0, 0, 0]] });
+
+    const view = await openDrawerView(page, '0QA25-F42');
+    expect(view.body.result.access, 'A pembuat: access penuh').toEqual(FULL);
+    await openPermissionTab(page);
+    const sw = drawer(page).locator('.ant-switch').first();
+    await expect(sw, 'F42 On').toHaveClass(/ant-switch-checked/);
+    await expect(permRows(page), 'F42: satu baris (B)').toHaveCount(1);
+
+    // "+ Add User": A BELUM di tabel -> ditawarkan (excepts hanya B); pilih A -> baris A View saja
+    const addUser = async (typed) => {
+      const usersResp = page.waitForResponse((r) => USERS_RE.test(r.url()), { timeout: 30000 });
+      await drawer(page).locator('button.ant-btn-link').click();
+      await drawer(page).locator('.ant-select').first().click();
+      const ur = await usersResp;
+      // tunggu respons pencarian dengan teks ketikan LENGKAP (pencarian di-debounce): opsi sebelum itu masih daftar tanpa saringan
+      const searched = page.waitForResponse((r) => USERS_RE.test(r.url()) && decodeURIComponent(r.url()).includes(typed), { timeout: 30000 });
+      await page.keyboard.type(typed);
+      await searched;
+      await page.waitForTimeout(800);
+      const dd = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+      const options = (await dd.locator('.ant-select-item-option').allInnerTexts()).map((t) => t.trim());
+      return { ur, dd, options };
+    };
+    const first = await addUser(A);
+    const exc1 = decodeURIComponent(first.ur.url());
+    expect(first.ur.status(), 'GET select users').toBe(200);
+    expect(exc1, 'excepts memuat B').toContain(fx0._userB.id_user);
+    expect(exc1, 'excepts belum memuat A (belum di tabel)').not.toContain(fx0._userA.id_user);
+    expect(first.options, '"+ Add User" menawarkan A (belum ada barisnya)').toContain(A);
+    await first.dd.locator('.ant-select-item-option').filter({ hasText: new RegExp(`^${esc(A)}$`) }).first().click();
+    await expect(permRows(page), 'sesudah + Add User A: dua baris (A, B)').toHaveCount(2);
+    let rowA = permRow(page, A);
+    expect(await rowBoxes(rowA), 'baris A baru: View saja').toEqual([true, false, false, false]);
+    expect(await allState(rowA), 'A View saja: Semua indeterminate').toEqual({ checked: false, indeterminate: true });
+    await app.screenshot('AC42-01-add-user-dirinya-View-saja');
+
+    // toggle Off lalu On -> tetap SATU baris A (dinaikkan), tidak ada baris kedua
+    await sw.click();
+    await expect(sw, 'toggle Off').not.toHaveClass(/ant-switch-checked/);
+    await expect(permRows(page), 'Off: tetap dua baris').toHaveCount(2);
+    expect(await rowBoxes(permRow(page, A)), 'Off: baris A tidak berubah (View saja)').toEqual([true, false, false, false]);
+    await sw.click();
+    await expect(sw, 'toggle On lagi').toHaveClass(/ant-switch-checked/);
+    await expect(permRows(page), 'Off -> On: TETAP dua baris (A dinaikkan, bukan ditambah)').toHaveCount(2);
+    await expect(permRow(page, A), 'tepat satu baris A').toHaveCount(1);
+    rowA = permRow(page, A);
+    expect(await rowAllBoxes(rowA), 'baris A naik ke Semua + V U D S').toEqual([true, true, true, true, true]);
+    expect(await rowBoxes(permRow(page, B)), 'baris B tidak berubah').toEqual([true, false, false, false]);
+    await app.screenshot('AC42-02-toggle-off-on-satu-baris-A');
+
+    // "+ Add User" tidak menawarkan A lagi (excepts memuat A dan B)
+    const second = await addUser(A);
+    const exc2 = decodeURIComponent(second.ur.url());
+    monitor.note(`opsi "+ Add User" setelah A di tabel (ketik "${A}"): [${second.options.join(' | ')}]; excepts memuat A dan B`);
+    expect(exc2, 'excepts memuat A').toContain(fx0._userA.id_user);
+    expect(exc2, 'excepts memuat B').toContain(fx0._userB.id_user);
+    expect(second.options, '"+ Add User" tidak menawarkan A (sudah di tabel)').not.toContain(A);
+    await app.screenshot('AC42-03-add-user-tidak-menawarkan-A');
+    await drawer(page).locator('.ant-drawer-header').click(); // tutup dropdown tanpa Escape (Escape menutup drawer)
+    await expect(permRows(page), 'tanpa pilihan: tetap dua baris').toHaveCount(2);
+
+    // Save: body memuat A SEKALI, PUT 200, tanpa modal (A pembuat), DB satu baris (F42, A) = 1/1/1/1
+    const n0 = puts.length;
+    const sv = await saveDrawer(page);
+    monitor.note(`PUT body: ${JSON.stringify(sv.body).slice(0, 500)}`);
+    await expect(confirmModal(page), 'A pembuat dan View ada: tanpa modal').toHaveCount(0);
+    expect(sv.status, 'PUT 200').toBe(200);
+    expect(sv.json.msg_code, 'msg_code').toBe('ARCHIVE207');
+    expect(puts.length - n0, 'tepat satu PUT').toBe(1);
+    const rowsSent = sv.body.folderPermissions || sv.body.folder_permissions;
+    expect(rowsSent, 'body: 2 baris (A sekali + B)').toHaveLength(2);
+    expect(sentRow(rowsSent, fx0._userA.id_user).map(rightsOf), 'body: A tepat sekali, 1/1/1/1').toEqual([[1, 1, 1, 1]]);
+    expect(sentRow(rowsSent, fx0._userB.id_user).map(rightsOf), 'body: B sekali, View saja').toEqual([[1, 0, 0, 0]]);
+    await expect(page.locator('.ant-drawer-open'), 'sukses: drawer menutup').toHaveCount(0, { timeout: 15000 });
+    const db = fxJson('perm', '0QA25-F42');
+    expect(db, 'DB: (F42, A) = 1/1/1/1 satu baris, B utuh').toEqual({ is_folder_permission: 1, rows: byUser([A, 1, 1, 1, 1], [B, 1, 0, 0, 0]) });
+    expect(db.rows.filter((r) => r[0] === A), 'DB: tepat satu baris A').toHaveLength(1);
+
+    await app.settle();
+    await openDrawerView(page, '0QA25-F42');
+    await openPermissionTab(page);
+    await expect(permRows(page), 'buka ulang: dua baris').toHaveCount(2);
+    expect(await rowAllBoxes(permRow(page, A)), 'buka ulang: baris A V/U/D/S').toEqual([true, true, true, true, true]);
+    await app.screenshot('AC42-04-buka-ulang-satu-baris-A');
+    await closeTopLayer(page);
+    await noErrorToast(page, 'AC-42');
+    noServerError(monitor);
+    monitor.check();
+  });
+
+  // ------------------------------------------------------------------------------------------------ AC-40 (A, id dan en)
+  /**
+   * Perisai Akses Terbatas di picker folder tujuan: modal Pindahkan (⋯ dokumen: root, di dalam folder, folder tanpa View/Store, hasil pencarian)
+   * dan pindah massal (Konfirmasi + Pilih Folder). Tidak ada Pindahkan yang dikonfirmasi. Search di dalam picker tidak bisa dipakai (ED-1125,
+   * bug FE pra-ada: submit form HTML bersarang): hasil pencarian dimuat dengan pengalih jaringan, respons BE asli (pola QA ED-1069).
+   */
+  async function ac40Flow({ app, page, monitor, session, lang }) {
+    setRole('default', 'A');
+    fx('lang', 'default', lang);
+    traceApi(page, monitor);
+    const fx0 = ids();
+    const TIP = lang === 'EN' ? 'Restricted Access' : 'Akses Terbatas';
+    monitor.note(`DB sesi ${session.dbName}; A (peran A, bahasa ${lang}); tooltip yang diharapkan "${TIP}"`);
+
+    /** Baris YANG TAMPIL di modal (langkah Konfirmasi pindah massal tetap di DOM, tersembunyi, saat langkah Pilih Folder aktif). */
+    const vrow = (scope, name) =>
+      scope
+        .locator('.ant-table-row:visible')
+        .filter({ has: page.locator('td').filter({ hasText: new RegExp(`^\\s*${esc(name)}\\s*$`) }) })
+        .first();
+    const shieldOf = (row) => row.locator('.anticon-safety-certificate');
+    const expectShield = async (scope, name, want, label) => {
+      const row = vrow(scope, name);
+      await row.waitFor({ state: 'visible', timeout: 20000 });
+      await expect(shieldOf(row), `${label}: ${name} ${want ? 'berikon perisai' : 'tanpa ikon perisai'}`).toHaveCount(want ? 1 : 0);
+      return row;
+    };
+    const hoverTip = async (row, label, shot) => {
+      await shieldOf(row).first().hover();
+      const tip = page.locator('.ant-tooltip:not(.ant-tooltip-hidden)').last();
+      await tip.waitFor({ state: 'visible', timeout: 10000 });
+      expect((await tip.innerText()).trim(), `${label}: tooltip perisai`).toBe(TIP);
+      if (shot) await app.screenshot(shot); // tooltip terlihat di galeri
+      await page.mouse.move(5, 5);
+      await expect(page.locator('.ant-tooltip:not(.ant-tooltip-hidden)'), `${label}: tooltip menutup`).toHaveCount(0, { timeout: 10000 });
+    };
+    const modalOf = () => page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal').last();
+    const radioOf = (row) => row.locator('input[type="radio"]').evaluate((e) => e.disabled);
+    const backToRoot = async (scope) => {
+      const back = listResponse(page, (u) => !folderParam(u));
+      await scope.locator('.breadcrumbs button').first().click();
+      await back;
+      await app.settle();
+    };
+    const sleep = (ms) => page.waitForTimeout(ms);
+
+    // pantau semua request API selama picker dipakai: hanya GET document-archive/archives (daftar) yang boleh (AC-40: tanpa request tambahan)
+    const apiCalls = [];
+    let denyCalls = 0;
+    page.on('request', (r) => {
+      if (!/\/api\/v5\//.test(r.url())) return;
+      const p = decodeURIComponent(r.url().replace(/^https?:\/\/[^/]+\/(api\/v5\/)?/, '')).split('?')[0];
+      apiCalls.push(`${r.method()} ${p}`);
+      if (decodeURIComponent(r.url()).includes(fx0['0QA25-DENYA'])) denyCalls += 1;
+    });
+
+    // ---- list: perisai tetap + klik ikon = klik nama (EDIT tidak dipakai: AC-17 menyalakan Izin-nya lebih dulu di run penuh; Off tanpa ikon = MOVE, Z, Y, W)
+    await openArchive(app, page);
+    for (const [n, want] of [['0QA25-P', 1], ['0QA25-DENY', 1], ['0QA25-DENYA', 1], ['0QA25-STORE', 1], ['0QA25-MOVE', 0]]) {
+      await expect(rowOf(page, n).locator('.anticon-safety-certificate'), `list: ${n} perisai=${want}`).toHaveCount(want);
+    }
+    const openByIcon = listResponse(page, (u) => folderParam(u) === fx0['0QA25-P']);
+    await rowOf(page, '0QA25-P').locator('.anticon-safety-certificate').first().click();
+    expect((await openByIcon).status, 'list: klik IKON perisai P = membuka P (sama dengan klik nama)').toBe(200);
+    await app.settle();
+    await expect(rowOf(page, '0QA25-P-DOC'), 'di dalam P: dokumen P-DOC').toBeVisible();
+    await expect(rowOf(page, '0QA25-P-DOC').locator('.anticon-safety-certificate'), 'dokumen tanpa perisai').toHaveCount(0);
+    await app.screenshot(`AC40-01-list-${lang}`);
+
+    // ---- (1) modal Pindahkan dari ⋯ dokumen P-DOC: picker mulai dari root
+    const startCalls = apiCalls.length;
+    const pr1 = listResponse(page, (u) => !folderParam(u));
+    await pickRowMenu(page, '0QA25-P-DOC', MENU.move);
+    expect((await pr1).status, 'picker Pindahkan: GET archives (root)').toBe(200);
+    let modal = modalOf();
+    await modal.waitFor({ state: 'visible', timeout: 15000 });
+    await app.settle();
+    await sleep(900);
+    for (const [n, want] of [['0QA25-P', 1], ['0QA25-DENY', 1], ['0QA25-DENYA', 1], ['0QA25-STORE', 1], ['0QA25-MOVE', 0], ['0QA25-Z', 0], ['0QA25-W', 0]]) {
+      await expectShield(modal, n, want, 'picker Pindahkan (root)');
+    }
+    const rowDenya = vrow(modal, '0QA25-DENYA');
+    expect(await radioOf(rowDenya), 'DENYA (A tanpa View & Store): tidak bisa dipilih').toBe(true);
+    expect(await radioOf(vrow(modal, '0QA25-STORE')), 'STORE (A Store): bisa dipilih').toBe(false);
+    await app.screenshot(`AC40-02-picker-pindahkan-root-${lang}`);
+    await hoverTip(vrow(modal, '0QA25-P'), 'picker Pindahkan, P', `AC40-03-tooltip-P-${lang}`);
+    await hoverTip(rowDenya, 'picker Pindahkan, DENYA (tanpa View/Store)', `AC40-03b-tooltip-DENYA-${lang}`);
+
+    // klik IKON DENYA (tanpa View) = klik nama: tidak membuka folder, tanpa request ke DENYA
+    const denyBefore = denyCalls;
+    await shieldOf(rowDenya).first().click();
+    await sleep(1500);
+    expect(denyCalls - denyBefore, 'klik ikon DENYA (tanpa View): tanpa request ke folder itu').toBe(0);
+    await expect(modal.locator('.breadcrumbs'), 'breadcrumb picker tetap di root').not.toContainText('0QA25-DENYA');
+    await expect(vrow(modal, '0QA25-DENYA'), 'DENYA masih di daftar root').toBeVisible();
+
+    // klik IKON P (A ber-View) = membuka P: P-C (Off) dan P-DOC (dokumen) tanpa perisai
+    const openP = listResponse(page, (u) => folderParam(u) === fx0['0QA25-P']);
+    await shieldOf(vrow(modal, '0QA25-P')).first().click();
+    expect((await openP).status, 'picker: klik IKON P = membuka P').toBe(200);
+    await app.settle();
+    await expect(modal.locator('.breadcrumbs'), 'breadcrumb picker memuat P').toContainText('0QA25-P');
+    await expectShield(modal, '0QA25-P-C', 0, 'di dalam P (folder Off)');
+    await expectShield(modal, '0QA25-P-DOC', 0, 'di dalam P (dokumen)');
+    await expect(vrow(modal, '0QA25-P-DOC').locator('.anticon-file'), 'P-DOC = dokumen').toHaveCount(1);
+    await app.screenshot(`AC40-04-picker-di-dalam-P-${lang}`);
+    await backToRoot(modal);
+
+    // di dalam DENY (On): anak DENY-C (On) berperisai
+    const openDeny = listResponse(page, (u) => folderParam(u) === fx0['0QA25-DENY']);
+    await vrow(modal, '0QA25-DENY').locator('td.cursor-pointer').first().click();
+    expect((await openDeny).status, 'picker: klik nama DENY = membuka').toBe(200);
+    await app.settle();
+    await expectShield(modal, '0QA25-DENY-C', 1, 'di dalam DENY');
+    await backToRoot(modal);
+
+    // di dalam folder wadah Z (Off): J/JV/ALL/DP On berperisai (J, JV, DP: A tanpa Store -> tidak bisa dipilih), CED Off tanpa
+    const openZ = listResponse(page, (u) => folderParam(u) === fx0['0QA25-Z']);
+    await vrow(modal, '0QA25-Z').locator('td.cursor-pointer').first().click();
+    expect((await openZ).status, 'picker: Z dibuka').toBe(200);
+    await app.settle();
+    for (const [n, want] of [['0QA25-J', 1], ['0QA25-JV', 1], ['0QA25-ALL', 1], ['0QA25-DP', 1], ['0QA25-CED', 0]]) {
+      await expectShield(modal, n, want, 'di dalam wadah Z');
+    }
+    expect(await radioOf(vrow(modal, '0QA25-J')), 'J (A View saja, tanpa Store): tidak bisa dipilih').toBe(true);
+    expect(await radioOf(vrow(modal, '0QA25-ALL')), 'ALL (A Store): bisa dipilih').toBe(false);
+    await app.screenshot(`AC40-05-picker-di-dalam-wadah-${lang}`);
+    await closeTopLayer(page);
+    await expect(page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal')).toHaveCount(0, { timeout: 10000 });
+
+    // ---- (2) hasil pencarian di picker (respons BE asli lewat pengalih jaringan, ED-1125)
+    const searchPicker = async (query, shot, checks) => {
+      const arm = await armPickerSearch(page, query);
+      await pickRowMenu(page, '0QA25-P-DOC', MENU.move);
+      const m = modalOf();
+      await m.waitFor({ state: 'visible', timeout: 15000 });
+      await app.settle();
+      await sleep(900);
+      expect(await arm.done(), `pengalih pencarian "${query}" terpakai`).toBe(true);
+      await checks(m);
+      await app.screenshot(shot);
+      await closeTopLayer(page);
+      await expect(page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal')).toHaveCount(0, { timeout: 10000 });
+    };
+    await searchPicker('0QA25-DENY', `AC40-06-picker-hasil-pencarian-DENY-${lang}`, async (m) => {
+      await expectShield(m, '0QA25-DENY', 1, 'hasil pencarian "0QA25-DENY"');
+      await expectShield(m, '0QA25-DENY-C', 1, 'hasil pencarian "0QA25-DENY"');
+      const row = await expectShield(m, '0QA25-DENYA', 1, 'hasil pencarian "0QA25-DENY"');
+      expect(await radioOf(row), 'hasil pencarian: DENYA (tanpa View/Store) tetap tidak bisa dipilih').toBe(true);
+      await hoverTip(row, 'hasil pencarian, DENYA');
+    });
+    await searchPicker('0QA25-P', `AC40-07-picker-hasil-pencarian-P-${lang}`, async (m) => {
+      await expectShield(m, '0QA25-P', 1, 'hasil pencarian "0QA25-P"');
+      await expectShield(m, '0QA25-P-C', 0, 'hasil pencarian "0QA25-P" (folder Off)');
+      await expectShield(m, '0QA25-P-DOC', 0, 'hasil pencarian "0QA25-P" (dokumen)');
+    });
+
+    // ---- (3) pindah massal: Pilih -> centang MOVE dan P -> Pindahkan -> Konfirmasi -> Lanjut -> Pilih Folder
+    const crumb = listResponse(page, (u) => !folderParam(u));
+    await page.locator('.archive-page .breadcrumbs a, .archive-page .breadcrumbs .ant-breadcrumb-link').first().click();
+    await crumb;
+    await app.settle();
+    await page.locator('.archive-page button', { hasText: /^(Select|Pilih)$/ }).first().click();
+    await rowOf(page, '0QA25-MOVE').locator('input[type="checkbox"]').first().check();
+    await rowOf(page, '0QA25-P').locator('input[type="checkbox"]').first().check();
+    await page.locator('.archive-page button', { hasText: /^(Move|Pindahkan)$/ }).first().click();
+    const bulk = modalOf();
+    await bulk.waitFor({ state: 'visible', timeout: 15000 });
+    await app.settle();
+    await sleep(900);
+    // Konfirmasi: kolom list -> P berperisai, MOVE (Off) tanpa
+    await expectShield(bulk, '0QA25-P', 1, 'pindah massal, langkah Konfirmasi');
+    await expectShield(bulk, '0QA25-MOVE', 0, 'pindah massal, langkah Konfirmasi');
+    await hoverTip(vrow(bulk, '0QA25-P'), 'Konfirmasi, P', `AC40-08-bulk-konfirmasi-tooltip-${lang}`);
+    const pickerList = listResponse(page, (u) => !folderParam(u));
+    await bulk.locator('button.ant-btn-primary', { hasText: /^(Next|Lanjut)$/ }).first().click();
+    await pickerList.catch(() => null);
+    await app.settle();
+    await sleep(900);
+    // Pilih Folder
+    for (const [n, want] of [['0QA25-P', 1], ['0QA25-DENY', 1], ['0QA25-DENYA', 1], ['0QA25-STORE', 1], ['0QA25-MOVE', 0], ['0QA25-Z', 0]]) {
+      await expectShield(bulk, n, want, 'pindah massal, langkah Pilih Folder');
+    }
+    expect(await radioOf(vrow(bulk, '0QA25-DENYA')), 'Pilih Folder: DENYA tidak bisa dipilih').toBe(true);
+    expect(await radioOf(vrow(bulk, '0QA25-P')), 'Pilih Folder: P (ikut dipindah) tidak bisa dipilih').toBe(true);
+    await app.screenshot(`AC40-09-bulk-pilih-folder-${lang}`);
+    await hoverTip(vrow(bulk, '0QA25-DENYA'), 'Pilih Folder, DENYA', `AC40-09b-bulk-tooltip-DENYA-${lang}`);
+    // klik IKON STORE (Store + View) = membuka STORE; klik IKON P (sedang dipindah, terkunci) = tanpa membuka
+    const pBefore = apiCalls.length;
+    await shieldOf(vrow(bulk, '0QA25-P')).first().click();
+    await sleep(1500);
+    expect(apiCalls.slice(pBefore), 'klik ikon folder yang sedang dipindah (terkunci): tanpa request').toEqual([]);
+    const openStore = listResponse(page, (u) => folderParam(u) === fx0['0QA25-STORE']);
+    await shieldOf(vrow(bulk, '0QA25-STORE')).first().click();
+    expect((await openStore).status, 'Pilih Folder: klik IKON STORE = membuka STORE').toBe(200);
+    await app.settle();
+    await expect(bulk.locator('.breadcrumbs'), 'breadcrumb memuat STORE').toContainText('0QA25-STORE');
+    await app.screenshot(`AC40-10-bulk-di-dalam-STORE-${lang}`);
+    await closeTopLayer(page);
+    await expect(page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal')).toHaveCount(0, { timeout: 10000 });
+
+    // ---- tanpa request tambahan: hanya GET document-archive/archives (daftar) selama picker dipakai
+    const used = apiCalls.slice(startCalls);
+    const kinds = [...new Set(used)];
+    monitor.note(`request API selama picker/pindah massal (${used.length}): ${kinds.join(' ; ')}`);
+    const extra = used.filter((c) => c !== 'GET document-archive/archives');
+    expect(extra, 'picker/pindah massal: tanpa request selain GET document-archive/archives (daftar)').toEqual([]);
+
+    // tidak ada yang dipindah
+    expect(fxJson('prop', '0QA25-MOVE').id_archive_parent, 'MOVE tidak dipindah').toBeNull();
+    expect(fxJson('prop', '0QA25-P-DOC').id_archive_parent, 'P-DOC tidak dipindah').toBe(fx0['0QA25-P']);
+    await noToast(page, `AC-40 ${lang}`);
+    noServerError(monitor);
+    monitor.check();
+  }
+
+  /** Pengalih pencarian picker (pola QA ED-1069, `armPickerSearch`): GET archives pertama tanpa id_archive/search sesudahnya dialihkan ke ?search=. */
+  async function armPickerSearch(page, query) {
+    let used = false;
+    const handler = async (route) => {
+      const req = route.request();
+      if (used || req.method() !== 'GET') return route.fallback();
+      const u = new URL(req.url());
+      if (folderParam(u) || u.searchParams.get('search')) return route.fallback();
+      used = true;
+      const target = new URL(req.url());
+      target.searchParams.set('search', JSON.stringify({ query }));
+      target.searchParams.set('page', '1');
+      const resp = await route.fetch({ url: target.toString() });
+      return route.fulfill({ response: resp });
+    };
+    await page.route(LIST_RE, handler);
+
+    return {
+      done: async () => {
+        await page.unroute(LIST_RE, handler);
+        return used;
+      },
+    };
+  }
+
+  test('[default] ED-1025 AC-40 A (id): perisai Akses Terbatas di picker Pindahkan (⋯ dokumen, di dalam folder, pencarian) dan pindah massal (Konfirmasi + Pilih Folder); tooltip "Akses Terbatas", klik ikon = klik nama', async ({ app, page, monitor, session }) => {
+    await ac40Flow({ app, page, monitor, session, lang: 'ID' });
+  });
+
+  test('[default] ED-1025 AC-40 A (en): perisai Akses Terbatas di picker Pindahkan dan pindah massal; tooltip "Restricted Access"', async ({ app, page, monitor, session }) => {
+    try {
+      await ac40Flow({ app, page, monitor, session, lang: 'EN' });
+    } finally {
+      fx('lang', 'default', 'ID'); // pulih ke ID (teardown fixture juga memulihkan dari baseline)
+    }
   });
 });
