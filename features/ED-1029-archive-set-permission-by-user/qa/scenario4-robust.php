@@ -1,7 +1,7 @@
 <?php
 /**
- * ED-1029 - ketahanan: X-1 (karakterisasi ED-1071: id dengan karakter di luar latin1 = 500 kolasi, pra-ada lintas modul, dilacak di
- * luar item; kontrol latin1 harus 404), X-2 (banyak folder: GET dan PUT satu request), X-3 (pohon dalam, induk berputar / induk diri
+ * ED-1029 - ketahanan: X-1 (ED-1071 diperbaiki: id dengan karakter di luar latin1 di path = 404 ARCHIVE440, di body permissions /
+ * folders = 422 GE0748, tidak pernah 500; kontrol latin1 harus 404), X-2 (banyak folder: GET dan PUT satu request), X-3 (pohon dalam, induk berputar / induk diri
  * sendiri), X-4 (target superadmin/diri sendiri, id_archive aneh, spasi). Konkurensi (PUT paralel, D-2): scenario5-concurrency.php.
  */
 require_once __DIR__ . '/qa_lib_r3.php';
@@ -10,7 +10,7 @@ return [
 
     [
         'id'    => 'X-1',
-        'title' => 'ED-1071 (karakterisasi bug pra-ada lintas modul, dilacak di luar item, BUKAN perilaku yang benar): id dengan karakter di luar Windows-1252 (angka Arab, CJK, Omega, emoji) di path GET/PUT user-permissions dan di body id_archive = 500 (Illegal mix of collations); kontrol latin1/Windows-1252 = 404; data tidak berubah di setiap respons >= 400',
+        'title' => 'ED-1071 (perilaku yang benar sesudah perbaikan): id dengan karakter di luar Windows-1252 (angka Arab, CJK, Omega, emoji) di path GET/PUT user-permissions = 404 ARCHIVE440, di body permissions.*.id_archive dan folders.*.id_archive = 422 (teks GE0748), tidak pernah 500; kontrol latin1/Windows-1252 = 404; data tidak berubah di setiap respons >= 400',
         'run'   => function ($t) {
             q9_recover($t);
             $s = $t->session();
@@ -24,21 +24,21 @@ return [
                 $f = q9_fixture($t, $me, $meName, $b[0]);
                 $ids = array_values($f);
 
-                // ED-1071 (karakterisasi): kolom id archives/users berkolasi latin1, koneksi utf8 -> karakter di luar Windows-1252 sebagai
-                // pembanding SQL = 500 (SQLSTATE 1267). Pra-ada dan sama di endpoint lama modul (archives/{id}, archives/history/{id}, select
-                // users selected_id; ED-1025 X-12). Endpoint ED-1029 mewarisinya lewat findUser/assertCanManage/lockFolders. Bila ED-1071
-                // mengubah perilaku (500 menjadi 4xx), kasus "want 500" GAGAL dengan sengaja ("ED-1071 berubah"): ubah karakterisasi ini menjadi
-                // asersi tidak-5xx dan hapus tag. Kontrol latin1/Windows-1252 adalah perilaku benar dan harus tetap 404 (AC-6).
+                // ED-1071 (K-1 a, K-2 a): kolom id archives/users berkolasi latin1; karakter di luar Windows-1252 tidak mungkin ada:
+                // id di path (findUser) = 404 ARCHIVE440 tanpa kueri; id di body permissions.*.id_archive / folders.*.id_archive (rev3, AC-35)
+                // = 422 di kunci itu (teks GE0748), ditolak sebelum lookup id gabungan permissions + folders (assertCanManage). Tidak
+                // pernah 500 (dulu SQLSTATE 1267). Kontrol latin1/Windows-1252 adalah perilaku benar dan harus tetap 404 (AC-6).
+                // Bentuk kasus: label => [status, method, who, body, kunci errors 422 (opsional)].
                 $cases = [];
                 foreach (['٣', '日本', 'Ω', '😀'] as $x) {
-                    $cases["GET path $x"]            = [500, 'GET', $x, null];
-                    $cases["PUT path $x []"]         = [500, 'PUT', $x, ['permissions' => []]];
-                    $cases["PUT body id_archive $x"] = [500, 'PUT', $b[0], ['permissions' => [q9_row_body($x, 1)]]];
-                    $cases["PUT body [P, $x]"]       = [500, 'PUT', $b[0], ['permissions' => [q9_row_body($f['P'], 1), q9_row_body($x, 1)]]];
-                    // rev3 (O-6, AC-35): `folders` non-latin1 hanya diprobe di sini; 500 sampai ED-1071 (milik ED-1071, bukan defect ED-1029)
-                    $cases["PUT body id_archive $x (folders)"] = [500, 'PUT', $b[0], r3_body([], [r3_fl($x, 1)])];
-                    $cases["PUT body [C2, $x] (folders)"]      = [500, 'PUT', $b[0], r3_body([], [r3_fl($f['C2'], 1), r3_fl($x, 1)])];
-                    $cases["PUT body hak C2 + $x (folders)"]   = [500, 'PUT', $b[0], r3_body([q9_row_body($f['C2'], 1)], [r3_fl($x, 1)])];
+                    $cases["GET path $x"]            = [404, 'GET', $x, null];
+                    $cases["PUT path $x []"]         = [404, 'PUT', $x, ['permissions' => []]];
+                    $cases["PUT body id_archive $x"] = [422, 'PUT', $b[0], ['permissions' => [q9_row_body($x, 1)]], 'permissions.0.id_archive'];
+                    $cases["PUT body [P, $x]"]       = [422, 'PUT', $b[0], ['permissions' => [q9_row_body($f['P'], 1), q9_row_body($x, 1)]], 'permissions.1.id_archive'];
+                    // rev3 (O-6, AC-35): `folders` non-latin1 sama: 422 di folders.n.id_archive
+                    $cases["PUT body id_archive $x (folders)"] = [422, 'PUT', $b[0], r3_body([], [r3_fl($x, 1)]), 'folders.0.id_archive'];
+                    $cases["PUT body [C2, $x] (folders)"]      = [422, 'PUT', $b[0], r3_body([], [r3_fl($f['C2'], 1), r3_fl($x, 1)]), 'folders.1.id_archive'];
+                    $cases["PUT body hak C2 + $x (folders)"]   = [422, 'PUT', $b[0], r3_body([q9_row_body($f['C2'], 1)], [r3_fl($x, 1)]), 'folders.0.id_archive'];
                 }
                 foreach (['ü', 'é', '€'] as $x) {     // latin1 / Windows-1252: tidak mengalami kolasi
                     $cases["GET path $x"]            = [404, 'GET', $x, null];
@@ -55,16 +55,24 @@ return [
                 $changed = [];
                 $statuses = [];
                 $leak = 0;
-                foreach ($cases as $label => [$want, $method, $who, $body]) {
+                foreach ($cases as $label => $spec) {
+                    [$want, $method, $who, $body] = $spec;
                     $r = $t->call($s, $method, 'api/v5/document-archive/user-permissions/' . rawurlencode($who), $body);
                     $statuses[$label] = $r[0];
                     if ($r[0] !== $want) {
-                        $drift[] = ($want === 500 ? 'ED-1071 berubah: ' : 'KONTROL latin1 salah: ') . $label . ' kini HTTP ' . $r[0] . ' (sebelumnya/diharapkan ' . $want . ')';
+                        $drift[] = $label . ' kini HTTP ' . $r[0] . ' (diharapkan ' . $want . ')';
                     }
                     if ($want === 404 && $r[0] === 404) {
                         $expected = strpos($label, 'body') !== false ? 'ARCHIVE400' : 'ARCHIVE440';
                         if (q9_code($r) !== $expected) {
-                            $drift[] = 'KONTROL latin1: ' . $label . ' code ' . q9_code($r) . ' (diharapkan ' . $expected . ')';
+                            $drift[] = $label . ' code ' . q9_code($r) . ' (diharapkan ' . $expected . ')';
+                        }
+                    }
+                    if ($want === 422 && $r[0] === 422) {
+                        $errors = $r[1]['errors'] ?? [];
+                        $text = json_encode($errors[$spec[4]] ?? null, JSON_UNESCAPED_UNICODE);
+                        if (array_keys($errors) !== [$spec[4]] || (strpos($text, 'Mengandung karakter yang tidak didukung') === false && strpos($text, 'Contains unsupported characters') === false)) {
+                            $drift[] = $label . ': errors bukan hanya ' . $spec[4] . ' dengan teks GE0748 (' . substr(json_encode(array_keys($errors)), 0, 100) . ')';
                         }
                     }
                     if ($r[0] >= 400 && !q9_same($before, q9_snap($t, $ids))) {
@@ -79,7 +87,7 @@ return [
                 ksort($counts);
                 $t->note(count($cases) . ' kasus; status: ' . json_encode($counts) . ($leak ? "; $leak badan 500 memuat teks SQLSTATE (mode debug?)" : ''));
                 $t->eq($changed, [], 'data (archives, archive_permissions, riwayat) tidak berubah pada respons >= 400');
-                $t->eq($drift, [], 'karakterisasi ED-1071 sama dengan perilaku pra-ada dan kontrol latin1 = 404 (bila "ED-1071 berubah": perbarui skenario)');
+                $t->eq($drift, [], 'ED-1071: id di luar latin1 di path = 404 ARCHIVE440, di body = 422 GE0748 di kuncinya; kontrol latin1 = 404');
             } finally {
                 q9_purge($t);
             }

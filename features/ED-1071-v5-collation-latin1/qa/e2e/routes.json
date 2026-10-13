@@ -1,0 +1,19 @@
+{
+  "feature": "ED-1071",
+  "routes": [
+    {
+      "name": "Archive (daftar) QA_USER - layar terbuka tanpa error",
+      "path": "/archives",
+      "profiles": ["default"],
+      "waitFor": ".archive-page .ant-table",
+      "ref": "AC-10"
+    },
+    {
+      "name": "Izin Arsip by User (Archive Permission) QA_USER - layar terbuka tanpa error",
+      "path": "/archives/permissions",
+      "profiles": ["default"],
+      "waitFor": "input[placeholder='Cari folder'], input[placeholder='Search folder']",
+      "ref": "AC-10"
+    }
+  ]
+}

@@ -103,11 +103,15 @@ return [
                     $f->resp($r, 404, 'ARCHIVE400', "induk tak ada ($label)");
                 }
 
-                // dicatat, bukan asersi item ini: id "0" dibaca kosong oleh empty() (200 semua lokasi); id non-latin1 = 500 (ED-1071,
-                // sudah dilacak: select locations id_archive_parent non-latin1 -> 404 ARCHIVE400 dijanjikan di spec ED-1071 butir 5)
+                // dicatat, bukan asersi item ini: id "0" dibaca kosong oleh empty() (200 semua lokasi; ED-1124)
                 $r0 = q69_loc($t, $s, ['id_archive_parent' => '0']);
-                $ru = q69_loc($t, $s, ['id_archive_parent' => "\u{0431}\u{044f}"]);
-                $t->note('observasi: id_archive_parent="0" -> HTTP ' . $r0[0] . '; id non-latin1 -> HTTP ' . $ru[0] . ' (ED-1071 terbuka)');
+                $t->note('observasi: id_archive_parent="0" -> HTTP ' . $r0[0] . ' (ED-1124)');
+
+                // ED-1071 (AC-4): id di luar latin1 tidak mungkin ada = 404 ARCHIVE400 tanpa kueri (dulu 500 kolasi)
+                foreach (['sirilik' => "\u{0431}\u{044f}", 'omega' => "\u{03A9}", 'emoji' => "\u{1F600}", 'cjk' => "\u{4E2D}\u{6587}"] as $label => $v) {
+                    $r = q69_loc($t, $s, ['id_archive_parent' => $v]);
+                    $f->resp($r, 404, 'ARCHIVE400', "induk di luar latin1 ($label)");
+                }
 
                 // tipe salah = 422 (bukan 500)
                 foreach (['id_archive_parent[]=x', 'id_archive_parent[a]=x', 'id_archive_parent[0][b]=x', 'id_archive_parent[]='] as $q) {

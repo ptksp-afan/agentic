@@ -356,7 +356,7 @@ return [
 
     [
         'id'    => 'X-12',
-        'title' => 'ED-1071 (karakterisasi bug pra-ada lintas v5, BUKAN perilaku yang benar): karakter di luar Windows-1252 (Yunani, CJK, emoji, aksen gabung, tanda RTL) pada name, id_archive_parent, id_locations, id_user, put-in, id_archive list = 500 (Illegal mix of collations); rename = 200; data tidak berubah',
+        'title' => 'ED-1071 (perilaku yang benar sesudah perbaikan): karakter di luar Windows-1252 (Yunani, CJK, emoji, aksen gabung, tanda RTL) pada name, id_archive_parent, id_locations, id_user, put-in, rename = 422 (teks GE0748, tidak pernah 500 atau tersimpan sebagai ?); id di path / ?id_archive = 404 ARCHIVE400; search query = 200 total 0; data tidak berubah',
         'run'   => function ($t) {
             q2_recover($t);
             $s = $t->session();
@@ -394,23 +394,64 @@ return [
                     $cases[] = ['history id ' . $label, 'GET', $api . 'archives/history/' . urlencode($ch), null, false];
                     $cases[] = ['DELETE id ' . $label, 'DELETE', $api . 'archives/delete/' . urlencode($ch), null, false];
                 }
-                // ED-1071 (karakterisasi): perilaku pra-ada yang dilacak di Jira ED-1071 (kolom archives*/users/locations berkolasi latin1,
-                // koneksi utf8 -> 500 saat karakter di luar Windows-1252 jadi pembanding SQL; sama di HEAD, baris di luar diff ED-1025).
-                // Bila ED-1071 mengubah perilaku (500 menjadi 4xx/200), skenario ini GAGAL dengan sengaja: perbarui karakterisasi menjadi
-                // asersi "tidak 5xx" dan hapus tag. Rename: tanpa aturan unik, karakter tersimpan sebagai '?' (200).
-                [$bad, $seen, $map] = q5_run_cases($t, $s, $cases, $P, $pName, $username, $since, true);
+                // ED-1071 (K-1 a, K-2 a): karakter di luar latin1 ditolak per arti, tidak pernah 500 dan tidak pernah tersimpan sebagai '?':
+                //  - field body (name, description, id_archive_parent, id_locations, id_user, put-in, rename) = 422 dengan teks GE0748;
+                //  - id di path / ?id_archive (show, history, delete) = 404 ARCHIVE400; search query = 200 total 0.
+                // Dulu (karakterisasi bug) semua 500, dan rename 200 dengan '?'.
+                $expect = function ($label) {
+                    foreach (['list id_archive ', 'show id ', 'history id ', 'DELETE id '] as $prefix) {
+                        if (strpos($label, $prefix) === 0) {
+                            return [404, 'ARCHIVE400'];
+                        }
+                    }
+                    if (strpos($label, 'list search query ') === 0) {
+                        return [200, null];
+                    }
+
+                    return [422, null];
+                };
+                $gePhrases = ['Mengandung karakter yang tidak didukung', 'Contains unsupported characters'];
+                $bad = [];
+                $map = [];
                 $drift = [];
                 foreach ($cases as $c) {
-                    $want = strpos($c[0], 'rename name ') === 0 ? 200 : 500;
-                    if (($map[$c[0]] ?? null) !== $want) {
-                        $drift[] = 'ED-1071 berubah: ' . $c[0] . ' kini HTTP ' . ($map[$c[0]] ?? '?') . ' (sebelumnya ' . $want . ')';
+                    q5_reset($t, $P, $pName);
+                    $before = q5_snap($t, $P);
+                    $r = $t->call($s, $c[1], $c[2], $c[3]);
+                    $map[$c[0]] = (int) $r[0];
+                    if ($r[0] >= 500) {
+                        $bad[] = $c[0] . ' -> HTTP ' . $r[0] . ' ' . substr(json_encode($r[1]), 0, 150);
+                    } elseif ($r[0] >= 400 && q5_snap($t, $P) !== $before) {
+                        $bad[] = $c[0] . ' -> HTTP ' . $r[0] . ' tetapi data folder berubah';
+                    }
+
+                    [$want, $wantCode] = $expect($c[0]);
+                    if ((int) $r[0] !== $want) {
+                        $drift[] = $c[0] . ' -> HTTP ' . $r[0] . ', diharapkan ' . $want;
+                        continue;
+                    }
+                    if ($wantCode !== null && ($r[1]['code'] ?? $r[1]['msg_code'] ?? null) !== $wantCode) {
+                        $drift[] = $c[0] . ' -> kode ' . ($r[1]['code'] ?? $r[1]['msg_code'] ?? '?') . ', diharapkan ' . $wantCode;
+                    }
+                    if ($want === 422) {
+                        $text = json_encode($r[1]['errors'] ?? [], JSON_UNESCAPED_UNICODE);
+                        if (strpos($text, $gePhrases[0]) === false && strpos($text, $gePhrases[1]) === false) {
+                            $drift[] = $c[0] . ' -> 422 tetapi errors tanpa teks GE0748: ' . substr($text, 0, 120);
+                        }
+                    }
+                    if ($want === 200 && ($r[1]['result']['total'] ?? null) !== 0) {
+                        $drift[] = $c[0] . ' -> 200 tetapi result.total bukan 0';
                     }
                 }
+                $created = $t->db()->table('archives')->where('created_at', '>=', $since)->where('created_by', $username)->where('type', 1)->count();
+                q5_reset($t, $P, $pName);
+                q5_drop_created($t, $since, $username);
                 $counts = array_count_values($map);
                 ksort($counts);
                 $t->note(count($cases) . ' kasus; status: ' . json_encode($counts));
-                $t->eq($bad, [], 'data folder tidak berubah pada respons >= 400');
-                $t->eq($drift, [], 'karakterisasi ED-1071 sama dengan perilaku pra-ada (bila gagal: ED-1071 telah mengubah perilaku, perbarui skenario)');
+                $t->eq($bad, [], 'tidak ada 5xx dan data folder tidak berubah pada respons >= 400');
+                $t->eq($created, 0, 'create-folder dengan karakter di luar latin1 tidak membuat folder baru');
+                $t->eq($drift, [], 'ED-1071: field body = 422 GE0748, id = 404 ARCHIVE400, search = 200 total 0');
             } finally {
                 q5_drop_created($t, $since, $username);
                 q2_purge($t);

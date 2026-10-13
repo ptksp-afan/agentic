@@ -1,0 +1,12 @@
+{
+  "fixtures": [
+    {
+      "name": "qa71-folder-uji",
+      "reason": "AC-10 butuh satu folder uji di root milik QA_USER untuk drawer (Detail, Izin). Dibuat langsung di DB dengan nama QA71-E2E-A (fixture.php up) dan dibuang persis di teardown: hanya baris berawalan QA71-E2E- ditambah folder 'QA71 ...' yang salah dibuat spec (nama tanpa tanda hubung, mis. 'QA71 ?'), beserta archive_documents/locations/permissions mereka. Tabel archive_opname* dan baris lain tidak disentuh. Jalankan dengan --workers 1.",
+      "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" up",
+      "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" down",
+      "profiles": ["default"],
+      "timeout_s": 120
+    }
+  ]
+}
