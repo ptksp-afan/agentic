@@ -27,3 +27,16 @@ sesi, 2026-09-28 s.d. 2026-10-05.
 | P-5 | `force_login` boleh dipakai dev/QA saat bind DB lokal (2026-09-29) | dapat me-logout sesi developer bila user sama |
 | P-6 | FE dibangun ke folder staging; `build/` developer hanya diisi dengan **menyalin** saat `serve` mati (2026-10-01) | `scripts/fe-build.sh` |
 | P-7 | Bug di luar cakupan: tidak diperbaiki diam-diam; developer memilih "kerjakan di fitur ini" atau tiket terpisah | |
+
+## Perilaku yang diterima (bug dihapus developer, tidak diperbaiki)
+
+Developer menghapus tiketnya di Jira (2026-10-14, epic ED-1022): "tidak perlu di fix". Bila QA melihatnya lagi,
+catat sebagai "diterima (A-n)", **jangan buat tiket baru** dan jangan dihitung sebagai defect item. Item yang memang
+mengubah kode tersebut boleh mengusulkan perbaikan lewat *Keputusan untuk developer* di Gate 1.
+
+| # | Perilaku | Tiket lama (dihapus) |
+|---|---|---|
+| A-1 | `PUT api/v5/setting/display-columns/{modul}` dengan isi sama di detik yang sama = 500 `FAILED` (`ColumnDisplaySettingService::update` mendapat 0 baris berubah); jeda 1 detik = 200 | ED-1122 |
+| A-2 | Route `api/v4/setting/display-columns*` tanpa saringan permission Opname Document (`documentArchive`, `documentArchiveOpnameHistory`); route v4 tidak dipakai FE | ED-1123 |
+| A-3 | `scopeSearchAll` (trait `CustomizeBuilder`, semua list v5): key `search` berakhiran `()` memanggil method query builder apa pun | ED-1144 |
+| A-4 | Input di luar latin1 = 500 di modul v5 selain Archive (Archive menolak dengan 422 `GE0748`, ED-1071); search Opname berisi U+FFFD = 500 | ED-1145 |

@@ -8,7 +8,7 @@
  *          itu dan `total` ikut berkurang; documentArchive tetap 200 (aturan ED-1027 AC-24); pemegang (profil default): baris tampil,
  *          show / put 200.
  * Baris column_display_settings `documentArchiveOpnameHistory` dan `documentArchive` dicadangkan utuh dan dikembalikan persis (q28_guard +
- * snapshot); sidik jari seluruh tabel dicek sebelum / sesudah. Bug pra-ada ED-1122 (PUT isi sama di detik yang sama = 500) tidak dipicu:
+ * snapshot); sidik jari seluruh tabel dicek sebelum / sesudah. Perilaku diterima A-1 di knowledge/decisions.md (dulu ED-1122: PUT isi sama di detik yang sama = 500) tidak dipicu:
  * PUT pemegang selalu mengubah isi, sekali.
  */
 require_once __DIR__ . '/qa_hist.php';
