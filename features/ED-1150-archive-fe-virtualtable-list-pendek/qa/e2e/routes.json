@@ -1,0 +1,6 @@
+{
+  "feature": "ED-1150",
+  "routes": [
+    { "name": "Archive (sam) - layar terbuka tanpa error", "path": "/archives", "profiles": ["sam"], "waitFor": ".archive-page .ant-table", "ref": "AC-8" }
+  ]
+}
