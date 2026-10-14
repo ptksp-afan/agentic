@@ -40,3 +40,4 @@ mengubah kode tersebut boleh mengusulkan perbaikan lewat *Keputusan untuk develo
 | A-2 | Route `api/v4/setting/display-columns*` tanpa saringan permission Opname Document (`documentArchive`, `documentArchiveOpnameHistory`); route v4 tidak dipakai FE | ED-1123 |
 | A-3 | `scopeSearchAll` (trait `CustomizeBuilder`, semua list v5): key `search` berakhiran `()` memanggil method query builder apa pun | ED-1144 |
 | A-4 | Input di luar latin1 = 500 di modul v5 selain Archive (Archive menolak dengan 422 `GE0748`, ED-1071); search Opname berisi U+FFFD = 500 | ED-1145 |
+| A-5 | Route BE `archives/add-document` selalu 500 (method service tidak ada); FE memakai `document-archive/documents/put-in` | ED-1023 |
