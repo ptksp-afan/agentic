@@ -1,0 +1,12 @@
+{
+  "fixtures": [
+    {
+      "name": "cari-modal-pindah-data",
+      "reason": "AC-1..9 dan AC-14..17 butuh pohon folder uji A>B>C, T, M, M2 dan F (dokumen D6) milik QA_USER. Dibuat langsung di DB dengan awalan 0QA125- (fixture.php up) dan dibuang persis di teardown (hanya baris berawalan itu + jurnal id; tidak ada purge tabel lain, tabel archive_opname* tidak disentuh). Alur pindah sukses dipulihkan spec lewat `fixture.php restore`. Jalankan dengan --workers 1.",
+      "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" up",
+      "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" down",
+      "profiles": ["default"],
+      "timeout_s": 120
+    }
+  ]
+}

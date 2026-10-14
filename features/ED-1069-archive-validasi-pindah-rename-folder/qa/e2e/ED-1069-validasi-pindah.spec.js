@@ -7,11 +7,11 @@
  *
  *   AC-13  : ⋯ Pindahkan A -> (Search) C -> Pindahkan -> toast ARCHIVE404, modal tetap, A tidak pindah; folder sah -> sukses.
  *            Pindah massal [A, X] ke C -> toast sama; pindah massal sah [M, M2] -> T sukses.
- *            CATATAN Search di dalam modal Pindahkan / pindah massal TIDAK bisa dipakai: Enter di kolom Cari maupun tombol "Cari"
- *            popover memicu submit form HTML asli (`formSubmissionGet` ke "/?") dan memuat ulang aplikasi (form Search bersarang di
- *            form modal; bug FE di luar item, dikarakterisasi di test terakhir). Pencarian pada AC-13 diganti di tingkat jaringan:
- *            GET archives pertama milik picker dialihkan ke GET archives?search={"query":...} (respons BE ASLI), sisanya (pilih
- *            baris, POST put-in, respons, toast) asli dari FE dan BE.
+ *            Search di dalam modal Pindahkan / pindah massal dipakai SUNGGUHAN (ketik di kolom Cari + Enter): GET archives?search={"query":...}
+ *            asli dari FE ke BE, lalu pilih baris, POST put-in, respons, toast. (ED-1125: form Search tidak lagi bersarang di form modal, jadi
+ *            Enter tidak memuat ulang aplikasi; sebelumnya pencarian AC-13 diganti pengalih jaringan `armPickerSearch`, kini dihapus.)
+ *            Test terakhir "B-FE-1" dulu mengarakterisasi bug muat ulang; kini = asersi perbaikan ED-1125 (1 form, tidak bersarang, 0 navigasi,
+ *            GET search, modal tetap) untuk Enter DAN tombol Cari di kedua modal.
  *   AC-14  : tanpa error konsol/toast: Archive root & folder (A > B > C, breadcrumbs), Show Related Transaction di F,
  *            drawer Detail (select Lokasi), modal Pindahkan & pindah massal.
  *
@@ -162,32 +162,24 @@ function expectRejections(monitor, minimum, label) {
 }
 
 /**
- * Pengganti Search di dalam modal (lihat catatan di kepala berkas): pasang pengalih jaringan SEBELUM modal dibuka. GET archives pertama
- * tanpa id_archive/search sesudahnya (= tabel picker) dialihkan ke GET archives?search={"query":<query>}&page=1 lewat `route.fetch({url})`
- * - respons asli BE diteruskan apa adanya ke FE. `done()` melepas pengalih dan mengembalikan true bila terpakai.
+ * Search di dalam modal, SUNGGUHAN (ED-1125): klik kolom Cari, ketik, Enter. Mengembalikan promise respons GET archives?search={"query":<text>}
+ * (respons BE asli; FE tidak dialihkan). Jeda 350 ms sesudah klik: `Search.onInputClick` memfokus ulang (cursor: all) sesudah 100 ms.
  */
-async function armPickerSearch(page, query) {
-  let used = false;
-  const handler = async (route) => {
-    const req = route.request();
-    if (used || req.method() !== 'GET') return route.fallback();
-    const u = new URL(req.url());
-    if (folderParam(u) || u.searchParams.get('search')) return route.fallback();
-    used = true;
-    const target = new URL(req.url());
-    target.searchParams.set('search', JSON.stringify({ query }));
-    target.searchParams.set('page', '1');
-    const resp = await route.fetch({ url: target.toString() });
-    return route.fulfill({ response: resp });
+async function typeSearch(page, modal, text) {
+  const queryIs = (u) => {
+    try {
+      return JSON.parse(u.searchParams.get('search') || '{}').query === text;
+    } catch (e) {
+      return false;
+    }
   };
-  await page.route(LIST_RE, handler);
-
-  return {
-    done: async () => {
-      await page.unroute(LIST_RE, handler);
-      return used;
-    },
-  };
+  const resp = page.waitForResponse((r) => r.request().method() === 'GET' && LIST_RE.test(r.url()) && queryIs(new URL(r.url())), { timeout: 45000 });
+  const input = modal.locator('.search-bar input').first();
+  await input.click();
+  await page.waitForTimeout(350);
+  await page.keyboard.type(text, { delay: 40 });
+  await page.keyboard.press('Enter');
+  return resp;
 }
 
 /** Pilih baris tujuan (radio) dan klik tombol Pindahkan; kembalikan {status, reqBody, json} dari POST documents/put-in. */
@@ -264,14 +256,15 @@ test.describe('ED-1069 validasi pindah folder (e2e)', () => {
     for (const n of ['A', 'X', 'T', 'M', 'M2', 'F']) expect(names, `root memuat ${P}${n}`).toContain(P + n);
     await app.screenshot('AC13-01-root');
 
-    // ---- 1. ⋯ Pindahkan A -> modal -> (Search) C: picker memuat hasil pencarian C (respons BE asli, lihat armPickerSearch)
-    const arm = await armPickerSearch(page, P + 'C');
+    // ---- 1. ⋯ Pindahkan A -> modal -> ketik C di Cari modal + Enter: picker memuat hasil pencarian C (respons BE asli, ED-1125)
     const items = await pickRowMenu(page, P + 'A', MENU.move);
     monitor.note(`menu baris A: ${items.join(' | ')}`);
     const modal = visibleModal(page);
     await modal.waitFor({ state: 'visible', timeout: 15000 });
+    await app.settle();
+    const searchC = await typeSearch(page, modal, P + 'C');
+    expect(searchC.status(), 'GET archives?search={"query":"0QA69E-C"} (ketik sungguhan di Cari modal)').toBe(200);
     await pickerRow(modal, page, P + 'C').waitFor({ state: 'visible', timeout: 30000 });
-    expect(await arm.done(), 'pengalih Search terpakai (GET picker dialihkan ke search C)').toBe(true);
     await app.settle();
     await expect(modal.locator('.ant-modal-title'), 'judul modal memuat nama A').toContainText(P + 'A');
     await expect(pickerRow(modal, page, P + 'A'), 'hasil search "0QA69E-C" tidak memuat A').toHaveCount(0);
@@ -296,12 +289,13 @@ test.describe('ED-1069 validasi pindah folder (e2e)', () => {
     await closeTopLayer(page);
     await expect(visibleModal(page)).toHaveCount(0, { timeout: 10000 });
     await page.waitForTimeout(3500); // toast pertama hilang
-    const armB = await armPickerSearch(page, P + 'B');
     await pickRowMenu(page, P + 'A', MENU.move);
     const modalB = visibleModal(page);
     await modalB.waitFor({ state: 'visible', timeout: 15000 });
+    await app.settle();
+    const searchB = await typeSearch(page, modalB, P + 'B');
+    expect(searchB.status(), 'GET archives?search={"query":"0QA69E-B"} (ketik sungguhan di Cari modal)').toBe(200);
     await pickerRow(modalB, page, P + 'B').waitFor({ state: 'visible', timeout: 30000 });
-    expect(await armB.done(), 'pengalih Search B terpakai').toBe(true);
     const rej2 = await selectTargetAndMove(modalB, page, P + 'B');
     expect(rej2.status, 'POST documents/put-in A -> B').toBe(400);
     expect(JSON.stringify(rej2.json), 'respons memuat ARCHIVE404').toContain('ARCHIVE404');
@@ -378,10 +372,13 @@ test.describe('ED-1069 validasi pindah folder (e2e)', () => {
     await expect(pickerRow(bulk, page, P + 'X'), 'langkah konfirmasi memuat X').toBeVisible();
     await app.screenshot('AC13-07-massal-konfirmasi-A-X');
 
-    const armBulk = await armPickerSearch(page, P + 'C');
+    const plBulk = listResponse(page, (u) => !folderParam(u));
     await bulk.locator('button.ant-btn-primary', { hasText: /^(Lanjut|Next)$/ }).first().click();
+    await plBulk.catch(() => null);
+    await app.settle();
+    const searchBulk = await typeSearch(page, bulk, P + 'C');
+    expect(searchBulk.status(), 'GET archives?search={"query":"0QA69E-C"} di Pilih Folder (ketik sungguhan)').toBe(200);
     await pickerRow(bulk, page, P + 'C').waitFor({ state: 'visible', timeout: 30000 });
-    expect(await armBulk.done(), 'pengalih Search C (massal) terpakai').toBe(true);
     await app.settle();
     await app.screenshot('AC13-08-massal-hasil-search-C');
 
@@ -444,9 +441,10 @@ test.describe('ED-1069 validasi pindah folder (e2e)', () => {
     monitor.check();
   });
 
-  // KARAKTERISASI bug di luar item (B-FE-1, dicatat di qa-fe.md). FE tidak diubah oleh item ini. Bila kelak diperbaiki test ini SENGAJA
-  // gagal: ubah jadi asersi bahwa Enter menjalankan GET archives?search={"query":...} tanpa navigasi, lalu pakai Search sungguhan di AC-13.
-  test('[default] ED-1069 karakterisasi B-FE-1 (di luar item): Enter di kolom Cari modal Pindahkan dan pindah massal memicu submit form HTML asli ke "/?" dan memuat ulang aplikasi', async ({ app, page, monitor }) => {
+  // B-FE-1 (dulu karakterisasi, kini ASERSI sesudah perbaikan ED-1125, K-1 a: `component={false}` di form modal): Enter dan tombol Cari di
+  // kolom Cari modal Pindahkan dan pindah massal TIDAK lagi memuat ulang aplikasi. Karakterisasi lama ("tepat 1 navigasi formSubmissionGet ke /?")
+  // dibalik jadi: 1 <form> di modal, tidak bersarang, 0 navigasi, GET search, modal tetap. (Pemilik: ED-1125 AC-11.)
+  test('[default] ED-1069 B-FE-1 (diperbaiki ED-1125): Enter dan tombol Cari di kolom Cari modal Pindahkan dan pindah massal = 1 form (tidak bersarang), 0 navigasi, GET search, modal tetap', async ({ app, page, monitor }) => {
     traceApi(page, monitor);
     const mBefore = prop('M');
     await openArchive(app, page);
@@ -458,29 +456,52 @@ test.describe('ED-1069 validasi pindah folder (e2e)', () => {
     const forms = await modal.locator('.search-bar input').first().evaluate((el) => ({
       nested: !!el.form.parentElement.closest('form'),
       formsInModal: document.querySelectorAll('.ant-modal form').length,
+      formInForm: document.querySelectorAll('form form').length,
     }));
     monitor.note(`form dalam modal: ${JSON.stringify(forms)}`);
-    expect(forms, 'form Search bersarang di form modal').toEqual({ nested: true, formsInModal: 2 });
+    expect(forms, 'ED-1125: 1 form di modal (milik Search), tidak bersarang, form di dalam form = 0').toEqual({ nested: false, formsInModal: 1, formInForm: 0 });
 
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Page.enable');
     const navs = [];
     cdp.on('Page.frameRequestedNavigation', (e) => navs.push(`${e.reason} ${e.url}`));
-    const input = modal.locator('.search-bar input').first();
-    await input.click();
-    await page.keyboard.type(P + 'T', { delay: 40 });
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(3500);
+    await page.evaluate(() => {
+      window.__ed1069marker = 'hidup';
+    });
+
+    // Enter
+    const searchT = await typeSearch(page, modal, P + 'T');
+    expect(searchT.status(), 'Enter: GET archives?search={"query":"0QA69E-T"} = 200').toBe(200);
+    expect(new URL(searchT.url()).searchParams.get('search'), 'Enter: search = {"query":"0QA69E-T"}').toBe(JSON.stringify({ query: P + 'T' }));
+    await page.waitForTimeout(1500);
     monitor.note(`navigasi sesudah Enter di kolom Cari modal: ${JSON.stringify(navs)}`);
-    expect(navs.length, 'KARAKTERISASI B-FE-1: tepat satu navigasi penuh (submit form asli) sesudah Enter').toBe(1);
-    expect(navs[0], 'jenis navigasi = formSubmissionGet ke "/?"').toMatch(/^formSubmissionGet .*\/\?$/);
+    expect(navs, 'Enter: 0 navigasi (CDP Page.frameRequestedNavigation kosong)').toEqual([]);
+    expect(await page.evaluate(() => window.__ed1069marker), 'Enter: penanda window bertahan (aplikasi tidak dimuat ulang)').toBe('hidup');
     await app.settle();
-    await expect(visibleModal(page), 'modal tertutup karena aplikasi dimuat ulang').toHaveCount(0);
-    await app.screenshot('B-FE-1-02-sesudah-enter-aplikasi-dimuat-ulang');
+    await expect(visibleModal(page), 'Enter: modal tetap terbuka').toBeVisible();
+    await expect(modal.locator('.ant-modal-title'), 'Enter: judul tetap').toContainText(P + 'M');
+    await expect(pickerRow(modal, page, P + 'T'), 'Enter: hasil cari T tampil di modal').toBeVisible();
+    await app.screenshot('B-FE-1-02-sesudah-enter-modal-tetap');
+
+    // tombol Cari (ikon filter -> Cari)
+    await modal.locator('.search-bar input').first().fill(P + 'M2');
+    await modal.locator('.search-config').first().click();
+    const overlay = modal.locator('.search-bar-overlay').first();
+    await expect(overlay, 'popover filter terbuka').not.toHaveClass(/ant-popover-hidden/, { timeout: 10000 });
+    await page.waitForTimeout(700);
+    const searchM2 = page.waitForResponse((r) => r.request().method() === 'GET' && LIST_RE.test(r.url()) && /M2/.test(r.url()), { timeout: 45000 });
+    await overlay.locator('button').filter({ hasText: /^(Cari|Search)$/ }).first().click();
+    expect((await searchM2).status(), 'tombol Cari: GET search = 200').toBe(200);
+    await page.waitForTimeout(1500);
+    expect(navs, 'tombol Cari: 0 navigasi').toEqual([]);
+    expect(await page.evaluate(() => window.__ed1069marker), 'tombol Cari: penanda window bertahan').toBe('hidup');
+    await expect(visibleModal(page), 'tombol Cari: modal tetap terbuka').toBeVisible();
+    await expect(pickerRow(modal, page, P + 'M2'), 'tombol Cari: hasil cari M2 tampil').toBeVisible();
+    await closeTopLayer(page);
+    await expect(visibleModal(page)).toHaveCount(0, { timeout: 10000 });
     expect(prop('M'), 'tidak ada data yang berubah (tidak ada POST put-in)').toEqual(mBefore);
 
-    // sama di langkah "Pilih Folder" pindah massal (struktur form yang sama)
-    await expect(rowOf(page, P + 'M'), 'sesudah dimuat ulang: daftar root tampil').toBeVisible({ timeout: 30000 });
+    // sama di langkah "Pilih Folder" pindah massal
     await app.settle();
     await page.locator('.archive-page button', { hasText: /^(Pilih|Select)$/ }).first().click();
     await rowOf(page, P + 'M').locator('input[type="checkbox"]').first().check();
@@ -492,20 +513,38 @@ test.describe('ED-1069 validasi pindah folder (e2e)', () => {
     await bulk.locator('button.ant-btn-primary', { hasText: /^(Lanjut|Next)$/ }).first().click();
     await pl.catch(() => null);
     await app.settle();
-    const navs2 = [];
-    const cdp2 = await page.context().newCDPSession(page);
-    await cdp2.send('Page.enable');
-    cdp2.on('Page.frameRequestedNavigation', (e) => navs2.push(`${e.reason} ${e.url}`));
-    const input2 = bulk.locator('.search-bar input').first();
-    await input2.click();
-    await page.keyboard.type(P + 'T', { delay: 40 });
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(3500);
-    monitor.note(`navigasi sesudah Enter di kolom Cari pindah massal: ${JSON.stringify(navs2)}`);
-    expect(navs2.length, 'KARAKTERISASI B-FE-1 (massal): tepat satu navigasi penuh sesudah Enter').toBe(1);
-    expect(navs2[0], 'massal: formSubmissionGet ke "/?"').toMatch(/^formSubmissionGet .*\/\?$/);
-    expect(prop('M'), 'massal: tidak ada data yang berubah').toEqual(mBefore);
+    const formsB = await bulk.locator('.search-bar input').first().evaluate((el) => ({
+      nested: !!el.form.parentElement.closest('form'),
+      formsInModal: document.querySelectorAll('.ant-modal form').length,
+      formInForm: document.querySelectorAll('form form').length,
+    }));
+    monitor.note(`form dalam modal pindah massal: ${JSON.stringify(formsB)}`);
+    expect(formsB, 'massal: 1 form di modal, tidak bersarang').toEqual({ nested: false, formsInModal: 1, formInForm: 0 });
+    const searchTB = await typeSearch(page, bulk, P + 'T');
+    expect(searchTB.status(), 'massal Enter: GET search = 200').toBe(200);
+    await page.waitForTimeout(1500);
+    monitor.note(`navigasi sesudah Enter di kolom Cari pindah massal: ${JSON.stringify(navs)}`);
+    expect(navs, 'massal Enter: 0 navigasi').toEqual([]);
+    expect(await page.evaluate(() => window.__ed1069marker), 'massal Enter: penanda window bertahan').toBe('hidup');
+    await expect(visibleModal(page), 'massal Enter: modal tetap terbuka').toBeVisible();
+    await expect(pickerRow(bulk, page, P + 'T'), 'massal Enter: hasil cari T tampil').toBeVisible();
+    await bulk.locator('.search-bar input').first().fill(P + 'M2');
+    await bulk.locator('.search-config').first().click();
+    const overlayB = bulk.locator('.search-bar-overlay').first();
+    await expect(overlayB).not.toHaveClass(/ant-popover-hidden/, { timeout: 10000 });
+    await page.waitForTimeout(700);
+    const searchM2B = page.waitForResponse((r) => r.request().method() === 'GET' && LIST_RE.test(r.url()) && /M2/.test(r.url()), { timeout: 45000 });
+    await overlayB.locator('button').filter({ hasText: /^(Cari|Search)$/ }).first().click();
+    expect((await searchM2B).status(), 'massal tombol Cari: GET search = 200').toBe(200);
+    await page.waitForTimeout(1500);
+    expect(navs, 'massal tombol Cari: 0 navigasi').toEqual([]);
+    expect(await page.evaluate(() => window.__ed1069marker), 'massal tombol Cari: penanda window bertahan').toBe('hidup');
+    await expect(visibleModal(page), 'massal tombol Cari: modal tetap terbuka').toBeVisible();
     expect(monitor.responses.filter((r) => r.method === 'POST' && PUTIN_RE.test(r.url)).length, 'tidak ada POST put-in').toBe(0);
+    expect(prop('M'), 'massal: tidak ada data yang berubah').toEqual(mBefore);
+    await app.screenshot('B-FE-1-03-massal-sesudah-cari');
+    await closeTopLayer(page);
+    await exitSelectMode(page);
     noServerError(monitor);
     monitor.check();
   });
