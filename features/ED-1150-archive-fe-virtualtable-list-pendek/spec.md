@@ -51,7 +51,7 @@ Aturan (B2 a + K-5 a): `VirtualTable` mulai dari keadaan awal setiap kali tabel 
 |---|---|
 | `src/containers/Archive/ArchivePage/index.js` (`useTable` `:118-144`, tabel `:542`) | `key` tabel = kunci daftar dari parameter **respons yang sedang tampil**: `idArchive ?? 'root'` + `search` (JSON) + `page` + `pagination`. Disimpan di `onSuccess(data, [params])` milik `useTable`, bersama `onSelectScanResult` yang sudah ada. Jangan diambil dari parameter request saat `run()` (lihat catatan). `selectedKeys`, `selectedRecords`, `selectedRowKeys`, mode Pilih dan form filter tetap di `ArchivePage`, jadi tidak di-reset |
 | `src/containers/Archive/archive-components/ArchiveTable/index.js` (`useTable` `:33-36`, tabel `:174`) | Sama untuk picker (Move / Bulk Move) |
-| Unit test `ArchivePage/index.test.js` (dan picker) | Lihat AC-7 |
+| Unit test `ArchivePage/index.test.js` (dan picker) | Lihat AC-9 |
 
 Catatan: key yang berganti saat request (data lama masih tampil) membuat tabel baru dengan data lama, lalu data baru masuk ke instance itu dan masalahnya terulang. Jadi key harus berganti bersama datanya. React 18 menggabungkan kedua state update ke satu render.
 
@@ -61,15 +61,22 @@ Tidak diubah: `components/VirtualTable` global, versi library, BE.
 
 Sesi: `sam` = `QA_USER3` (K-4 a), data asli sam. Prasyarat dicek lewat HTTP di awal: root sam 3 baris termasuk Folder A, Folder A 2 baris (Folder B, Folder C), Folder B ≥10 baris. Tidak terpenuhi = AC BLOCKED (bukan FAIL), tanpa membuat fixture.
 
+**Kriteria "baris = respons" untuk AC-1..AC-7 (review 2026-10-14)** (metode e2e QA, `qa/e2e/ED-1150-virtualtable-list-pendek.spec.js` `evaluateSnap`; `qa-fe.md` § Baseline). Pembanding = `result.data` respons list terakhir dari jaringan (diratakan seperti `flattenArchives`). Langkah lulus hanya bila **kedua** penilaian OK:
+
+| Penilaian | Syarat |
+|---|---|
+| literal | Jumlah `tr.ant-table-row` dan nama barisnya (urut) = respons. Daftar > `scroll.y` 600 (20 baris) tervirtualisasi: baris DOM = potongan berurutan respons, mulai baris pertama pada `scrollTop` 0 |
+| terlihat | Setiap baris tampil di area terlihat wadah scroll `.ant-table-body` (≥ 50% tinggi baris di dalam wadah) **dan** wadah tidak terpotong oleh tinggi sisa daftar sebelumnya: `clientHeight >= min(max-height, scrollHeight)` (toleransi 1 px). Daftar panjang: minimal satu baris terlihat. Contoh: Folder A 2 baris = wadah 74/74 px; baseline 37/74 (Folder C terpotong, literal tetap lolos) |
+
 | AC | Tag | Given / When / Then | Cek |
 |---|---|---|---|
-| AC-1 | [FE] | When root -> Folder A -> Folder B -> breadcrumb Folder A -> breadcrumb root (tanpa scroll, tanpa reload). Then setiap langkah: jumlah `tr.ant-table-row` = `result.data.length` respons list terakhir dan nama barisnya sama (A: Folder B + Folder C; root: Folder A ada). Dijalankan dulu di baseline FE `d56ce3962`: diharapkan gagal. Bila lolos di baseline, QA mencatat "tidak tereproduksi di baseline" di laporan, fix tetap diuji, dan AC-8 yang menentukan | e2e |
-| AC-2 | [FE] | Sama dengan AC-1, ditambah klik nama folder bolak-balik (root -> A -> B -> A -> root dua kali). Bila ada folder yang ditolak View untuk sam (HTTP 403 `ARCHIVE407`): buka lalu "Back to Archive", baris root = respons. Tidak ada folder seperti itu = bagian ini SKIP dengan catatan | e2e |
-| AC-3 | [FE] | (K-5 a) Di Folder B: halaman 1 -> halaman terakhir (398 = 8 baris) -> halaman 1, lalu ganti ukuran halaman 10 -> 20 -> 10. Then baris = respons setiap kali | e2e |
-| AC-4 | [FE] | (K-5 a) Dari Folder A: cari/scan sebuah nomor transaksi -> hasil = respons. Reset pencarian -> isi Folder A (2 baris) utuh | e2e |
-| AC-5 | [FE] | Refresh daftar yang sama (tombol Reload di Folder B sesudah scroll ke bawah) tidak me-remount tabel: posisi scroll tetap dan baris = respons | e2e |
-| AC-6 | [FE] | Mode Pilih: pilih di Folder A, pindah ke Folder B lewat breadcrumb, pilih lagi. Then keduanya tetap terpilih dan modal Bulk Move menampilkan keduanya (regresi `preserveSelectedRowKeys`, ED-1072). Modal ditutup tanpa simpan | e2e |
-| AC-7 | [FE] | Picker `ArchiveTable` di modal Move: root -> Folder A -> Folder B -> breadcrumb A -> breadcrumb root, baris = respons. Modal ditutup tanpa simpan. Sam tanpa akses Move (tombol tidak ada / 403) = jalankan sebagai `QA_USER` dengan folder yang sama | e2e |
+| AC-1 | [FE] | When root -> Folder A -> Folder B -> breadcrumb Folder A -> breadcrumb root (tanpa scroll, tanpa reload). Then setiap langkah: baris = respons, literal **dan** terlihat (kriteria di atas; A: Folder B + Folder C; root: Folder A ada; review 2026-10-14). Dijalankan dulu di baseline FE `d56ce3962`: diharapkan gagal. Bila lolos di baseline, QA mencatat "tidak tereproduksi di baseline" di laporan, fix tetap diuji, dan AC-10 yang menentukan (review 2026-10-14) | e2e |
+| AC-2 | [FE] | Sama dengan AC-1, ditambah klik nama folder bolak-balik (root -> A -> B -> A -> root dua kali). Setiap langkah baris = respons, literal dan terlihat (review 2026-10-14). Bila ada folder yang ditolak View untuk sam (HTTP 403 `ARCHIVE407`): buka lalu "Back to Archive", baris root = respons. Tidak ada folder seperti itu = bagian ini SKIP dengan catatan | e2e |
+| AC-3 | [FE] | (K-5 a) Di Folder B: halaman 1 -> halaman terakhir (398 = 8 baris) -> halaman 1, lalu ganti ukuran halaman 10 -> 20 -> 10. Then baris = respons setiap kali, literal dan terlihat (review 2026-10-14) | e2e |
+| AC-4 | [FE] | (K-5 a) Dari Folder A: cari/scan sebuah nomor transaksi -> hasil = respons. Pencarian berlaku lintas folder (request `idArchive: null`, perilaku lama, tidak diubah item ini), jadi reset pencarian kembali ke **root** (3 baris), bukan ke Folder A. Lalu buka Folder A lagi -> 2 baris (Folder B, Folder C) utuh. Setiap langkah baris = respons, literal dan terlihat (review 2026-10-14) | e2e |
+| AC-5 | [FE] | Refresh daftar yang sama (tombol Reload di Folder B sesudah scroll ke bawah) tidak me-remount tabel: posisi scroll tetap dan baris = respons, literal dan terlihat (review 2026-10-14) | e2e |
+| AC-6 | [FE] | Mode Pilih: pilih di Folder A, pindah ke Folder B lewat breadcrumb, pilih lagi. Baris tiap folder = respons, literal dan terlihat (review 2026-10-14). Then keduanya tetap terpilih dan modal Bulk Move menampilkan keduanya (regresi `preserveSelectedRowKeys`, ED-1072). Modal ditutup tanpa simpan | e2e |
+| AC-7 | [FE] | Picker `ArchiveTable` di modal Move: root -> Folder A -> Folder B -> breadcrumb A -> breadcrumb root, baris = respons, literal dan terlihat di wadah tabel modal (review 2026-10-14). Modal ditutup tanpa simpan. Sam tanpa akses Move (tombol tidak ada / 403) = jalankan sebagai `QA_USER` dengan folder yang sama | e2e |
 | AC-8 | [FE] | Layar Archive, modal Move dan modal Bulk Move terbuka tanpa error konsol | e2e |
 | AC-9 | [FE] | Unit: key berubah saat respons untuk folder/halaman/ukuran halaman/pencarian lain tiba; tetap saat refresh daftar yang sama; tidak berubah saat `run()` dipanggil sebelum respons tiba | unit |
 | AC-10 | Gate 2 | Developer mengulang skenario aslinya sebagai `sam` di browser | manual (Gate 2) |

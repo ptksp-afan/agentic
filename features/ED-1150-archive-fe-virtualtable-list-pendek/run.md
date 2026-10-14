@@ -3,7 +3,7 @@ key: ED-1150
 epic: ED-1022
 title: Archive - baris folder hilang sesudah navigasi breadcrumb pada daftar pendek
 slug: archive-fe-virtualtable-list-pendek
-phase: gate2
+phase: done
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -13,10 +13,7 @@ agents:
   qa_fe: {id: a6a1ef20ed06475a2, at: 2026-10-14 04:20}
 ---
 ## Status ringkas
-Long run ED-1022: QA FE r1 PASS, FE di-commit lokal (cf37552dd), BE tidak berubah. Jira ED-1150 In Progress + label ai-review + komentar siap review.
-phase gate2 = menunggu review batch developer (/v5-epic review); Done hanya sesudah developer setuju. AC-10 manual di review.
-Untuk dikonfirmasi di review: AC-4 reset pencarian kembali ke root (pencarian lintas folder, perilaku lama).
-Berkas belum di-commit: tidak ada (BE/FE bersih; folder fitur di-commit di workspace).
+**Selesai (Done) - disetujui developer di review batch ED-1022 ronde 4 (2026-10-14).** Jira Done, label ai-review dilepas, komentar serah terima ditambahkan.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -43,3 +40,5 @@ Berkas belum di-commit: tidak ada (BE/FE bersih; folder fitur di-commit di works
 - 2026-10-14 04:25 commit: FE cf37552dd (8 berkas NEW: 3 kode + 3 test + task 025 + _module.md), BE tidak ada perubahan; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
 - 2026-10-14 04:26 jira: ED-1150 label ai-review + komentar siap review (tanpa hash); tetap In Progress
 - 2026-10-14 04:27 cek kebocoran rahasia di folder fitur sebelum commit workspace: nilai QA_PASS* 0 berkas (CLIENT_ID 1 karakter = positif palsu)
+- 2026-10-14 04:28 commit agentic: 5ebe3f6 (features/ED-1150-*)
+- 2026-10-14 review batch ronde 4: disetujui developer -> Jira Done, label ai-review dilepas, komentar serah terima; phase done (R4-1 a, R4-2 a, R4-3 a)

@@ -3,19 +3,14 @@ key: ED-1149
 epic: ED-1022
 title: "[QA] Archive - skenario regresi ED-1026/ED-1027/ED-1028 tahan data baseline developer"
 slug: archive-qa-regresi-baseline
-phase: gate2
+phase: done
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
 agents: {qa-be-r1: a3007a098e768914c, qa-fe-r1: ada5f7df6346e5e63}
 ---
 ## Status ringkas
-Long run ED-1022 (2026-10-14): QA BE r1 PASS + QA FE r1 PASS → auto-commit lokal agentic (tanpa commit BE/FE: task QA murni).
-Menunggu review batch developer (`/v5-epic review ED-1022`); Jira ED-1149/ED-1151 In Progress + label ai-review.
-Catatan untuk review: (1) ED-1026 spec BR-29/AC-29 ("desktop lebar dibatasi") kini beda dengan FE 41480e37c (developer, 2026-10-12;
-asersi e2e ED-1026 :1713 disesuaikan ke desain sekarang); (2) ketergantungan baca-saja yang tersisa: QA_USER [default] = role 3 berhak
-Archive penuh, ED-1150 memakai role asli sam (5), role sistem 1 untuk state superadmin; (3) `updated_by='sam'` kini 400 (spec: 343).
-Berkas belum di-commit sesudah commit: run.md ini (hash commit). Bukan milik run ini: features/ED-1150-*/run.md, epics/*, features/ED-1070-*.
+**Selesai (Done) - disetujui developer di review batch ED-1022 ronde 4 (2026-10-14).** Jira Done, label ai-review dilepas, komentar serah terima ditambahkan.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -51,3 +46,6 @@ Berkas belum di-commit sesudah commit: run.md ini (hash commit). Bukan milik run
   QA_USER/QA_USER2); sisa QA 0, jurnal 0, token aktif 0; tidak ada data developer dihapus.
 - 2026-10-14 gate2 (long run): QA BE + QA FE PASS, tidak ada Harus diperbaiki → auto-commit lokal agentic saja (BE/FE tidak berubah).
   Cek kebocoran rahasia pada 54 berkas kandidat: nilai QA_PASS* 0 berkas. FOUND: tidak ada bug baru (tidak ada tiket).
+- 2026-10-14 commit agentic: 4a88fce (54 berkas: features/ED-1149-* + qa/ ED-1024..1029, ED-1072); BE/FE tanpa commit (tidak berubah)
+- 2026-10-14 jira: ED-1149 label ai-review + komentar siap review (tanpa hash); ED-1149/ED-1151 tetap In Progress
+- 2026-10-14 review batch ronde 4: disetujui developer -> Jira Done, label ai-review dilepas, komentar serah terima; phase done (R4-1 a, R4-2 a, R4-3 a)
