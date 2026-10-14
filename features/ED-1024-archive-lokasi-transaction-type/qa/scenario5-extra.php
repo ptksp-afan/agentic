@@ -238,8 +238,9 @@ return [
         'run'   => function ($t) {
             $s = $t->session();
             q1_purge($t);
+            q1_role_purge($t);
             q1_add($t, ['name' => 'QA01-TANPA-LOKASI', 'type' => 1, 'all' => 0, 'locs' => []]);
-            $roleSnap = (array) $t->db()->table('roles')->where('id_role', 2)->first();
+            $roleSnap = (array) $t->db()->table('roles')->where('id_role', 2)->first(); // role developer 2: hanya dibaca (tidak diubah, ED-1149 BR-4)
 
             $seen = function () use ($t, $s) {
                 $r = q1_list($t, $s, ['pagination' => 100]);
@@ -248,32 +249,41 @@ return [
             };
 
             try {
-                q1_with_user($t, ['role' => [29, 2], 'emp' => ['JOG']], function ($set) use ($t, $seen) {
+                // (ED-1149 BR-1/BR-4) peran biasa = role fixture QA01-ROLE-* dari nama permission; role sistem 1/2 dipakai apa adanya (tidak diubah)
+                $rList = q1_role($t, 'LISTONLY', ['Allow Access Website', 'List Archive']);
+                $rMove = q1_role($t, 'MOVE', ['Allow Access Website', 'List Archive', 'Move Archive', 'Handover Document', 'Receive Document']);
+                $rNone = q1_role($t, 'NOARCH', ['Allow Access Website']);
+                q1_with_user($t, ['role' => [$rList, 2], 'emp' => ['JOG']], function ($set) use ($t, $seen, $rMove, $rNone) {
                     list($st, $has) = $seen();
-                    $t->status([$st], 200, 'role ganda [29, 2]');
-                    $t->true($has, 'role ganda [29 (List), 2 (superadmin 2)]: bypass');
+                    $t->status([$st], 200, 'role ganda [LISTONLY, 2]');
+                    $t->true($has, 'role ganda [LISTONLY (List), 2 (superadmin 2)]: bypass');
 
-                    $set(['role' => [16, 1], 'emp' => ['JOG']]);
+                    $set(['role' => [$rMove, 1], 'emp' => ['JOG']]);
                     list($st, $has) = $seen();
-                    $t->true($has, 'role ganda [16, 1]: bypass');
+                    $t->true($has, 'role ganda [MOVE, 1]: bypass');
 
-                    $set(['role' => [3, 6], 'emp' => ['JOG']]);
+                    $set(['role' => [3, $rNone], 'emp' => ['JOG']]);
                     list($st, $has) = $seen();
-                    $t->true(!$has, 'role ganda [3, 6] (tanpa superadmin 1/2): tidak bypass');
+                    $t->true(!$has, 'role ganda [3, NOARCH] (tanpa superadmin 1/2): tidak bypass');
                 });
 
-                // role 2 dinonaktifkan sementara: tidak membypass lagi
-                q1_w($t, function ($c) { $c->table('roles')->where('id_role', 2)->update(['is_active' => 0]); });
-                q1_with_user($t, ['role' => [3, 2], 'emp' => ['JOG']], function ($set) use ($t, $seen) {
+                // role superadmin-2 dinonaktifkan sementara: tidak membypass lagi. Role FIXTURE QA01-ROLE-SA2 (is_superadmin 2) yang dinonaktifkan,
+                // BUKAN role developer 2.
+                $rSa2 = q1_role($t, 'SA2', ['List Archive'], 2);
+                q1_with_user($t, ['role' => [3, $rSa2], 'emp' => ['JOG']], function ($set) use ($t, $seen, $rSa2) {
                     list($st, $has) = $seen();
-                    $t->status([$st], 200, 'role [3, 2 nonaktif]');
+                    $t->true($has, 'role [3, SA2 aktif]: bypass (kontrol)');
+                    q1_w($t, function ($c) use ($rSa2) { $c->table('roles')->where('id_role', $rSa2)->update(['is_active' => 0]); });
+                    list($st, $has) = $seen();
+                    $t->status([$st], 200, 'role [3, SA2 nonaktif]');
                     $t->true(!$has, 'role superadmin 2 nonaktif: tidak membypass (BR-3 "role aktif")');
                 });
             } finally {
-                q1_w($t, function ($c) use ($roleSnap) { $c->table('roles')->where('id_role', 2)->update(['is_active' => $roleSnap['is_active']]); });
                 q1_purge($t);
+                q1_role_purge($t);
             }
-            $t->true(json_encode((array) $t->db()->table('roles')->where('id_role', 2)->first()) === json_encode($roleSnap), 'role 2 dipulihkan persis');
+            $t->true(json_encode((array) $t->db()->table('roles')->where('id_role', 2)->first()) === json_encode($roleSnap), 'role developer 2 tidak berubah (tidak pernah diubah)');
+            $t->eq($t->db()->table('roles')->where('role_name', 'like', Q1_ROLE_PREFIX . '%')->count(), 0, 'role fixture QA01-ROLE- dibuang');
             q1_assert_clean($t);
         },
     ],

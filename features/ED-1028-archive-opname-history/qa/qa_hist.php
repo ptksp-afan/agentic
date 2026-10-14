@@ -4,9 +4,10 @@
  *
  * - q28_hist / q28_hids / q28_hrow: panggil GET opnames dan baca hasilnya. (rev) 'pagination' => 100 TANPA 'page' = ambil SEMUA
  *   halaman (data developer boleh ada; sesi QA ada di antara sesi asing). q28_hkeys membuang id asing (bukan sesi fixture QA).
- * - q28_u2_*: QA_USER2 sungguhan (role asli 5 = List Archive TANPA Opname Document, lokasi SMR). (rev, K-8 a) q28_guard() memberi
- *   role user2 permission Opname Document (per nama, grant sementara berjurnal) selama AC; AC-14/AC-28 memakai ['od' => false]
- *   (R0 = role asli, juga role 22 tanpa permission Archive).
+ * - q28_u2_*: QA_USER2 sungguhan (adi, non-karyawan, lokasi SMR). (ED-1149 BR-1/BR-4) q28_guard() mengganti user_roles QA_USER2 SEMENTARA ke
+ *   preset QA28-ROLE-R0 (akses website + List Archive, TANPA Opname Document; BUKAN role 5) lalu (rev, K-8 a) memberinya permission
+ *   Opname Document (per nama, grant sementara ke PRESET, berjurnal) selama AC; AC-14/AC-28 memakai ['od' => false] (R0 = preset tanpa
+ *   OD; "tanpa permission Archive" = preset QA28-ROLE-NONE, bukan role 22). Baris user_roles asli QA_USER2 dipulihkan persis di akhir.
  * - q28_hfix: fixture sesi terkonfirmasi (dibuat lewat API opname ED-1026 oleh superadmin sementara = role 1; satu POST opnames
  *   per sesi), waktu & pemilik diatur lewat DB supaya urutan/rentang deterministik; waktu di atas semua sesi developer (q28_day).
  * - q28_oracle_sessions / q28_members: oracle independen (SQL mentah + PHP) untuk sesi terlihat & "mencakup folder".
@@ -106,35 +107,42 @@ if (!function_exists('q28_hist')) {
         return q28_rows($t->db()->table('user_roles')->where('id_user', q28_u2_id($t))->orderBy('id_user_role')->get());
     }
 
-    function q28_u2_roles($t, array $roles)
+    function q28_u2_write($t, $uid, array $rows)
     {
-        $uid = q28_u2_id($t);
-        q28_w($t, function ($c) use ($uid, $roles) {
-            $now = date('Y-m-d H:i:s');
+        q28_w($t, function ($c) use ($uid, $rows) {
             $c->table('user_roles')->where('id_user', $uid)->delete();
-            foreach ($roles as $role) {
-                $c->table('user_roles')->insert(['id_user' => $uid, 'id_role' => $role, 'is_all_location' => 1, 'id_location' => null, 'created_at' => $now, 'updated_at' => $now]);
+            if ($rows) {
+                $c->table('user_roles')->insert($rows);
             }
         });
     }
 
+    /** QA_USER2 HANYA di preset $key (kunci preset; role developer tidak diterima). Jurnal tetap memegang user_roles ASLI. Mengembalikan id preset. */
+    function q28_u2_use($t, $key)
+    {
+        $uid = q28_u2_id($t);
+        $role = q28_preset($t, $key);
+        $now = date('Y-m-d H:i:s');
+        q28_u2_write($t, $uid, [['id_user' => $uid, 'id_role' => $role, 'is_all_location' => 1, 'id_location' => null, 'created_at' => $now, 'updated_at' => $now]]);
+
+        return $role;
+    }
+
+    /** Pulihkan user_roles ke baris $snap (daftar baris). */
     function q28_u2_restore($t, array $snap)
     {
-        $uid = q28_u2_id($t);
-        q28_w($t, function ($c) use ($uid, $snap) {
-            $c->table('user_roles')->where('id_user', $uid)->delete();
-            if ($snap) {
-                $c->table('user_roles')->insert($snap);
-            }
-        });
+        q28_u2_write($t, q28_u2_id($t), $snap);
     }
 
+    /** Pulihkan user_roles ASLI QA_USER2 dari jurnal bila run sebelumnya mati di tengah (juga bentuk jurnal lama = daftar baris). */
     function q28_u2_recover($t)
     {
         if (is_file(q28_u2_journal())) {
             $snap = json_decode(file_get_contents(q28_u2_journal()), true);
-            if (is_array($snap) && $snap) {
-                q28_u2_restore($t, $snap);
+            if (is_array($snap) && !empty($snap['rows'])) {
+                q28_u2_write($t, $snap['uid'], $snap['rows']);
+            } elseif (is_array($snap) && $snap && isset($snap[0]['id_user'])) {
+                q28_u2_write($t, $snap[0]['id_user'], $snap);
             }
             @unlink(q28_u2_journal());
         }
@@ -441,20 +449,25 @@ if (!function_exists('q28_hist')) {
     }
 
     /**
-     * Awal-akhir AC: baseline (pemulihan sisa run yang mati, pra-citra, keadaan developer), snapshot display setting riwayat, grant
-     * sementara Opname Document bagi role user2 (K-8 a; lewati dengan ['od' => false]), jalankan $fn, lalu pulihkan semuanya dan
-     * buktikan: role_permissions, display setting riwayat dan data developer sama persis dengan sebelum AC.
+     * Awal-akhir AC: baseline (pemulihan sisa run yang mati, pra-citra, keadaan developer; presets lama dibuang), snapshot display
+     * setting riwayat, QA_USER2 -> preset QA28-ROLE-R0 (jurnal memegang user_roles asli) + grant sementara Opname Document KE PRESET itu
+     * (K-8 a; lewati dengan ['od' => false]), jalankan $fn, lalu pulihkan semuanya dan buktikan: user_roles QA_USER2, role_permissions,
+     * display setting riwayat dan data developer sama persis dengan sebelum AC (role developer tidak pernah disentuh).
      */
     function q28_guard($t, callable $fn, array $opt = [])
     {
         q28_u2_recover($t);
         q28_baseline($t);
         $ds = q28_dsrow($t);
-        $rpBefore = q28_rp_sum($t);
+        $rpBefore = q28_rp_sum($t); // sebelum preset dibuat (q28_baseline membuang preset lama)
+        $u2Orig = q28_u2_snapshot($t);
+        $t->true(count($u2Orig) >= 1, 'prasyarat: QA_USER2 punya role (dipulihkan persis sesudah AC)');
+        file_put_contents(q28_u2_journal(), json_encode(['uid' => q28_u2_id($t), 'rows' => $u2Orig]));
         $err = null;
         try {
+            $roleR0 = q28_u2_use($t, Q28_PRESET_R0);
             if ($opt['od'] ?? true) {
-                q28_grant($t, q28_u2_roles_now($t), Q28_OD);
+                q28_grant($t, [$roleR0], Q28_OD);
             }
 
             return $fn($ds);
@@ -465,8 +478,9 @@ if (!function_exists('q28_hist')) {
             try {
                 q28_grant_recover($t);
                 q28_u2_recover($t);
-                $t->eq(json_encode(q28_rp_sum($t)), json_encode($rpBefore), 'role_permissions sama persis dengan sebelum AC (grant sementara dicabut)');
-                q28_cleanup($t);
+                q28_cleanup($t); // membuang preset QA28-ROLE-* dan membuktikan sisa = 0
+                $t->eq(json_encode(q28_u2_snapshot($t)), json_encode($u2Orig), 'user_roles QA_USER2 dipulihkan persis (sama dengan sebelum AC)');
+                $t->eq(json_encode(q28_rp_sum($t)), json_encode($rpBefore), 'role_permissions sama persis dengan sebelum AC (preset dibuang, tanpa sisa grant)');
                 q28_ds_restore($t, $ds);
                 $t->eq(json_encode(q28_dsrow($t)), json_encode($ds), 'display setting riwayat dipulihkan persis');
             } catch (\Throwable $c) {

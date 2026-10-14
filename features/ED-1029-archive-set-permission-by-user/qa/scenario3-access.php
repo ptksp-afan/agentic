@@ -283,7 +283,7 @@ return [
 
     [
         'id'    => 'X-PERM',
-        'title' => '(rev FB-4b) Permission per route (GET dan PUT user-permissions/{id}) = Folder Permissions: role yang memegangnya (dicari lewat nama permission di role_permissions: 1, 2, 3) 200; role tanpa (dicari dari DB; mis. 26 yang ber-Update Folder; juga 6, 16, 18, 19, 20, 25, 29) 403 GE0114 parameter "Folder Permissions", data tidak berubah; tanpa token 401 GE0111; QA_USER2: 403 bila role-nya tanpa FP, 200 bila memegangnya (rev3/F-1: role 5 milik developer kini memegang Folder Permissions, jadi 200)',
+        'title' => '(rev FB-4b; task regresi-baseline BR-1/BR-2) Permission per route (GET dan PUT user-permissions/{id}) = Folder Permissions: role fixture QA29-ROLE-* yang memegangnya (A, M, MW) 200; role fixture tanpa (D ber-Update Folder, E, N, Z) 403 GE0114 parameter "Folder Permissions", data tidak berubah; tanpa token 401 GE0111; QA_USER2 di role fixture: DW (tanpa FP) 403, MW (memegang FP) 200; user_roles asli QA_USER2 dipulihkan persis',
         'run'   => function ($t) {
             q9_recover($t);
             $s = $t->session();
@@ -299,13 +299,21 @@ return [
                 $before = q9_snap($t, $ids);
                 $permBefore = q9_perm_total($t);
 
-                $allRoles = $t->db()->table('roles')->where('role_name', 'not like', Q9_ROLE_PREFIX . '%')->orderBy('id_role')->pluck('id_role')->all();
-                $withFp = q9_roles_by_permission($t, 'Folder Permissions', $allRoles, true);
-                $withoutFp = q9_roles_by_permission($t, 'Folder Permissions', [5, 26, 6, 16, 18, 19, 20, 25, 29], false);
+                // (task regresi-baseline BR-1/BR-2/BR-4) peran uji = role fixture QA29-ROLE-* dari NAMA permission eksplisit, BUKAN himpunan permission role
+                // developer: A/M/MW memegang Folder Permissions; D (Update Folder), E, N (List saja), Z (akses website saja), DW tidak.
+                q9_role_purge($t);
+                $rp = q9_roles_profile($t); // A, M, D, E
+                $rMW = q9_role($t, 'MW', ['List Archive', 'View Folder', 'Folder Permissions', 'Allow Access Website']);
+                $rDW = q9_role($t, 'DW', q9_perms_profile('DW'));
+                $rN = q9_role($t, 'N', ['List Archive', 'Allow Access Website']);
+                $rZ = q9_role($t, 'Z', ['Allow Access Website']);
+                $withFp = q9_roles_by_permission($t, 'Folder Permissions', [$rp['A'], $rp['M'], $rMW], true);
+                $withoutFp = q9_roles_by_permission($t, 'Folder Permissions', [$rp['D'], $rp['E'], $rDW, $rN, $rZ], false);
                 $withUf = q9_roles_by_permission($t, 'Update Folder', $withoutFp, true);
-                $t->true(count($withFp) >= 3, 'prasyarat: minimal 3 role memegang Folder Permissions (seed ulang ED-1025): ' . implode(',', $withFp));
-                $t->true(count($withUf) >= 1, 'prasyarat: ada role ber-Update Folder tanpa Folder Permissions (5/26): ' . implode(',', $withUf));
-                $t->note('role dengan FP: ' . implode(',', $withFp) . '; tanpa FP: ' . implode(',', $withoutFp) . ' (di antaranya ber-Update Folder: ' . implode(',', $withUf) . ')');
+                $t->eq(count($withFp), 3, 'prasyarat: 3 role fixture memegang Folder Permissions (A, M, MW)');
+                $t->eq(count($withoutFp), 5, 'prasyarat: 5 role fixture tanpa Folder Permissions (D, E, DW, N, Z)');
+                $t->eq(count($withUf), 2, 'prasyarat: 2 role fixture ber-Update Folder tanpa Folder Permissions (D, DW)');
+                $t->note('role fixture dengan FP: ' . implode(',', $withFp) . '; tanpa FP: ' . implode(',', $withoutFp) . ' (di antaranya ber-Update Folder: ' . implode(',', $withUf) . ')');
 
                 // tanpa token
                 $r = $t->raw('GET', 'api/v5/document-archive/user-permissions/' . $b[0]);
@@ -347,31 +355,41 @@ return [
                 }
                 $t->true(q9_same($before, q9_snap($t, $ids)), 'data tidak berubah oleh GET / PUT []');
 
-                // QA_USER2 (adi, role 5: Update Folder tanpa Folder Permissions): login + bind ke QA_DB -> 403 GE0114
-                $s2 = $t->login('QA_USER2');
-                $bind = $t->bind($s2, q9_dbname($t));
-                if ($bind[0] === 200) {
+                // QA_USER2 (adi) SEMENTARA di role fixture DW (Update Folder tanpa Folder Permissions) lalu MW (memegang FP): login + bind ke QA_DB
+                // -> 403 GE0114 lalu 200. user_roles aslinya dipulihkan persis (q9_u2_swap/q9_u2_restore, jurnal).
+                $uid2 = $t->db()->table('users')->where('username', $t->conf('QA_USER2'))->value('id_user');
+                $u2snap = q9_u2_swap($t, $uid2, [$rDW]);
+                try {
+                    $s2 = $t->login('QA_USER2');
+                    $bind = $t->bind($s2, q9_dbname($t));
+                    $t->status($bind, 200, 'QA_USER2 (fixture DW): bind ke ' . q9_dbname($t));
                     $r = q9_get($t, $s2, $b[0]);
-                    $t->note('QA_USER2 berhasil bind; GET = ' . $r[0] . ' ' . q9_code($r));
-                    $adiRoles = $t->db()->table('user_roles')->where('id_user', $t->db()->table('users')->where('username', $t->conf('QA_USER2'))->value('id_user'))->pluck('id_role')->all();
-                    $adiHasFp = count(array_intersect($adiRoles, $withFp)) > 0;
-                    $t->true(in_array($r[0], [200, 403]), 'QA_USER2: GET 200 atau 403 (bukan 5xx)');
-                    $t->eq($r[0], $adiHasFp ? 200 : 403, 'QA_USER2 (role ' . implode(',', $adiRoles) . '): GET sesuai kepemilikan Folder Permissions');
+                    q9_deny($t, $r, 403, 'GE0114', 'QA_USER2 (fixture DW, Update Folder tanpa FP): GET');
+                    $t->eq($r[1]['parameter'] ?? null, 'Folder Permissions', 'QA_USER2 (DW): GET parameter');
                     $r = q9_put($t, $s2, $b[0], ['permissions' => []]);
-                    $t->eq($r[0], $adiHasFp ? 200 : 403, 'QA_USER2: PUT [] sesuai kepemilikan Folder Permissions');
-                } else {
-                    $t->note('QA_USER2 tidak bisa bind ke ' . q9_dbname($t) . ' (HTTP ' . $bind[0] . ' ' . (q9_code($bind) ?? '') . '): 403 diuji lewat pertukaran role');
+                    q9_deny($t, $r, 403, 'GE0114', 'QA_USER2 (fixture DW): PUT []');
+                    q9_u2_write($t, $uid2, [['id_user' => $uid2, 'id_role' => $rMW, 'is_all_location' => 1, 'id_location' => null, 'created_at' => date('Y-m-d H:i:s'), 'updated_at' => date('Y-m-d H:i:s')]]);
+                    $r = q9_get($t, $s2, $b[0]);
+                    $t->status($r, 200, 'QA_USER2 (fixture MW, memegang FP): GET');
+                    $r = q9_put($t, $s2, $b[0], ['permissions' => []]);
+                    $t->status($r, 200, 'QA_USER2 (fixture MW): PUT []');
+                    $t->call($s2, 'GET', 'api/v5/auth/log-out');
+                } finally {
+                    q9_u2_restore($t, $u2snap);
                 }
+                $t->true(q9_same($before, q9_snap($t, $ids)), 'data tidak berubah oleh GET / PUT [] QA_USER2');
             } finally {
                 q9_purge($t);
+                q9_role_purge($t);
             }
             q9_assert_clean($t, $base);
+            $t->eq($t->db()->table('roles')->where('role_name', 'like', Q9_ROLE_PREFIX . '%')->count(), 0, 'role fixture dibuang');
         },
     ],
 
     [
         'id'    => 'AC-20',
-        'title' => '(rev, bagian BE, cara seragam EPIC K-2 b) role tanpa Folder Permissions (dicari dari DB: 6, 29; role 5 sudah memegangnya sejak data developer F-1): GET/PUT 403 GE0114 (bukan 500), data tetap; item ini tidak menambah seed (Folder Permissions satu-satunya di permission_salesman.sql, tidak ada permission "Set Permission by User"); kode BE/QA ED-1029 tanpa id permission literal (grep)',
+        'title' => '(rev, bagian BE, cara seragam EPIC K-2 b; task regresi-baseline BR-1) role fixture QA29-ROLE-* tanpa Folder Permissions (N: List saja, Z: akses website saja, DW: Update Folder; bukan role developer 6/29/5): GET/PUT 403 GE0114 (bukan 500), data tetap; item ini tidak menambah seed (Folder Permissions satu-satunya di permission_salesman.sql, tidak ada permission "Set Permission by User"); kode BE/QA ED-1029 tanpa id permission literal (grep)',
         'run'   => function ($t) {
             q9_recover($t);
             $s = $t->session();
@@ -386,8 +404,12 @@ return [
                 $ids = array_values($f);
                 $before = q9_snap($t, $ids);
 
-                $noFp = q9_roles_by_permission($t, 'Folder Permissions', [6, 29, 5], false);
-                $t->true(count($noFp) >= 2, 'prasyarat: role uji tanpa Folder Permissions: ' . implode(',', $noFp));
+                q9_role_purge($t);
+                $rN = q9_role($t, 'N', ['List Archive', 'Allow Access Website']);
+                $rZ = q9_role($t, 'Z', ['Allow Access Website']);
+                $rDW = q9_role($t, 'DW', q9_perms_profile('DW'));
+                $noFp = q9_roles_by_permission($t, 'Folder Permissions', [$rN, $rZ, $rDW], false);
+                $t->eq(count($noFp), 3, 'prasyarat: 3 role fixture tanpa Folder Permissions: ' . implode(',', $noFp));
                 foreach ($noFp as $role) {
                     q9_with_user($t, ['role' => $role, 'lang' => 'ID'], function ($set) use ($t, $s, $b, $f, $role) {
                         $r = q9_get($t, $s, $b[0]);

@@ -417,18 +417,16 @@ return [
                 $q->where('id_permission', $id)->orWhere('id_permission_ref', $id);
             })->count(), 3, "DB: tepat 3 uncheck untuk $id");
             $t->true($c->table('modules')->where('id_module', 1266)->exists(), 'DB: modul 1266 ada');
-            $roles = $c->table('role_permissions')->where('id_permission', $id)->pluck('id_role')->all();
-            foreach ([1, 2, 3] as $r) {
-                $t->true(in_array($r, $roles), "DB: role $r punya Opname Document");
-            }
-            $t->true(!in_array(29, $roles) && !in_array(6, $roles), 'DB: role 29 (List saja) dan 6 tidak punya Opname Document');
+            // (ED-1149 K-4 b / BR-1 / BR-5) TIDAK ada asersi role_permissions di DB bersama (hak role developer 1/2/3/6/29 atas Opname Document
+            // bisa diubah developer lewat UI role): pemegang Opname Document dari seed utuh diasersikan di DB scratch di bawah.
 
             // --- seed SQL dijalankan utuh di DB scratch (sintaks, PK, urutan)
             $scratch = 'qa26_scratch_' . substr(uniqid(), -6);
             $db = q26_dbname($t);
             $error = null;
             $result = null;
-            $t->probe(function () use ($db, $scratch, $salesman, &$error, &$result) {
+            $roleSql = file_get_contents($dir . '/role_permissions.sql');
+            $t->probe(function () use ($db, $scratch, $salesman, $roleSql, &$error, &$result) {
                 $src = \Illuminate\Support\Facades\DB::connection($db);
                 $cfg = $src->getConfig();
                 $src->statement("CREATE DATABASE `$scratch` CHARACTER SET latin1 COLLATE latin1_general_ci");
@@ -437,17 +435,40 @@ return [
                     config(['database.connections.qa26scratch' => $cfg]);
                     \Illuminate\Support\Facades\DB::purge('qa26scratch');
                     $s = \Illuminate\Support\Facades\DB::connection('qa26scratch');
-                    foreach (['permissions', 'permission_checks', 'permission_unchecks', 'modules'] as $tb) {
+                    foreach (['permissions', 'permission_checks', 'permission_unchecks', 'modules', 'role_permissions', 'role_allow_backdates', 'role_allow_backdate_transactions'] as $tb) {
                         $s->statement("CREATE TABLE `$tb` LIKE `$db`.`$tb`");
                     }
                     $stmts = preg_split('/;\s*\n/', trim($salesman));
+                    // pra-seed (ED-1149 K-4 b): permissions dasar dari DB QA TANPA id yang disuntik seed fitur; role_permissions: peran "List Archive saja"
+                    // (id 29) dan "tanpa Archive" (id 6) palsu milik scratch, untuk membuktikan seed tidak memberi Opname Document ke role lain
+                    preg_match_all("/\\((\\d+),\\d+,'/", $stmts[0], $seedIdMatches);
+                    $seedIds = array_map('intval', $seedIdMatches[1]);
+                    $s->statement("INSERT INTO `permissions` SELECT * FROM `$db`.`permissions` WHERE id_permission NOT IN (" . implode(',', $seedIds) . ')');
                     foreach ($stmts as $sql) {
                         $sql = trim($sql);
                         if ($sql !== '') {
                             $s->unprepared($sql);
                         }
                     }
+                    $now = date('Y-m-d H:i:s');
+                    foreach ([29 => 'List Archive', 6 => 'Get Customer'] as $fakeRole => $permName) {
+                        $pid = $s->table('permissions')->where('permission_name', $permName)->value('id_permission');
+                        if ($pid === null) {
+                            throw new \RuntimeException("permission '$permName' tidak ada di scratch");
+                        }
+                        $s->table('role_permissions')->insert(['id_role' => $fakeRole, 'id_permission' => $pid, 'permission_name' => $permName, 'created_at' => $now]);
+                    }
+                    foreach (preg_split('/;\s*\n/', trim($roleSql)) as $sql) {
+                        $sql = trim($sql);
+                        if ($sql !== '') {
+                            $s->unprepared($sql);
+                        }
+                    }
+                    $odHolders = $s->table('role_permissions')->where('id_permission', 1139)->orderBy('id_role')->pluck('id_role')->all();
                     $result = [
+                        'od_holders' => $odHolders,
+                        'od_names' => $s->table('role_permissions')->where('id_permission', 1139)->pluck('permission_name')->unique()->values()->all(),
+                        'fake_roles_kept' => $s->table('role_permissions')->whereIn('id_role', [29, 6])->count(),
                         'p1139' => $s->table('permissions')->where('id_permission', 1139)->count(),
                         'p1133' => $s->table('permissions')->where('id_permission', 1133)->count(),
                         'checks' => $s->table('permission_checks')->where(function ($q) {
@@ -469,6 +490,9 @@ return [
             $t->eq($result['p1133'] ?? null, 0, 'scratch: tidak ada permission 1133');
             $t->eq($result['checks'] ?? null, 2, 'scratch: 2 check untuk 1139');
             $t->eq($result['unchecks'] ?? null, 3, 'scratch: 3 uncheck untuk 1139');
+            $t->eq($result['od_holders'] ?? null, [1, 2, 3], 'scratch (seed utuh permission_salesman.sql + role_permissions.sql): pemegang Opname Document = role 1, 2, 3 saja (role lain, mis. List-saja/tanpa-Archive, tidak)');
+            $t->eq($result['od_names'] ?? null, ['Opname Document'], 'scratch: permission_name baris Opname Document = nama seed (tidak NULL)');
+            $t->eq($result['fake_roles_kept'] ?? null, 2, 'scratch: baris role lain (List-saja/tanpa-Archive) tidak disentuh seed (tetap 1 baris masing-masing)');
             $t->note('MANUAL (Gate 2 epic): "tanpa lisensi Salesman Activity -> permission tidak ada" dibuktikan lewat baris seed yang hanya di permission_salesman.sql; tukar lisensi sungguhan tidak dijalankan (PROFILES kosong)');
             $left = $t->db()->selectOne("SELECT COUNT(*) n FROM information_schema.schemata WHERE schema_name LIKE 'qa26_scratch_%'")->n;
             $t->eq($left, 0, 'DB scratch dibuang');

@@ -7,7 +7,7 @@
  *   X-12   (celah) nama modul varian huruf besar/kecil / spasi akhir (kolasi latin1_general_ci DB menganggap sama) tidak boleh
  *          melewati saringan: GET tanpa entri, PUT mempertahankan entri;
  *   X-13   tepi PUT: list tidak dikirim tidak ditulis, available_columns null, PUT identik berulang tidak 500, pemegang boleh menyembunyikan.
- * Pasangan "dengan / tanpa" = role 29 (List Archive saja) yang SAMA + q27_with_grant. Baris column_display_settings yang disentuh
+ * Pasangan "dengan / tanpa" = preset QA27-ROLE-LIST (List Archive saja) yang SAMA + q27_with_grant (ED-1149: bukan role 29). Baris column_display_settings yang disentuh
  * (documentArchive, customer) dicadangkan utuh dan dikembalikan persis di finally; sidik jari seluruh tabel dicek.
  */
 require_once __DIR__ . '/qa_lib.php';
@@ -56,7 +56,7 @@ return [
             $pred = $sc[$iV - 1] ?? null; // kolom yang mendahului documentVerified di baris tersimpan (document.relatedEmployeeName)
             $t->eq($pred, 'document.relatedEmployeeName', 'prasyarat: pendahulu documentVerified di current = Salesman');
             try {
-                q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']], function () use ($t, $s, $q27_seq10, $q27_dsurl, $sc, $sa, $storedCur, $storedAvail, $q27_dsrow, $q27_dsrestore, $snapCust) {
+                q27_with_user($t, ['role' => Q27_PRESET_LIST, 'emp' => ['SMR']], function () use ($t, $s, $q27_seq10, $q27_dsurl, $sc, $sa, $storedCur, $storedAvail, $q27_dsrow, $q27_dsrestore, $snapCust) {
                     // ---------- A. tanpa Opname Document: GET disaring
                     $g = $t->call($s, 'GET', $q27_dsurl . 'documentArchive');
                     $t->status($g, 200, 'tanpa OD: GET documentArchive');
@@ -102,7 +102,7 @@ return [
                     $t->eq(substr_count($row[0]['current_columns'], 'documentVerified'), 1, 'documentVerified tepat satu di current_columns (tanpa ganda)');
 
                     // ---------- D. pemegang Opname Document: melihat entri (urutan tersimpan), boleh menyembunyikan
-                    q27_with_grant($t, Q27_ROLE_LIST_ONLY, Q27_OD, function () use ($t, $s, $q27_seq10, $q27_dsurl, $q27_dsrow, $gCust) {
+                    q27_with_grant($t, Q27_PRESET_LIST, Q27_OD, function () use ($t, $s, $q27_seq10, $q27_dsurl, $q27_dsrow, $gCust) {
                         $g = $t->call($s, 'GET', $q27_dsurl . 'documentArchive');
                         $t->status($g, 200, 'dengan OD: GET documentArchive');
                         $t->eq($q27_seq10($g[1]['result']['current_columns']), ['document.relatedEmployeeName', 'documentVerified', 'updatedAt', 'name', 'type'], 'dengan OD: current_columns memuat documentVerified tepat sesudah Salesman (urutan tersimpan)');
@@ -164,7 +164,7 @@ return [
             $snap = $q27_dsrow($t, 'documentArchive');
             $fpBefore = q27_sum($t, 'column_display_settings', q27_cols($t, 'column_display_settings'));
             try {
-                q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']], function () use ($t, $s, $q27_seq10, $q27_dsrow, $q27_dsrestore, $q27_dsurl, $snap) {
+                q27_with_user($t, ['role' => Q27_PRESET_LIST, 'emp' => ['SMR']], function () use ($t, $s, $q27_seq10, $q27_dsrow, $q27_dsrestore, $q27_dsurl, $snap) {
                     $variants = ['DOCUMENTARCHIVE', 'documentarchive', 'DocumentArchive', 'documentArchive%20', 'DOCUMENTARCHIVE%20%20', 'dOCUMENTaRCHIVE%20%20%20%20'];
                     $leaks = [];
                     foreach ($variants as $v) {
@@ -210,7 +210,7 @@ return [
             $snap = $q27_dsrow($t, 'documentArchive');
             $fpBefore = q27_sum($t, 'column_display_settings', q27_cols($t, 'column_display_settings'));
             try {
-                q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']], function () use ($t, $s, $q27_seq10, $q27_dsrow, $q27_dsurl, $snap) {
+                q27_with_user($t, ['role' => Q27_PRESET_LIST, 'emp' => ['SMR']], function () use ($t, $s, $q27_seq10, $q27_dsrow, $q27_dsurl, $snap) {
                     $g = $t->call($s, 'GET', $q27_dsurl . 'documentArchive');
                     $res = $g[1]['result'];
                     $cur = array_slice($res['current_columns'], 0, 4);
@@ -271,7 +271,7 @@ return [
             $t->eq(count($snap), 1, 'prasyarat: 1 baris documentArchive');
             $fpBefore = q27_sum($t, 'column_display_settings', q27_cols($t, 'column_display_settings'));
             try {
-                q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']], function () use ($t, $s, $q27_seq10, $q27_dsrow, $q27_dsrestore, $q27_dsurl, $snap) {
+                q27_with_user($t, ['role' => Q27_PRESET_LIST, 'emp' => ['SMR']], function () use ($t, $s, $q27_seq10, $q27_dsrow, $q27_dsrestore, $q27_dsurl, $snap) {
                     // a) nama persis, baris tidak ada -> show() membuat baris dari config; respons tetap disaring
                     $q27_dsrestore($t, 'documentArchive', []); // hapus baris
                     $t->eq(count($q27_dsrow($t, 'documentArchive')), 0, 'baris documentArchive dihapus sementara');
@@ -289,7 +289,7 @@ return [
                         $t->true(strpos(json_encode($gv[1]), 'documentVerified') === false, "tanpa OD: GET [$v] tanpa jejak documentVerified");
                     }
                     // c) pemegang Opname Document melihat entri dari baris yang sama
-                    q27_with_grant($t, Q27_ROLE_LIST_ONLY, Q27_OD, function () use ($t, $s, $q27_seq10, $q27_dsurl) {
+                    q27_with_grant($t, Q27_PRESET_LIST, Q27_OD, function () use ($t, $s, $q27_seq10, $q27_dsurl) {
                         $go = $t->call($s, 'GET', $q27_dsurl . 'DOCUMENTARCHIVE');
                         $t->status($go, 200, 'dengan OD: GET [DOCUMENTARCHIVE]');
                         $t->true(in_array('documentVerified', $q27_seq10($go[1]['result']['current_columns']), true), 'dengan OD: entri documentVerified ada (varian nama)');

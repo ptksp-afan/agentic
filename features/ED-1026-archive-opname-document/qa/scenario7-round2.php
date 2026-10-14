@@ -145,12 +145,12 @@ return [
                 $res = $t->raw('POST', $B, ['id_archive' => str_repeat('a', 31), 'folders' => []]);
                 $t->status($res, 401, 'tanpa token + id 31 karakter -> 401');
                 $mid = q26_state($t);
-                foreach ([Q26_ROLE_NONE, Q26_ROLE_LIST_ONLY] as $role) {
+                foreach ([Q26_PRESET_NONE, Q26_PRESET_LIST] as $role) {
                     q26_with_user($t, ['role' => $role], function () use ($t, $s, $B, $x, $role) {
                         foreach ([str_repeat('a', 31), str_repeat('a', 30), $x['F'], $x['dF1']] as $id) {
                             $r = $t->call($s, 'POST', $B, ['id_archive' => $id, 'folders' => 'x']);
-                            q26_deny($t, $r, 403, 'GE0114', "role $role tanpa Opname Document, id " . strlen($id) . ' karakter');
-                            $t->eq($r[1]['parameter'] ?? null, 'Opname Document', "role $role: parameter");
+                            q26_deny($t, $r, 403, 'GE0114', "preset $role tanpa Opname Document, id " . strlen($id) . ' karakter');
+                            $t->eq($r[1]['parameter'] ?? null, 'Opname Document', "preset $role: parameter");
                         }
                     });
                 }

@@ -9,20 +9,23 @@
  *                                    `permission` + pelaku terakhir per folder uji, flag is_folder_permission, jumlah baris
  *                                    archive_permissions total
  *   "$PHP_BIN" fixture.php flag <nama> <0|1>   set is_folder_permission satu folder uji (nama tanpa awalan; AC-19)
- *   "$PHP_BIN" fixture.php role <id|restore>   role A sementara (mis. 1 = superadmin); restore = role asli dari jurnal
+ *   "$PHP_BIN" fixture.php role <1|restore>    role A sementara (1 = role sistem superadmin EQUAL; id lain DITOLAK); restore = role asli dari jurnal
  *   "$PHP_BIN" fixture.php uprofile <D|M|E>    (rev) role E (QA_USER2) sementara menurut profil spec §6: D = role A tanpa Folder Permissions
  *                                              (masih Update Folder), M = List Archive + View Folder + Folder Permissions saja,
- *                                              E = role 18 (tanpa keduanya, keadaan awal fixture). Role D/M dibuat lazim dengan nama
- *                                              QA29F-ROLE-<D|M> dan dibuang `down`. FE membaca peran dari GET auth/info: muat ulang penuh.
+ *                                              E = PRESET QA29F-ROLE-E (tanpa keduanya, keadaan awal fixture). Role E/D/M dibuat lazim dari NAMA
+ *                                              permission eksplisit dengan nama QA29F-ROLE-<E|D|M> dan dibuang `down`. FE membaca peran dari GET
+ *                                              auth/info: muat ulang penuh.
  *   "$PHP_BIN" fixture.php resetperm           hapus SEMUA baris archive_permissions folder uji berawalan 0QA29- (semua user), lalu
  *                                              pasang lagi nilai awal (supaya tiap test mulai dari keadaan yang sama), flag dan riwayat
  *                                              folder uji dikembalikan
  *
  * Pelaku: A = QA_USER (profil default; role 3 = Super Admin non-bypass, ber-Update Folder + Folder Permissions = profil A spec; employee
- * DIUBAH sementara jadi lokasi MGL saja supaya folder L (JOG) di luar scope-nya), E = QA_USER2 (profil user2; role 5 DIGANTI sementara jadi
- * role 18 "Pusat - Admin Sales": List Archive + Handover/Receive/Add Document, TANPA Update Folder dan TANPA Folder Permissions, supaya "+"
- * masih tampil tetapi tanpa Set Permission by User; `uprofile` menukarnya ke D atau M). B dan B2 = dua user target (aktif, ber-List Archive,
- * bukan superadmin 1/2, bukan customer, bukan A/E) yang dipilih urut username.
+ * DIUBAH sementara jadi lokasi MGL saja supaya folder L (JOG) di luar scope-nya), E = QA_USER2 (profil user2; user_roles-nya DIGANTI sementara ke
+ * PRESET QA29F-ROLE-E: List Archive + Handover/Receive/Add Document + Allow Access Website, TANPA Update Folder dan TANPA Folder Permissions, supaya "+"
+ * masih tampil tetapi tanpa Set Permission by User; `uprofile` menukarnya ke D atau M). B dan B2 = dua user target (aktif, ber-List Archive
+ * menurut id_permission, bukan superadmin 1/2, bukan customer, bukan A/E) yang dipilih urut username.
+ * (ED-1149 AC-10, BR-1..BR-4) Tidak ada role developer yang dibaca sebagai prasyarat atau diubah: dulu E = role 18 (bergantung pada izin role itu),
+ * profil D menyalin permission role A (role 3) dan B/B2 dipilih lewat kolom role_permissions.permission_name (NULL pada baris hasil UI role).
  *
  * Folder uji (semua is_all_location=1 kecuali L; dibuat oleh 'QA29E2E', bukan A, jadi hak pembuat tidak berlaku):
  *   0QA29-L        On   root, hanya lokasi JOG -> di luar scope A
@@ -59,7 +62,13 @@ use Illuminate\Support\Facades\DB;
 const PREFIX = '0QA29-';
 const ROLE_PREFIX = 'QA29F-ROLE-';
 const TABLES = ['archives', 'archive_documents', 'archive_locations', 'archive_permissions', 'roles', 'role_permissions'];
-const E_ROLE = 18;
+/** Preset E (QA_USER2 keadaan awal fixture): NAMA permission eksplisit; Allow Access Website = syarat teknis login web user non-karyawan. */
+const E_PRESET = ['List Archive', 'Handover Document', 'Receive Document', 'Add Document', 'Allow Access Website'];
+/** Preset D: izin Archive lengkap TANPA Folder Permissions (tetap Update Folder dan item "+" lain). */
+const D_PRESET = [
+    'List Archive', 'All Archive', 'Add Folder', 'View Folder', 'Update Folder', 'Delete Folder', 'Move Archive', 'Add Document',
+    'Handover Document', 'Receive Document', 'Opname Document', 'Allow Access Website',
+];
 
 function say($line)
 {
@@ -282,7 +291,9 @@ if ($cmd === 'up') {
 
     // B, B2: pola query = select/document-archive/archive/users (SelectArchiveService::user)
     $customerUsers = $c->table('customers')->whereNotNull('id_user')->pluck('id_user')->all();
-    $withListArchive = $c->table('role_permissions')->where('permission_name', 'List Archive')->pluck('id_role')->all();
+    // hak dibaca per id_permission (join permissions), bukan kolom role_permissions.permission_name (NULL pada baris hasil centang UI role; ED-1149 BR-3)
+    $withListArchive = $c->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')
+        ->where('p.permission_name', 'List Archive')->pluck('rp.id_role')->all();
     $activeRoles = $c->table('roles')->where('is_active', 1)->pluck('is_superadmin', 'id_role')->all();
     $okRoles = array_values(array_filter($withListArchive, function ($r) use ($activeRoles) {
         return isset($activeRoles[$r]);
@@ -353,13 +364,14 @@ if ($cmd === 'up') {
         return $id;
     };
 
-    $c->transaction(function () use ($c, $add, $userA, $userE, $userB, $userB2, $locs, $empA) {
-        // state user: A hanya lokasi MGL (employee_locations A sudah berisi MGL), E ganti role
+    $eRole = ensureRole($c, 'E', permIds($c, E_PRESET)); // preset E (journal sudah ditulis di atas; down membuang QA29F-ROLE-*)
+    $c->transaction(function () use ($c, $add, $userA, $userE, $userB, $userB2, $locs, $empA, $eRole) {
+        // state user: A hanya lokasi MGL (employee_locations A sudah berisi MGL), E ganti role ke preset E
         $c->table('employees')->where('id_employee', $empA->id_employee)->update(['is_all_location' => 0]);
         $now = date('Y-m-d H:i:s');
         $c->table('user_roles')->where('id_user', $userE->id_user)->delete();
         $c->table('user_roles')->insert([
-            'id_user' => $userE->id_user, 'id_role' => E_ROLE, 'is_all_location' => 1, 'id_location' => null,
+            'id_user' => $userE->id_user, 'id_role' => $eRole, 'is_all_location' => 1, 'id_location' => null,
             'created_at' => $now, 'updated_at' => $now,
         ]);
 
@@ -519,7 +531,7 @@ if ($cmd === 'resetperm') {
     exit(0);
 }
 
-if ($cmd === 'uprofile') { // role E (QA_USER2) sementara menurut profil spec: D, M, atau E (role 18 awal fixture)
+if ($cmd === 'uprofile') { // role E (QA_USER2) sementara menurut profil spec: D, M, atau E (preset awal fixture)
     $arg = strtoupper($argv[2] ?? '');
     if (!is_file($journal)) {
         fail('tanpa jurnal (jalankan up dulu)');
@@ -527,31 +539,21 @@ if ($cmd === 'uprofile') { // role E (QA_USER2) sementara menurut profil spec: D
     $j = json_decode(file_get_contents($journal), true);
     $idE = $j['users']['idE'];
     if ($arg === 'E') {
-        $roleId = E_ROLE;
+        $roleId = ensureRole($c, 'E', permIds($c, E_PRESET));
     } elseif ($arg === 'M') {
         // M = List Archive + View Folder + Folder Permissions saja (profil D ED-1025); 'Allow Access Website' hanya syarat teknis login
         // web bagi QA_USER2 (employee_type bukan 0: tanpa itu permission_v5 mencabut tokennya), bukan permission fitur
         $roleId = ensureRole($c, 'M', permIds($c, ['List Archive', 'View Folder', 'Folder Permissions', 'Allow Access Website']));
     } elseif ($arg === 'D') {
-        // D = semua permission role A (jurnal, disalin lewat id_permission) tanpa Folder Permissions: tetap ber-Update Folder dan item "+" lain
-        $roleA = $j['users']['rolesA'][0]['id_role'] ?? null;
-        $have = $roleA ? array_map('intval', $c->table('role_permissions')->where('id_role', $roleA)->pluck('id_permission')->all()) : [];
-        $fp = permIds($c, ['Folder Permissions'])[0];
-        $uf = permIds($c, ['Update Folder'])[0];
-        $have = array_values(array_filter($have, function ($id) use ($fp) {
-            return $id !== $fp;
-        }));
-        if (!in_array($uf, $have, true)) {
-            fail('role A tidak memuat Update Folder: profil D tidak bisa dibentuk');
-        }
-        $roleId = ensureRole($c, 'D', $have);
+        // D = izin Archive lengkap (NAMA eksplisit, D_PRESET) tanpa Folder Permissions: tetap Update Folder dan item "+" lain
+        $roleId = ensureRole($c, 'D', permIds($c, D_PRESET));
     } else {
         fail('profil tidak dikenal: ' . $arg . ' (D|M|E)');
     }
     $now = date('Y-m-d H:i:s');
     $c->table('user_roles')->where('id_user', $idE)->delete();
     $c->table('user_roles')->insert(['id_user' => $idE, 'id_role' => $roleId, 'is_all_location' => 1, 'id_location' => null, 'created_at' => $now, 'updated_at' => $now]);
-    say("role E (QA_USER2) = profil $arg (id_role $roleId, sementara)");
+    say("role E (QA_USER2) = profil $arg (id_role $roleId, preset sementara)");
     exit(0);
 }
 
@@ -563,6 +565,9 @@ if ($cmd === 'role') { // role A sementara (1 = superadmin EQUAL); 'restore' = k
     }
     $j = json_decode(file_get_contents($journal), true);
     $idA = $j['users']['idA'];
+    if ($arg !== 'restore' && $arg !== '1') {
+        fail("role: hanya '1' (role sistem superadmin EQUAL) atau 'restore'; role developer lain ditolak (ED-1149 BR-4)");
+    }
     $c->table('user_roles')->where('id_user', $idA)->delete();
     if ($arg === 'restore') {
         if ($j['users']['rolesA']) {
@@ -577,4 +582,4 @@ if ($cmd === 'role') { // role A sementara (1 = superadmin EQUAL); 'restore' = k
     exit(0);
 }
 
-fail('pakai: up | down | ids | state | flag <nama> <0|1> | resetperm | role <id|restore> | uprofile <D|M|E>');
+fail('pakai: up | down | ids | state | flag <nama> <0|1> | resetperm | role <1|restore> | uprofile <D|M|E>');

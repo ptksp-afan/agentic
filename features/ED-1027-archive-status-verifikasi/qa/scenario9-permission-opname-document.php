@@ -2,12 +2,12 @@
 /**
  * ED-1027 (REVISI 2026-10-08) - verifikasi hanya untuk pemegang permission "Opname Document" (K-9 a = EPIC K-3 a, BR-15/18/19):
  *   AC-22  GET archives tanpa Opname Document: columns tanpa documentVerified, baris tanpa document_verified, result tanpa
- *          document_verified_summary; sisanya identik dengan user yang SAMA ber-Opname Document (role 29 + grant sementara);
+ *          document_verified_summary; sisanya identik dengan user yang SAMA ber-Opname Document (preset QA27-ROLE-LIST + grant sementara);
  *   AC-23  GET verifications / verifications/{id}: 403 GE0114 tanpa result tanpa Opname Document; 200 dengan (AC-5/6);
  *   X-10   search / sorts yang menyebut kolom verifikasi archives (is_verified, verified_at, verified_by, id_archive_opname) diabaikan
  *          tanpa Opname Document (fix r1, kontrak §1), berfungsi bagi pemegang;
  *   X-11   GET archives/{id}: key kolom verifikasi tidak ada tanpa Opname Document (fix r1b, kontrak §1b).
- * Pasangan "dengan / tanpa" = role 29 (Pusat - STD: List Archive saja) yang SAMA, dengan q27_with_grant (baris role_permissions
+ * Pasangan "dengan / tanpa" = preset QA27-ROLE-LIST (List Archive saja; ED-1149: bukan role 29) yang SAMA, dengan q27_with_grant (baris role_permissions
  * sementara created_by QA27, dicabut persis; bukti jumlah+CRC). Data uji dipulihkan di finally (q27_cleanup).
  */
 require_once __DIR__ . '/qa_lib.php';
@@ -41,13 +41,13 @@ return [
 
     [
         'id'    => 'AC-22',
-        'title' => '(rev) GET archives tanpa Opname Document (role 29): columns tanpa documentVerified, baris tanpa key document_verified, result tanpa document_verified_summary; baris, urutan, paginasi, field lain identik dengan user yang sama ber-Opname Document (root, folder, search, paginasi, sort)',
+        'title' => '(rev) GET archives tanpa Opname Document (preset LIST): columns tanpa documentVerified, baris tanpa key document_verified, result tanpa document_verified_summary; baris, urutan, paginasi, field lain identik dengan user yang sama ber-Opname Document (root, folder, search, paginasi, sort)',
         'run'   => function ($t) use ($q27_seq9, $q27_strip9) {
             $s = $t->session();
             q27_baseline($t);
             try {
                 $x = q27_tree($t);
-                q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']], function () use ($t, $s, $x, $q27_seq9, $q27_strip9) {
+                q27_with_user($t, ['role' => Q27_PRESET_LIST, 'emp' => ['SMR']], function () use ($t, $s, $x, $q27_seq9, $q27_strip9) {
                     $shapes = [
                         'root'                       => [],
                         'folder P'                   => ['id_archive' => $x['P']],
@@ -92,7 +92,7 @@ return [
 
                     // --- dengan Opname Document (role yang sama)
                     $msYes = [];
-                    q27_with_grant($t, Q27_ROLE_LIST_ONLY, Q27_OD, function () use ($t, $s, $shapes, $no, $q27_seq9, $q27_strip9, &$msYes) {
+                    q27_with_grant($t, Q27_PRESET_LIST, Q27_OD, function () use ($t, $s, $shapes, $no, $q27_seq9, $q27_strip9, &$msYes) {
                         foreach ($shapes as $label => $q) {
                             $t0 = microtime(true);
                             $r = q27_list($t, $s, $q);
@@ -131,7 +131,7 @@ return [
             q27_baseline($t);
             try {
                 $x = q27_tree($t);
-                q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']], function () use ($t, $s, $x) {
+                q27_with_user($t, ['role' => Q27_PRESET_LIST, 'emp' => ['SMR']], function () use ($t, $s, $x) {
                     $paths = [
                         'GET verifications'                 => '/verifications',
                         'GET verifications/{F}'             => '/verifications/' . $x['F'],
@@ -154,8 +154,8 @@ return [
                     }
                 });
 
-                q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']], function () use ($t, $s, $x) {
-                    q27_with_grant($t, Q27_ROLE_LIST_ONLY, Q27_OD, function () use ($t, $s, $x) {
+                q27_with_user($t, ['role' => Q27_PRESET_LIST, 'emp' => ['SMR']], function () use ($t, $s, $x) {
+                    q27_with_grant($t, Q27_PRESET_LIST, Q27_OD, function () use ($t, $s, $x) {
                         $rl = q27_list($t, $s, ['id_archive' => $x['P']]);
                         $t->status($rl, 200, 'dengan OD: list P');
                         $rv = q27_verif($t, $s);
@@ -192,7 +192,7 @@ return [
             q27_baseline($t);
             try {
                 $x = q27_tree($t);
-                q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']], function () use ($t, $s, $x, $q27_idseq) {
+                q27_with_user($t, ['role' => Q27_PRESET_LIST, 'emp' => ['SMR']], function () use ($t, $s, $x, $q27_idseq) {
                     $base = q27_list($t, $s);
                     $t->status($base, 200, 'basis: root biasa');
                     $baseIds = $q27_idseq($base);
@@ -242,21 +242,49 @@ return [
                     $t->note('CATATAN (500 lama, ED-1070): tanpa OD sorts bentuk array isVerified = HTTP ' . $ra[0] . ', name = HTTP ' . $rb[0]);
                     $t->eq($ra[0], $rb[0], 'tanpa OD sorts bentuk array: kolom verifikasi berperilaku sama dengan kolom biasa (name) - tidak ada jalur baru');
 
-                    // --- pemegang Opname Document: search/sort kolom verifikasi berfungsi
-                    q27_with_grant($t, Q27_ROLE_LIST_ONLY, Q27_OD, function () use ($t, $s, $x, $q27_idseq, $baseIds, $baseFIds, $base) {
-                        $r = q27_list($t, $s, ['search' => q27_search(['isVerified' => 1])]);
-                        $t->status($r, 200, 'dengan OD search isVerified=1');
-                        $t->true($r[1]['result']['total'] < $base[1]['result']['total'], 'dengan OD search isVerified=1: total (' . $r[1]['result']['total'] . ') < root biasa (' . $base[1]['result']['total'] . ') = filter berlaku');
-                        $rows = $r[1]['result']['data'];
-                        $t->true(count($rows) > 0, 'dengan OD search isVerified=1: ada hasil (' . count($rows) . ')');
-                        foreach ($rows as $row) {
+                    // --- pemegang Opname Document: search/sort kolom verifikasi berfungsi.
+                    // (ED-1149 K-2 a / BR-5) Dibatasi ke baris QA sendiri: query = prefiks QA27- (kolom nama); hasil = TEPAT baris QA yang terlihat
+                    // user (aktif + lokasi SMR) dengan is_verified sesuai, id sama dengan oracle DB. TIDAK dibandingkan dengan total root/DB
+                    // (memuat data developer, mis. 343+ baris verified updated_by 'sam' yang tidak disentuh).
+                    q27_with_grant($t, Q27_PRESET_LIST, Q27_OD, function () use ($t, $s, $x, $q27_idseq, $baseFIds) {
+                        $qa = q27_qa_rows($t, ['SMR']);
+                        $expAll = array_keys($qa);
+                        $expV = array_keys(array_filter($qa, function ($v) {
+                            return $v === 1;
+                        }));
+                        $expU = array_keys(array_filter($qa, function ($v) {
+                            return $v === 0;
+                        }));
+                        $t->true(count($expV) >= 6 && count($expU) >= 6, 'oracle QA: baris QA terverifikasi (' . count($expV) . ') dan belum (' . count($expU) . ') cukup untuk membedakan filter');
+                        $sorted = function (array $ids) {
+                            sort($ids);
+
+                            return $ids;
+                        };
+                        $rq = q27_list($t, $s, ['search' => q27_search(['query' => Q27_PREFIX])]);
+                        $t->status($rq, 200, 'dengan OD search query QA27-');
+                        $t->eq($sorted($q27_idseq($rq)), $sorted($expAll), 'dengan OD search query QA27-: tepat semua baris QA terlihat (oracle DB)');
+
+                        $r = q27_list($t, $s, ['search' => q27_search(['isVerified' => 1, 'query' => Q27_PREFIX])]);
+                        $t->status($r, 200, 'dengan OD search isVerified=1 (+query QA27-)');
+                        $got = $q27_idseq($r);
+                        $t->eq($sorted($got), $sorted($expV), 'dengan OD search isVerified=1: hasil = TEPAT baris QA terverifikasi (' . count($expV) . ', id sama dengan oracle DB)');
+                        $t->eq($r[1]['result']['total'], count($expV), 'dengan OD search isVerified=1: total = jumlah baris QA terverifikasi');
+                        $t->true(count($got) < count($expAll), 'dengan OD search isVerified=1: lebih sedikit dari semua baris QA (' . count($got) . ' < ' . count($expAll) . ') = filter berlaku');
+                        foreach ($r[1]['result']['data'] as $row) {
                             if (($row['type'] ?? '') !== 'Folder') {
                                 $t->eq($row['document_verified']['verified'], 1, "dengan OD search isVerified=1: dokumen {$row['id_archive']} verified");
                             }
                         }
-                        $got = array_column($rows, 'id_archive');
                         $t->true(in_array($x['dF1'], $got, true) && in_array($x['dF3'], $got, true), 'dengan OD search isVerified=1: dokumen fixture verified (dF1, dF3) muncul');
                         $t->true(!in_array($x['dF2'], $got, true) && !in_array($x['dF5'], $got, true), 'dengan OD search isVerified=1: dokumen fixture unverified (dF2, dF5) tidak muncul');
+                        $t->true(!in_array($x['dNEG'], $got, true) && !in_array($x['dDEL'], $got, true), 'dengan OD search isVerified=1: dokumen verified nonaktif (dNEG, dDEL) tidak muncul');
+
+                        $r0 = q27_list($t, $s, ['search' => q27_search(['isVerified' => 0, 'query' => Q27_PREFIX])]);
+                        $t->status($r0, 200, 'dengan OD search isVerified=0 (+query QA27-)');
+                        $t->eq($sorted($q27_idseq($r0)), $sorted($expU), 'dengan OD search isVerified=0: hasil = TEPAT baris QA belum terverifikasi (' . count($expU) . ', id sama dengan oracle DB)');
+                        $t->eq(count($expV) + count($expU), count($expAll), 'dengan OD: isVerified=1 dan =0 membagi semua baris QA (tanpa irisan, tanpa sisa)');
+
                         $rs = q27_list($t, $s, ['id_archive' => $x['F'], 'sorts' => [json_encode(['sortBy' => 'isVerified', 'sortType' => 'desc'])]]);
                         $t->status($rs, 200, 'dengan OD sorts isVerified desc');
                         $t->true($q27_idseq($rs) !== $baseFIds, 'dengan OD sorts isVerified desc: urutan berbeda dari default (sort berlaku)');
@@ -283,7 +311,7 @@ return [
                 $cols = ['is_verified', 'verified_at', 'verified_by', 'id_archive_opname'];
                 $targets = ['folder F' => $x['F'], 'folder S1' => $x['S1'], 'dokumen dF1 (verified)' => $x['dF1'], 'dokumen dF2 (unverified)' => $x['dF2']];
                 $no = [];
-                q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']], function () use ($t, $s, $targets, $cols, &$no) {
+                q27_with_user($t, ['role' => Q27_PRESET_LIST, 'emp' => ['SMR']], function () use ($t, $s, $targets, $cols, &$no) {
                     foreach ($targets as $label => $id) {
                         $r = $t->call($s, 'GET', Q27_BASE . '/archives/' . $id);
                         $t->status($r, 200, "tanpa OD detail $label");
@@ -292,7 +320,7 @@ return [
                             $t->true(!array_key_exists($c, $r[1]['result']), "tanpa OD detail $label: tanpa key $c");
                         }
                     }
-                    q27_with_grant($t, Q27_ROLE_LIST_ONLY, Q27_OD, function () use ($t, $s, $targets, $cols, $no) {
+                    q27_with_grant($t, Q27_PRESET_LIST, Q27_OD, function () use ($t, $s, $targets, $cols, $no) {
                         foreach ($targets as $label => $id) {
                             $r = $t->call($s, 'GET', Q27_BASE . '/archives/' . $id);
                             $t->status($r, 200, "dengan OD detail $label");

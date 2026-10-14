@@ -2,10 +2,12 @@
   "fixtures": [
     {
       "name": "user-qa-state",
-      "reason": "AC-16/AC-17 butuh QA_USER (profil default) sebagai user JOG (role 26, employee JOG saja) atau superadmin (role 1); AC-13 simulasi butuh role tanpa permission Archive. Dipilih lewat env E2E_STATE=jog|super|noperm (kosong = tidak ada perubahan). Dipulihkan persis di teardown (jurnal qa/e2e/.state-journal.json).",
+      "reason": "AC-16/AC-17 butuh QA_USER (profil default) sebagai user JOG (PRESET role QA24-ROLE-E2E-JOG dari nama permission eksplisit, employee JOG saja) atau superadmin (role sistem 1; satu dokumen Billing milik fixture BILL/QA24-E2E/00001 dibuat dan dibuang); AC-13 simulasi butuh role tanpa permission Archive (PRESET QA24-ROLE-E2E-NOPERM). Dipilih lewat env E2E_STATE=jog|super|noperm (kosong = tidak ada perubahan). Dipulihkan persis di teardown (jurnal qa/e2e/.state-journal.json; preset dibuang, user_roles/employee QA_USER persis). ED-1149: role developer 26/28 dan data archives developer tidak dipakai/diubah.",
       "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/state.php\" up \"${E2E_STATE:-none}\"",
       "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/state.php\" down",
-      "profiles": ["default"],
+      "profiles": [
+        "default"
+      ],
       "timeout_s": 120
     }
   ]

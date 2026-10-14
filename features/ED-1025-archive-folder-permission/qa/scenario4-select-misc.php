@@ -134,62 +134,67 @@ return [
             $r = q2_select_users($t, http_build_query(['selected_id' => array_keys($inelig)]));
             $t->eq(count(q2_option_ids($r)), count($ids) + count($inelig), 'selected_id array');
 
-            // 5. kriteria dibuktikan dengan mengubah keadaan satu user layak (dipulihkan persis)
-            $cand = null;
-            foreach (array_reverse($expected) as $e) {
-                if ($e[1] !== $t->conf('QA_USER')) {
-                    $cand = $e;
-                    break;
-                }
-            }
+            // 5. kriteria dibuktikan dengan mengubah keadaan QA_USER2 (user kedua milik QA; dipulihkan persis), BUKAN user/role developer
+            // (ED-1149 BR-1/BR-4): QA_USER2 sementara hanya di role fixture QA02-ROLE-LA (List Archive), sehingga layak dengan sendirinya.
+            $u2name = $t->conf('QA_USER2');
+            $u2id = $t->db()->table('users')->where('username', $u2name)->value('id_user');
+            $t->true($u2id !== null, 'prasyarat: QA_USER2 ada');
+            $cand = [$u2id, $u2name];
             $custId = $t->db()->table('customers')->whereNull('id_user')->orderBy('id_customer')->value('id_customer');
             $t->true($custId !== null, 'prasyarat: ada baris customers tanpa id_user');
-            $snapRoles = q2_rows($t->db()->table('user_roles')->where('id_user', $cand[0])->orderBy('id_user_role')->get());
             $isActive = $t->db()->table('users')->where('id_user', $cand[0])->value('is_active');
+            $roleLA = q2_role($t, 'LA', ['Allow Access Website', 'List Archive']);
             try {
-                // a. punya role superadmin 2 (juga) -> hilang
-                q2_w($t, function ($c) use ($cand) {
-                    $c->table('user_roles')->insert(['id_user' => $cand[0], 'id_role' => 2, 'is_all_location' => 1, 'id_location' => null, 'created_at' => date('Y-m-d H:i:s'), 'updated_at' => date('Y-m-d H:i:s')]);
-                });
-                $r = q2_select_users($t);
-                $t->true(!in_array($cand[0], q2_option_ids($r)), 'user dengan role superadmin 2 tidak muncul');
-                $t->eq(count(q2_option_ids($r)), count($ids) - 1, 'hanya user itu yang hilang');
-                q2_w($t, function ($c) use ($cand) {
-                    $c->table('user_roles')->where('id_user', $cand[0])->where('id_role', 2)->delete();
-                });
-                $r = q2_select_users($t);
-                $t->true(in_array($cand[0], q2_option_ids($r)), 'muncul lagi sesudah role dilepas');
+                q2_with_u2_roles($t, [$roleLA], function ($setRoles) use ($t, $cand, $custId, $isActive, $roleLA) {
+                    $idsNow = array_column(q2_expected_users($t), 0);
+                    $t->true(in_array($cand[0], $idsNow), 'QA_USER2 (fixture List Archive) layak sebagai kandidat');
+                    $r = q2_select_users($t);
+                    $t->true(in_array($cand[0], q2_option_ids($r)), 'kandidat QA_USER2 muncul');
+                    $t->eq(count(q2_option_ids($r)), count($idsNow), 'jumlah opsi = hitungan independen (QA_USER2 sebagai kandidat)');
 
-                // b. non-aktif -> hilang
-                q2_w($t, function ($c) use ($cand) {
-                    $c->table('users')->where('id_user', $cand[0])->update(['is_active' => 0]);
-                });
-                $r = q2_select_users($t);
-                $t->true(!in_array($cand[0], q2_option_ids($r)), 'user nonaktif tidak muncul');
-                q2_w($t, function ($c) use ($cand, $isActive) {
-                    $c->table('users')->where('id_user', $cand[0])->update(['is_active' => $isActive]);
-                });
+                    // a. punya role superadmin 2 (juga) -> hilang
+                    $setRoles([$roleLA, 2]);
+                    $r = q2_select_users($t);
+                    $t->true(!in_array($cand[0], q2_option_ids($r)), 'user dengan role superadmin 2 tidak muncul');
+                    $t->eq(count(q2_option_ids($r)), count($idsNow) - 1, 'hanya user itu yang hilang');
+                    $setRoles([$roleLA]);
+                    $r = q2_select_users($t);
+                    $t->true(in_array($cand[0], q2_option_ids($r)), 'muncul lagi sesudah role dilepas');
 
-                // c. user customer -> hilang
-                q2_w($t, function ($c) use ($cand, $custId) {
-                    $c->table('customers')->where('id_customer', $custId)->update(['id_user' => $cand[0]]);
-                });
-                $r = q2_select_users($t);
-                $t->true(!in_array($cand[0], q2_option_ids($r)), 'user customer tidak muncul');
-                q2_w($t, function ($c) use ($custId) {
-                    $c->table('customers')->where('id_customer', $custId)->update(['id_user' => null]);
-                });
-                $r = q2_select_users($t);
-                $t->true(in_array($cand[0], q2_option_ids($r)), 'muncul lagi sesudah customer dilepas');
-            } finally {
-                q2_w($t, function ($c) use ($cand, $snapRoles, $isActive, $custId) {
-                    $c->table('user_roles')->where('id_user', $cand[0])->delete();
-                    if ($snapRoles) {
-                        $c->table('user_roles')->insert($snapRoles);
+                    // b. non-aktif -> hilang
+                    q2_w($t, function ($c) use ($cand) {
+                        $c->table('users')->where('id_user', $cand[0])->update(['is_active' => 0]);
+                    });
+                    try {
+                        $r = q2_select_users($t);
+                        $t->true(!in_array($cand[0], q2_option_ids($r)), 'user nonaktif tidak muncul');
+                    } finally {
+                        q2_w($t, function ($c) use ($cand, $isActive) {
+                            $c->table('users')->where('id_user', $cand[0])->update(['is_active' => $isActive]);
+                        });
                     }
+
+                    // c. user customer -> hilang
+                    q2_w($t, function ($c) use ($cand, $custId) {
+                        $c->table('customers')->where('id_customer', $custId)->update(['id_user' => $cand[0]]);
+                    });
+                    try {
+                        $r = q2_select_users($t);
+                        $t->true(!in_array($cand[0], q2_option_ids($r)), 'user customer tidak muncul');
+                    } finally {
+                        q2_w($t, function ($c) use ($custId) {
+                            $c->table('customers')->where('id_customer', $custId)->update(['id_user' => null]);
+                        });
+                    }
+                    $r = q2_select_users($t);
+                    $t->true(in_array($cand[0], q2_option_ids($r)), 'muncul lagi sesudah customer dilepas');
+                });
+            } finally {
+                q2_w($t, function ($c) use ($cand, $isActive, $custId) {
                     $c->table('users')->where('id_user', $cand[0])->update(['is_active' => $isActive]);
                     $c->table('customers')->where('id_customer', $custId)->update(['id_user' => null]);
                 });
+                q2_role_purge($t);
             }
             $t->eq(q2_user_state($t), $stateBefore, 'user_roles/users/customers/roles dipulihkan persis');
 
@@ -201,9 +206,15 @@ return [
             }
             $r = $t->raw('GET', 'api/v5/select/document-archive/archive/users');
             $t->status($r, 401, 'tanpa token');
-            $r = q2_with_user($t, ['role' => 6], function ($set) use ($t, $s) {
-                return q2_select_users($t);
-            });
+            // (ED-1149 BR-1/BR-2) role tanpa permission Archive = role fixture QA02-ROLE-NOARCH (akses website saja), bukan role developer 6
+            $roleNoArch = q2_role($t, 'NOARCH', ['Allow Access Website']);
+            try {
+                $r = q2_with_user($t, ['role' => $roleNoArch], function ($set) use ($t, $s) {
+                    return q2_select_users($t);
+                });
+            } finally {
+                q2_role_purge($t);
+            }
             $t->status($r, 200, 'role tanpa permission Archive: select tanpa permission_v5 (konvensi select) tetap 200');
             $t->eq(q2_user_state($t), $stateBefore, 'keadaan akhir sama dengan awal');
         },
@@ -220,6 +231,10 @@ return [
             $b = q2_uid($t);
 
             try {
+                // (ED-1149 BR-1/BR-2/BR-4) peran uji = role fixture QA02-ROLE-* dari NAMA permission (bukan role developer 6/29/16)
+                $roleNone = q2_role($t, 'NOARCH', ['Allow Access Website']);                                                           // tanpa permission Archive
+                $roleList = q2_role($t, 'LISTONLY', ['Allow Access Website', 'List Archive']);                                         // hanya List Archive
+                $roleMove = q2_role($t, 'MOVE', ['Allow Access Website', 'List Archive', 'Move Archive', 'Handover Document', 'Receive Document']); // List+Move+Handover+Receive
                 $P = q2_folder($t, 'P', ['perm' => 1]);
                 $pName = q2_row($t, $P)['name'];
                 q2_perm($t, $P, $b, 1, 1, 1, 1);                   // hak folder lengkap
@@ -235,44 +250,44 @@ return [
                     ['id_user' => $b, 'is_view' => 1, 'is_update' => 0, 'is_delete' => 0, 'is_store' => 0],
                 ]]);
 
-                // role 6: tanpa permission Archive sama sekali
-                q2_with_user($t, ['role' => 6], function ($set) use ($t, $s, $P, $putBody, $forbid) {
-                    $forbid(q2_open($t, $s, $P), 'role 6: GET archives?id_archive=P', 'List Archive');
-                    $forbid(q2_show($t, $s, $P), 'role 6: GET archives/{P}', 'List Archive');
-                    $forbid(q2_hist($t, $s, $P), 'role 6: GET history/{P}', 'List Archive');
+                // role fixture NOARCH: tanpa permission Archive sama sekali
+                q2_with_user($t, ['role' => $roleNone], function ($set) use ($t, $s, $P, $putBody, $forbid) {
+                    $forbid(q2_open($t, $s, $P), 'role NOARCH: GET archives?id_archive=P', 'List Archive');
+                    $forbid(q2_show($t, $s, $P), 'role NOARCH: GET archives/{P}', 'List Archive');
+                    $forbid(q2_hist($t, $s, $P), 'role NOARCH: GET history/{P}', 'List Archive');
                     // (rev K-15 b) route PUT = permission_v5:Update Folder|Folder Permissions: tanpa keduanya parameter memuat dua nama
-                    $forbid(q2_put($t, $s, $P, $putBody), 'role 6: PUT archives/{P} dengan folder_permissions', 'Update Folder, Folder Permissions');
-                    $forbid($t->call($s, 'PUT', 'api/v5/document-archive/archives/' . $P, ['is_folder_permission' => 0]), 'role 6: PUT kelompok izin saja', 'Update Folder, Folder Permissions');
-                    $forbid($t->call($s, 'PUT', 'api/v5/document-archive/archives/' . $P, []), 'role 6: PUT tubuh kosong (403 modul mendahului 422)', 'Update Folder, Folder Permissions');
-                    $forbid(q2_delete($t, $s, $P), 'role 6: DELETE', 'Delete Folder');
+                    $forbid(q2_put($t, $s, $P, $putBody), 'role NOARCH: PUT archives/{P} dengan folder_permissions', 'Update Folder, Folder Permissions');
+                    $forbid($t->call($s, 'PUT', 'api/v5/document-archive/archives/' . $P, ['is_folder_permission' => 0]), 'role NOARCH: PUT kelompok izin saja', 'Update Folder, Folder Permissions');
+                    $forbid($t->call($s, 'PUT', 'api/v5/document-archive/archives/' . $P, []), 'role NOARCH: PUT tubuh kosong (403 modul mendahului 422)', 'Update Folder, Folder Permissions');
+                    $forbid(q2_delete($t, $s, $P), 'role NOARCH: DELETE', 'Delete Folder');
                 });
 
-                // role 29: hanya List Archive -> membaca lolos modul + hak folder; menulis ditolak modul walau hak folder lengkap
-                q2_with_user($t, ['role' => 29], function ($set) use ($t, $s, $P, $Dr, $putBody, $forbid) {
+                // role fixture LISTONLY: hanya List Archive -> membaca lolos modul + hak folder; menulis ditolak modul walau hak folder lengkap
+                q2_with_user($t, ['role' => $roleList], function ($set) use ($t, $s, $P, $Dr, $putBody, $forbid) {
                     $r = q2_open($t, $s, $P);
-                    $t->status($r, 200, 'role 29: buka P (modul List + View folder)');
-                    q2_access_is($t, $r[1]['result']['access'], q2_all_true(), 'role 29: access (hak folder; modul dinilai terpisah di FE); (rev) manage_permission false: role 29 tanpa Folder Permissions', false);
-                    $forbid(q2_put($t, $s, $P, $putBody), 'role 29: PUT dengan folder_permissions', 'Update Folder, Folder Permissions');
-                    $forbid(q2_rename($t, $s, $P, 'x'), 'role 29: rename', 'Update Folder');
-                    $forbid(q2_delete($t, $s, $P), 'role 29: DELETE', 'Delete Folder');
-                    $forbid(q2_create($t, $s, ['name' => q2_name('SUB'), 'id_archive_parent' => $P, 'is_all_location' => 1]), 'role 29: create-folder', 'Add Folder');
-                    $forbid(q2_putin($t, $s, $P, $Dr), 'role 29: put-in', 'Move Archive, Add Document');
+                    $t->status($r, 200, 'role LISTONLY: buka P (modul List + View folder)');
+                    q2_access_is($t, $r[1]['result']['access'], q2_all_true(), 'role LISTONLY: access (hak folder; modul dinilai terpisah di FE); (rev) manage_permission false: LISTONLY tanpa Folder Permissions', false);
+                    $forbid(q2_put($t, $s, $P, $putBody), 'role LISTONLY: PUT dengan folder_permissions', 'Update Folder, Folder Permissions');
+                    $forbid(q2_rename($t, $s, $P, 'x'), 'role LISTONLY: rename', 'Update Folder');
+                    $forbid(q2_delete($t, $s, $P), 'role LISTONLY: DELETE', 'Delete Folder');
+                    $forbid(q2_create($t, $s, ['name' => q2_name('SUB'), 'id_archive_parent' => $P, 'is_all_location' => 1]), 'role LISTONLY: create-folder', 'Add Folder');
+                    $forbid(q2_putin($t, $s, $P, $Dr), 'role LISTONLY: put-in', 'Move Archive, Add Document');
                 });
                 $t->true(q2_same($before, q2_snap($t, [$P, $Dr])), 'data P dan dokumen tidak berubah oleh semua penolakan modul');
 
-                // role 29 tetapi hak folder tidak ada: modul lolos, hak folder menolak
+                // LISTONLY tetapi hak folder tidak ada: modul lolos, hak folder menolak
                 q2_unperm($t, $P, $b);
-                q2_with_user($t, ['role' => 29], function ($set) use ($t, $s, $P) {
+                q2_with_user($t, ['role' => $roleList], function ($set) use ($t, $s, $P) {
                     $r = q2_open($t, $s, $P);
-                    $t->status($r, 403, 'role 29 tanpa hak folder: buka P');
-                    $t->eq($r[1]['msg_code'], 'ARCHIVE407', 'role 29 tanpa hak folder: ARCHIVE407 (bukan GE0114)');
+                    $t->status($r, 403, 'role LISTONLY tanpa hak folder: buka P');
+                    $t->eq($r[1]['msg_code'], 'ARCHIVE407', 'role LISTONLY tanpa hak folder: ARCHIVE407 (bukan GE0114)');
                 });
-                // role 16 (List+Move+Handover+Receive) dengan hak folder lengkap: put-in lolos, rename/PUT ditolak modul
+                // MOVE (List+Move+Handover+Receive) dengan hak folder lengkap: put-in lolos, rename/PUT ditolak modul
                 q2_perm($t, $P, $b, 1, 1, 1, 1);
-                q2_with_user($t, ['role' => 16], function ($set) use ($t, $s, $P, $Dr, $forbid) {
+                q2_with_user($t, ['role' => $roleMove], function ($set) use ($t, $s, $P, $Dr, $forbid) {
                     $r = q2_putin($t, $s, $P, $Dr);
-                    $t->status($r, 200, 'role 16: put-in (Move Archive + Store folder)');
-                    $forbid(q2_rename($t, $s, $P, 'x'), 'role 16: rename', 'Update Folder');
+                    $t->status($r, 200, 'role MOVE: put-in (Move Archive + Store folder)');
+                    $forbid(q2_rename($t, $s, $P, 'x'), 'role MOVE: rename', 'Update Folder');
                 });
                 // tanpa token
                 $r = $t->raw('GET', q2_url('api/v5/document-archive/archives', ['id_archive' => $P]));
@@ -281,8 +296,10 @@ return [
                 $t->status($r, 401, 'tanpa token: PUT');
             } finally {
                 q2_purge($t);
+                q2_role_purge($t);
             }
             q2_assert_clean($t, $base);
+            $t->eq($t->db()->table('roles')->where('role_name', 'like', Q2_ROLE_PREFIX . '%')->count(), 0, 'role fixture QA02-ROLE- dibuang');
         },
     ],
 
@@ -350,31 +367,27 @@ return [
             q2_assert_clean($t, $base);
 
             // role nonaktif bukan bypass (roles.is_active = 0 -> role itu tidak dihitung)
-            $role2 = $t->db()->table('roles')->where('id_role', 2)->first(['id_role', 'is_active']);
+            // (ED-1149 BR-4) pakai role fixture QA02-ROLE-SA2 (is_superadmin 2) yang di-nonaktifkan, BUKAN mengubah role developer 2
             $stateBefore = q2_user_state($t);
             try {
                 $P2 = q2_folder($t, 'P2', ['perm' => 1]);
-                q2_with_user($t, ['role' => [3, 2]], function ($set) use ($t, $s, $P2) {
-                    $t->status(q2_open($t, $s, $P2), 200, 'role 3+2 aktif: bypass');
-                    q2_w($t, function ($c) {
-                        $c->table('roles')->where('id_role', 2)->update(['is_active' => 0]);
+                $roleSa2 = q2_role($t, 'SA2', ['List Archive'], 2, 1);
+                q2_with_user($t, ['role' => [3, $roleSa2]], function ($set) use ($t, $s, $P2, $roleSa2) {
+                    $t->status(q2_open($t, $s, $P2), 200, 'role 3 + fixture superadmin-2 aktif: bypass');
+                    q2_w($t, function ($c) use ($roleSa2) {
+                        $c->table('roles')->where('id_role', $roleSa2)->update(['is_active' => 0]);
                     });
-                    try {
-                        $r = q2_open($t, $s, $P2);
-                        $t->status($r, 403, 'role 2 nonaktif: bukan bypass');
-                        $t->eq($r[1]['msg_code'], 'ARCHIVE407', 'role 2 nonaktif: ARCHIVE407');
-                    } finally {
-                        q2_w($t, function ($c) {
-                            $c->table('roles')->where('id_role', 2)->update(['is_active' => 1]);
-                        });
-                    }
-                    $t->status(q2_open($t, $s, $P2), 200, 'role 2 aktif lagi: bypass');
+                    $r = q2_open($t, $s, $P2);
+                    $t->status($r, 403, 'role superadmin-2 nonaktif: bukan bypass');
+                    $t->eq($r[1]['msg_code'], 'ARCHIVE407', 'role superadmin-2 nonaktif: ARCHIVE407');
+                    q2_w($t, function ($c) use ($roleSa2) {
+                        $c->table('roles')->where('id_role', $roleSa2)->update(['is_active' => 1]);
+                    });
+                    $t->status(q2_open($t, $s, $P2), 200, 'role superadmin-2 aktif lagi: bypass');
                 });
             } finally {
-                q2_w($t, function ($c) use ($role2) {
-                    $c->table('roles')->where('id_role', 2)->update(['is_active' => $role2->is_active]);
-                });
                 q2_purge($t);
+                q2_role_purge($t);
             }
             $t->eq(q2_user_state($t), $stateBefore, 'roles/user_roles dipulihkan persis');
             q2_assert_clean($t, $base);

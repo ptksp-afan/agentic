@@ -1,73 +1,16 @@
 <?php
 /**
- * ED-1027 - user kedua sungguhan (QA_USER2 = Sales Supervisor, lokasi SMR, bahasa EN, bukan superadmin): X-8 (angka = oracle untuk user2,
- * tanpa folder ber-hak dan lokasi lain, detail 403 untuk folder terlarang, sesi terlihat user2 sesuai K-4), X-9 (user2 tanpa permission
- * Archive: 403 GE0114 pada kedua endpoint baru; role asli dipulihkan persis). Data uji dipulihkan di finally (q27_cleanup + jurnal role user2).
- * (rev 2026-10-09, EPIC K-3 a) verifications* = Opname Document: role asli QA_USER2 (Sales Supervisor) punya List Archive TANPA Opname Document
- * -> verifications* 403 GE0114 (bukti AC-23 dengan user sungguhan); X-8 memberi role itu Opname Document sementara (q27_grant, dicabut persis).
+ * ED-1027 - user kedua sungguhan (QA_USER2 = adi, non-karyawan, lokasi SMR, bahasa EN, bukan superadmin): X-8 (angka = oracle untuk user2,
+ * tanpa folder ber-hak dan lokasi lain, detail 403 untuk folder terlarang, sesi terlihat user2 sesuai K-4), X-9 (user2 tanpa
+ * permission Archive: 403 GE0114 pada kedua endpoint baru).
+ * (ED-1149 BR-1/BR-2/BR-4) QA_USER2 TIDAK memakai role developer (5/22/...) sebagai prasyarat: user_roles-nya diganti SEMENTARA ke
+ * preset QA27-ROLE-U2 (akses website + List Archive, TANPA Opname Document; dibuat dari nama permission) atau QA27-ROLE-NOLIST (akses
+ * website saja) lewat q27_with_u2_preset (jurnal .restore-journal-q27-user2.json, dipulihkan persis). Opname Document hanya diberikan ke
+ * PRESET (q27_grant menolak role non-preset) dan dicabut persis; role_permissions sama persis dengan sebelum AC (jumlah + CRC).
+ * (rev 2026-10-09, EPIC K-3 a) verifications* = Opname Document: preset U2 (List Archive TANPA Opname Document) -> verifications* 403
+ * GE0114 (bukti AC-23 dengan user sungguhan); X-8 memberi preset itu Opname Document sementara.
  */
 require_once __DIR__ . '/qa_lib.php';
-
-function q27_u2_journal()
-{
-    return __DIR__ . '/.restore-journal-q27-user2.json';
-}
-
-/** Token user2 terikat DB QA (force_login hanya mencabut token user2 sendiri). */
-function q27_u2_session($t)
-{
-    $s = $t->login('QA_USER2');
-    $r = $t->bind($s, q27_dbname($t));
-    $t->eq($r[0], 200, 'bind QA_USER2');
-
-    return $s;
-}
-
-function q27_u2_id($t)
-{
-    return $t->db()->table('users')->where('username', $t->conf('QA_USER2'))->value('id_user');
-}
-
-/** Ganti role user2 sementara; pulihkan persis dari jurnal. */
-function q27_u2_roles($t, array $roles)
-{
-    $uid = q27_u2_id($t);
-    q27_w($t, function ($c) use ($uid, $roles) {
-        $now = date('Y-m-d H:i:s');
-        $c->table('user_roles')->where('id_user', $uid)->delete();
-        foreach ($roles as $role) {
-            $c->table('user_roles')->insert(['id_user' => $uid, 'id_role' => $role, 'is_all_location' => 1, 'id_location' => null, 'created_at' => $now, 'updated_at' => $now]);
-        }
-    });
-}
-
-function q27_u2_snapshot($t)
-{
-    return q27_rows($t->db()->table('user_roles')->where('id_user', q27_u2_id($t))->orderBy('id_user_role')->get());
-}
-
-/** Pulihkan role user2 dari jurnal bila run sebelumnya mati di tengah X-9. */
-function q27_u2_recover($t)
-{
-    if (is_file(q27_u2_journal())) {
-        $snap = json_decode(file_get_contents(q27_u2_journal()), true);
-        if (is_array($snap) && $snap) {
-            q27_u2_restore($t, $snap);
-        }
-        @unlink(q27_u2_journal());
-    }
-}
-
-function q27_u2_restore($t, array $snap)
-{
-    $uid = q27_u2_id($t);
-    q27_w($t, function ($c) use ($uid, $snap) {
-        $c->table('user_roles')->where('id_user', $uid)->delete();
-        if ($snap) {
-            $c->table('user_roles')->insert($snap);
-        }
-    });
-}
 
 return [
 
@@ -77,19 +20,20 @@ return [
         'run'   => function ($t) {
             $s = $t->session();
             q27_baseline($t);
-            q27_u2_recover($t);
             $rpBefore = q27_rp_sum($t);
             try {
                 $x = q27_tree($t);
                 $uid2 = q27_u2_id($t);
                 $uname2 = (string) $t->db()->table('users')->where('id_user', $uid2)->value('username');
+                q27_with_u2_preset($t, Q27_PRESET_U2, function ($role2) use ($t, $s, $x, $uid2, $uname2) {
                 $s2 = q27_u2_session($t);
 
-                // --- (rev) role asli user2 TANPA Opname Document: verifications* 403 GE0114, list 200 tanpa field verifikasi
-                $roles2 = array_column(q27_u2_snapshot($t), 'id_role');
-                foreach ($roles2 as $role2) {
-                    $t->true(!q27_has_perm($t, $role2, Q27_OD), "prasyarat: role $role2 user2 belum memegang Opname Document");
-                }
+                // --- (rev) preset U2 (List Archive TANPA Opname Document; BUKAN role 5): verifications* 403 GE0114, list 200 tanpa field verifikasi
+                $roles2 = [$role2];
+                $names2 = q27_role_names($t, $role2);
+                $t->true(in_array('List Archive', $names2, true) && in_array('Allow Access Website', $names2, true), 'prasyarat: preset U2 memegang List Archive + Allow Access Website (per id_permission)');
+                $t->true(!in_array(Q27_OD, $names2, true), 'prasyarat: preset U2 belum memegang Opname Document');
+                $t->true(!q27_has_perm($t, $role2, Q27_OD), 'prasyarat: preset U2 belum memegang Opname Document (join id)');
                 foreach (['GET verifications' => '/verifications', 'GET verifications/{F}' => '/verifications/' . $x['F']] as $label => $path) {
                     $r0 = $t->call($s2, 'GET', Q27_BASE . $path);
                     q27_deny($t, $r0, 403, 'GE0114', "user2 tanpa Opname Document: $label");
@@ -99,7 +43,8 @@ return [
                 $t->status($r0, 200, 'user2 tanpa Opname Document: list 200');
                 $t->true(!array_key_exists('document_verified_summary', $r0[1]['result']), 'user2 tanpa Opname Document: tanpa document_verified_summary');
                 $t->true(array_key_exists('data', $r0[1]['result']) && count($r0[1]['result']['data']) > 0 && !array_key_exists('document_verified', $r0[1]['result']['data'][0]), 'user2 tanpa Opname Document: baris tanpa document_verified');
-                q27_grant($t, $roles2, Q27_OD);
+                q27_grant($t, $roles2, Q27_OD); // HANYA ke preset (q27_grant menolak role non-preset)
+                $t->eq($t->db()->table('role_permissions')->where('created_by', 'QA27')->where('id_role', $role2)->count(), count(q27_preset_perms(Q27_PRESET_U2)) + 1, 'Opname Document milik preset U2 = satu baris grant QA27 di atas baris dasar preset');
                 $u = ['username' => $uname2, 'uid' => $uid2, 'bypass' => false, 'locs' => ['SMR']];
                 $o = q27_oracle($t, $u);
 
@@ -171,58 +116,63 @@ return [
                 $t->eq(array_keys($rv[1]['result']['last_sessions'][0]), ['id_archive_opname', 'confirmed_at', 'created_by', 'scope', 'total_documents', 'verified_count', 'not_found_count', 'invalid_count'], 'user2: kunci session_row sesuai kontrak (urutan sama)');
 
                 $t->call($s2, 'GET', 'api/v5/auth/log-out');
+                });
             } finally {
                 q27_cleanup($t);
                 q27_grant_recover($t);
-                $t->eq(q27_rp_sum($t), $rpBefore, 'role_permissions dipulihkan persis (grant sementara Opname Document dicabut)');
+                $t->eq(q27_rp_sum($t), $rpBefore, 'role_permissions dipulihkan persis (preset dibuang, tidak ada sisa grant Opname Document)');
             }
         },
     ],
 
     [
         'id'    => 'X-9',
-        'title' => 'QA_USER2: role asli (List Archive, tanpa Opname Document) = list 200 + verifications* 403; dengan Opname Document sementara 200; tanpa List Archive (role sementara 22, tetap punya akses website): 403 GE0114 untuk kedua endpoint baru dan list (parameter sesuai permission route); role asli dipulihkan persis',
+        'title' => 'QA_USER2 di preset U2 (List Archive, tanpa Opname Document; BUKAN role 5): list 200 + verifications* 403; dengan Opname Document diberikan ke PRESET 200; tanpa List Archive (preset NOLIST: akses website saja, BUKAN role 22): 403 GE0114 untuk kedua endpoint baru dan list (parameter sesuai permission route); user_roles QA_USER2 asli dipulihkan persis',
         'run'   => function ($t) {
             $s = $t->session();
             q27_baseline($t);
-            q27_u2_recover($t);
-            $snap = q27_u2_snapshot($t);
-            $t->true(count($snap) >= 1, 'prasyarat: user2 punya role');
-            file_put_contents(q27_u2_journal(), json_encode($snap));
+            $orig = q27_u2_snapshot($t); // role asli QA_USER2 (developer): hanya dibaca untuk membuktikan pemulihan, tidak dipakai sebagai prasyarat
+            $t->true(count($orig) >= 1, 'prasyarat: user2 punya role');
             $rpBefore = q27_rp_sum($t);
             try {
                 $x = q27_tree($t);
-                // role asli: list 200 (List Archive), verifications* 403 (tanpa Opname Document); dengan grant sementara 200
-                $s2 = q27_u2_session($t);
-                $t->status($t->call($s2, 'GET', Q27_BASE . '/archives?pagination=5'), 200, 'user2 role asli: archives');
-                foreach (['verifications' => '/verifications', 'verifications/{F}' => '/verifications/' . $x['F']] as $label => $path) {
-                    q27_deny($t, $t->call($s2, 'GET', Q27_BASE . $path), 403, 'GE0114', "user2 role asli (tanpa Opname Document): $label");
-                }
-                q27_grant($t, array_column($snap, 'id_role'), Q27_OD);
-                foreach (['verifications' => '/verifications', 'verifications/{F}' => '/verifications/' . $x['F'], 'archives' => '/archives?pagination=5'] as $label => $path) {
-                    $t->status($t->call($s2, 'GET', Q27_BASE . $path), 200, "user2 role asli + Opname Document: $label");
-                }
-                q27_grant_recover($t);
-                q27_u2_roles($t, [22]); // role 22 'Pusat - Admin AR/AP': punya Allow Access Website, tanpa List Archive (role 6 mencabut token user non-karyawan di middleware website)
-                foreach (['verifications' => '/verifications', 'verifications/{F}' => '/verifications/' . $x['F'], 'archives' => '/archives?pagination=5'] as $label => $path) {
-                    $r = $t->call($s2, 'GET', Q27_BASE . $path);
-                    q27_deny($t, $r, 403, 'GE0114', "user2 tanpa List Archive: $label");
-                    $t->true(empty($r[1]['result']), "user2 tanpa List Archive: $label tanpa data");
-                    $need = $label === 'archives' ? 'List Archive' : Q27_OD;
-                    $t->true(strpos(json_encode($r[1]), $need) !== false, "user2 tanpa List Archive: $label: parameter pesan = $need");
-                }
-                q27_u2_restore($t, $snap);
-                $t->status($t->call($s2, 'GET', Q27_BASE . '/archives?pagination=5'), 200, 'user2 role dipulihkan: archives 200');
-                q27_deny($t, $t->call($s2, 'GET', Q27_BASE . '/verifications'), 403, 'GE0114', 'user2 role dipulihkan: verifications tetap 403 (tanpa Opname Document)');
-                $t->call($s2, 'GET', 'api/v5/auth/log-out');
+                q27_with_u2_preset($t, Q27_PRESET_U2, function ($roleU2, $use) use ($t, $x) {
+                    $names = q27_role_names($t, $roleU2);
+                    $t->true(in_array('List Archive', $names, true) && !in_array(Q27_OD, $names, true), 'prasyarat: preset U2 punya List Archive TANPA Opname Document (per id_permission)');
+                    // preset U2: list 200 (List Archive), verifications* 403 (tanpa Opname Document); dengan grant sementara ke PRESET 200
+                    $s2 = q27_u2_session($t);
+                    $t->status($t->call($s2, 'GET', Q27_BASE . '/archives?pagination=5'), 200, 'user2 preset U2: archives');
+                    foreach (['verifications' => '/verifications', 'verifications/{F}' => '/verifications/' . $x['F']] as $label => $path) {
+                        q27_deny($t, $t->call($s2, 'GET', Q27_BASE . $path), 403, 'GE0114', "user2 preset U2 (tanpa Opname Document): $label");
+                    }
+                    q27_grant($t, [$roleU2], Q27_OD);
+                    foreach (['verifications' => '/verifications', 'verifications/{F}' => '/verifications/' . $x['F'], 'archives' => '/archives?pagination=5'] as $label => $path) {
+                        $t->status($t->call($s2, 'GET', Q27_BASE . $path), 200, "user2 preset U2 + Opname Document: $label");
+                    }
+                    q27_grant_recover($t);
+                    $use(Q27_PRESET_NONE); // preset NOLIST: akses website saja, tanpa List Archive dan tanpa Opname Document
+                    $namesNone = q27_role_names($t, q27_preset($t, Q27_PRESET_NONE));
+                    $t->true(!in_array('List Archive', $namesNone, true) && !in_array(Q27_OD, $namesNone, true) && in_array('Allow Access Website', $namesNone, true), 'prasyarat: preset NOLIST = akses website saja (per id_permission)');
+                    foreach (['verifications' => '/verifications', 'verifications/{F}' => '/verifications/' . $x['F'], 'archives' => '/archives?pagination=5'] as $label => $path) {
+                        $r = $t->call($s2, 'GET', Q27_BASE . $path);
+                        q27_deny($t, $r, 403, 'GE0114', "user2 tanpa List Archive: $label");
+                        $t->true(empty($r[1]['result']), "user2 tanpa List Archive: $label tanpa data");
+                        $need = $label === 'archives' ? 'List Archive' : Q27_OD;
+                        $t->true(strpos(json_encode($r[1]), $need) !== false, "user2 tanpa List Archive: $label: parameter pesan = $need");
+                    }
+                    $use(Q27_PRESET_U2);
+                    $t->status($t->call($s2, 'GET', Q27_BASE . '/archives?pagination=5'), 200, 'user2 preset U2 dipulihkan: archives 200');
+                    q27_deny($t, $t->call($s2, 'GET', Q27_BASE . '/verifications'), 403, 'GE0114', 'user2 preset U2 dipulihkan: verifications tetap 403 (tanpa Opname Document)');
+                    $t->call($s2, 'GET', 'api/v5/auth/log-out');
+                });
+                $t->eq(json_encode(q27_u2_snapshot($t)), json_encode($orig), 'user_roles QA_USER2 dipulihkan persis (hash baris identik)');
+                $t->true(!is_file(q27_u2_journal()), 'jurnal user2 dibersihkan');
             } finally {
-                q27_u2_restore($t, $snap);
                 q27_cleanup($t);
                 q27_grant_recover($t);
-                $t->eq(q27_rp_sum($t), $rpBefore, 'role_permissions dipulihkan persis');
+                $t->eq(q27_rp_sum($t), $rpBefore, 'role_permissions dipulihkan persis (preset dibuang, tanpa sisa grant)');
             }
-            $t->eq(json_encode(q27_u2_snapshot($t)), json_encode($snap), 'role user2 dipulihkan persis');
-            @unlink(q27_u2_journal());
+            $t->eq(json_encode(q27_u2_snapshot($t)), json_encode($orig), 'role user2 dipulihkan persis');
         },
     ],
 ];

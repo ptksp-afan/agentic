@@ -3,7 +3,7 @@
  * ED-1026 (rev: opname tanpa draft) - Step 1 & validasi endpoint tanpa simpan: AC-5 (folders per lokasi + hak folder,
  * document_count, selected_at), AC-6 (kode error folders), AC-8 (bagian BE: Step 1 dilewati, pratinjau tanpa tulis),
  * AC-9 (scan / preview / preview/documents / POST opnames: 416, 403 sebelum 422, 422, tanpa tulis), AC-3 (bagian BE:
- * Opname Document -> 403 GE0114, QA_USER2 + role 6/29).
+ * Opname Document -> 403 GE0114, QA_USER2 + preset QA26-ROLE-NONE/LIST).
  * Pembanding jumlah dokumen = oracle SQL independen (q26_oracle) yang menghormati Folder Permission; keadaan developer
  * dijaga (q26_baseline / q26_cleanup). Baca sesi (GET opnames*) = ED-1028, tidak diuji di sini.
  */
@@ -449,7 +449,7 @@ return [
 
     [
         'id'    => 'AC-3',
-        'title' => '(bagian BE) Tanpa permission Opname Document: folders / scan / preview / preview/documents / POST opnames -> 403 GE0114 (parameter = Opname Document) untuk role 6, role 29 dan QA_USER2; tanpa token 401; DB tidak berubah; role 3 dan superadmin 1/2 lolos. Baca sesi (GET opnames*) = ED-1028, tidak diuji',
+        'title' => '(bagian BE) Tanpa permission Opname Document: folders / scan / preview / preview/documents / POST opnames -> 403 GE0114 (parameter = Opname Document) untuk preset QA26-ROLE-NONE, QA26-ROLE-LIST dan QA_USER2 di preset tanpa Opname Document (ED-1149: bukan role 5/6/29); tanpa token 401; DB tidak berubah; role 3 dan superadmin 1/2 lolos. Baca sesi (GET opnames*) = ED-1028, tidak diuji',
         'run'   => function ($t) {
             $s = $t->session();
             q26_baseline($t);
@@ -478,15 +478,17 @@ return [
                     $t->status($res, 401, "tanpa token: $label");
                 }
 
-                // role 6 (tanpa permission Archive) dan role 29 (hanya List Archive): semua 403 GE0114
-                foreach ([Q26_ROLE_NONE, Q26_ROLE_LIST_ONLY] as $role) {
-                    q26_with_user($t, ['role' => $role], function () use ($t, $s, $routes, $forbid, $role) {
+                // (ED-1149) preset QA26-ROLE-NONE (tanpa permission Archive) dan QA26-ROLE-LIST (List Archive saja): semua 403 GE0114
+                foreach ([Q26_PRESET_NONE => [], Q26_PRESET_LIST => ['List Archive']] as $preset => $wantArchive) {
+                    q26_with_user($t, ['role' => $preset], function () use ($t, $s, $routes, $forbid, $preset, $wantArchive) {
+                        $names = q26_role_names($t, q26_preset($t, $preset));
+                        $t->eq(array_values(array_intersect($names, ['List Archive', 'Add Folder', 'View Folder', 'Update Folder', 'Delete Folder', 'Move Archive', 'Handover Document', 'Receive Document', 'Add Document', 'Opname Document', 'Folder Permissions', 'All Archive'])), $wantArchive, "preset $preset: permission Archive yang dipegang = " . json_encode($wantArchive) . ' (tanpa Opname Document; per id_permission)');
                         foreach ($routes as $label => $r) {
-                            $forbid($t->call($s, $r[0], $r[1], $r[2]), "role $role: $label");
+                            $forbid($t->call($s, $r[0], $r[1], $r[2]), "preset $preset: $label");
                         }
                     });
                 }
-                $t->true(q26_same_state($before, q26_state($t)), 'DB tidak berubah oleh penolakan role 6/29');
+                $t->true(q26_same_state($before, q26_state($t)), 'DB tidak berubah oleh penolakan preset NONE/LIST');
 
                 // role 3 (QA default, punya Opname Document) dan superadmin 1/2: lolos, masing-masing satu sesi di folder uji sendiri
                 foreach ([3, 1, 2] as $role) {
@@ -502,15 +504,21 @@ return [
                     });
                 }
 
-                // QA_USER2 (role tanpa Opname Document, login sungguhan): 403 GE0114 pada semua
-                $s2 = $t->login('QA_USER2');
-                $b = $t->bind($s2, q26_dbname($t));
-                $t->status($b, 200, 'QA_USER2: bind DB');
-                $stateMid = q26_state($t);
-                foreach ($routes as $label => $r) {
-                    $forbid($t->call($s2, $r[0], $r[1], $r[2]), "QA_USER2: $label");
+                // QA_USER2 (login sungguhan) di preset tanpa Opname Document (BUKAN role 5/6/29): 403 GE0114 pada semua; user_roles dipulihkan persis
+                foreach ([Q26_PRESET_LIST, Q26_PRESET_NONE] as $preset) {
+                    q26_with_u2_preset($t, $preset, function ($role) use ($t, $routes, $forbid, $preset) {
+                        $t->true(!in_array('Opname Document', q26_role_names($t, $role), true), "QA_USER2 preset $preset: tanpa Opname Document (per id_permission)");
+                        $s2 = $t->login('QA_USER2');
+                        $b = $t->bind($s2, q26_dbname($t));
+                        $t->status($b, 200, "QA_USER2 preset $preset: bind DB");
+                        $stateMid = q26_state($t);
+                        foreach ($routes as $label => $r) {
+                            $forbid($t->call($s2, $r[0], $r[1], $r[2]), "QA_USER2 preset $preset: $label");
+                        }
+                        $t->true(q26_same_state($stateMid, q26_state($t)), "DB tidak berubah oleh penolakan QA_USER2 (preset $preset)");
+                        $t->call($s2, 'GET', 'api/v5/auth/log-out');
+                    });
                 }
-                $t->true(q26_same_state($stateMid, q26_state($t)), 'DB tidak berubah oleh penolakan QA_USER2');
                 $t->note('GET opnames, opnames/{id}, opnames/{id}/documents (baca sesi) = permission milik ED-1028; tidak diasersikan di item ini (spec AC-3)');
             } finally {
                 q26_cleanup($t);

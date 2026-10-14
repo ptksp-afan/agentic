@@ -989,7 +989,7 @@ test.describe('ED-1025 folder permission', () => {
     setRole('user2', 'C'); // role asli QA_USER2 (role 5) sudah ber-Folder Permissions/Opname Document (diubah developer di DB bersama); C = peran uji tanpa Folder Permissions
     traceApi(page, monitor);
     const fx0 = ids();
-    monitor.note(`DB sesi ${session.dbName}; user B (role 5, non-superadmin; bahasa EN)`);
+    monitor.note(`DB sesi ${session.dbName}; user B (preset C tanpa Folder Permissions, non-superadmin; bahasa EN)`);
 
     const root = await openArchive(app, page);
     const p = rowsOf(root).find((r) => rowName(r) === '0QA25-P');

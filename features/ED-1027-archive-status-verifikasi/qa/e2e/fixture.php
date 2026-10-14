@@ -9,13 +9,14 @@
  *   "$PHP_BIN" fixture.php ids       cetak peta nama -> id_archive + angka harapan (JSON, tanpa rahasia)
  *   "$PHP_BIN" fixture.php inspect   cetak keadaan DB: is_verified per dokumen uji + sesi opname milik fixture (JSON, baca saja)
  *   "$PHP_BIN" fixture.php display   cetak baris display setting documentArchive (kolom aktif; JSON, baca saja)
- *   "$PHP_BIN" fixture.php grant-od  (rev) beri role(s) QA_USER2 permission `Opname Document` (per NAMA) SEMENTARA: hanya baris
- *                                    role_permissions yang dibuat (created_by QA27E2E, id di .grant-journal.json); role yang sudah
- *                                    memegangnya tidak disentuh. Dipakai satu test [user2] (EN + lokasi terbatas), selalu dicabut lagi.
+ *   "$PHP_BIN" fixture.php grant-od  (rev, ED-1149 BR-4) beri PRESET role QA_USER2 (QA27-ROLE-E2E-U2, dibuat `up`) permission `Opname Document`
+ *                                    (per NAMA) SEMENTARA: hanya baris role_permissions yang dibuat (created_by QA27E2E, id di .grant-journal.json);
+ *                                    role selain preset QA27-ROLE-E2E-* DITOLAK (role developer tidak pernah di-grant). Dipakai satu test [user2]
+ *                                    (EN + lokasi terbatas), selalu dicabut lagi.
  *   "$PHP_BIN" fixture.php set-folder-active <nama 0QA27-...> <0|1>  (QA FE rev r2) nonaktifkan/aktifkan lagi SATU folder milik fixture
  *                                    (hanya berawalan PREFIX dan hanya selama fixture up): jalur error NYATA modal folder (folder
  *                                    hilang sesudah list dimuat -> BE 404 ARCHIVE400 asli). `down` membuang barisnya apa pun nilainya.
- *   "$PHP_BIN" fixture.php revoke-od hapus PERSIS baris yang dibuat grant-od; ringkasan (jumlah+CRC) role_permissions harus sama
+ *   "$PHP_BIN" fixture.php revoke-od hapus PERSIS baris yang dibuat grant-od; ringkasan (jumlah+CRC) role_permissions PRESET harus sama
  *                                    dengan sebelum grant, bila beda exit 1. `down` ikut mencabut sisa grant.
  *
  * Jurnal (.fixture-journal.json, ditulis up SEBELUM baris pertama): id sesi opname yang sudah ada sebelum up, snapshot kolom
@@ -23,6 +24,12 @@
  * PREFIX / tercatat di jurnal; sesi yang disisipkan fixture, atau dibuat lewat aplikasi selama run pada folder fixture atau di
  * root oleh QA_USER/QA_USER2. Kolom verifikasi archives lain yang disentuh sesi itu dikembalikan ke nilai jurnal. Data
  * developer di tabel yang sama tidak pernah dihapus/direset; down tanpa jurnal tidak melakukan apa pun.
+ *
+ * (ED-1149 AC-9/AC-10, BR-1..BR-4) Peran QA_USER2: `up` mencatat baris user_roles QA_USER2 ke jurnal ('u2'), membuat PRESET role
+ * QA27-ROLE-E2E-U2 dari NAMA permission eksplisit (U2_PRESET: izin Archive "Sales Supervisor" tanpa Opname Document + Allow Access Website;
+ * QA_USER2 bukan karyawan, tanpa itu permission_v5 mencabut tokennya) lalu menaruh QA_USER2 di preset itu SEBELUM sesi browser dibuka. Role
+ * developer (3/5/6/22/29 dan lainnya) tidak dibaca sebagai prasyarat, tidak di-grant, tidak di-revoke. `down` memulihkan baris user_roles
+ * QA_USER2 persis dari jurnal, membuang preset (role_permissions + roles) dan memastikan tidak ada sisa.
  *
  * Pohon uji (semua aktif, is_all_location=1; user QA = role 3 semua lokasi, bukan bypass superadmin 1/2):
  *   0QA27-ALPHA   AD1(6,V) AD2(7) AD-HO(8, Handed Over) AD-TK(9, V, Taken) AD-NEG(6,V,is_active=-1) AD-DEL(6,V,is_active=0)
@@ -54,7 +61,7 @@ const PREFIX = '0QA27-';
 const TABLES = ['archives', 'archive_documents', 'archive_locations', 'archive_permissions', 'archive_opnames', 'archive_opname_folders', 'archive_opname_documents', 'column_display_settings'];
 const OP_TABLES = ['archive_opnames', 'archive_opname_folders', 'archive_opname_documents'];
 const DISPLAY_MODULE = 'documentArchive';
-const JOURNAL_V = 2;
+const JOURNAL_V = 3;
 const VERIF_COLS = ['is_verified', 'verified_at', 'verified_by', 'id_archive_opname'];
 
 function say($line)
@@ -297,13 +304,123 @@ function compare($before, $after, &$lines)
     return $ok;
 }
 
-// ------------------------------------------------------------------ grant sementara `Opname Document` (rev, test [user2] EN)
+// ------------------------------------------------------------------ preset role QA_USER2 + grant sementara `Opname Document` (ED-1149)
 
 const GRANT_BY = 'QA27E2E';
 const GRANT_PERMISSION = 'Opname Document';
+const ROLE_PREFIX = 'QA27-ROLE-E2E-';
+/**
+ * Preset QA_USER2 (NAMA permission eksplisit, bukan salinan role developer): izin Archive "Sales Supervisor" TANPA Opname Document
+ * + Allow Access Website (syarat teknis login web bagi user bukan karyawan: tanpa itu permission_v5 mencabut tokennya).
+ */
+const U2_PRESET = [
+    'Allow Access Website', 'List Archive', 'Add Folder', 'Add Document', 'View Folder', 'Update Folder', 'Delete Folder',
+    'Move Archive', 'Handover Document', 'Receive Document',
+];
 
-/** [jumlah baris, jumlah CRC32 per baris] role_permissions: bukti pemulihan persis. */
-function rpSum($c)
+function u2UserId($c)
+{
+    $uid = $c->table('users')->where('username', Config::get('QA_USER2'))->value('id_user');
+    if (!$uid) {
+        fail('QA_USER2 tidak ditemukan di DB');
+    }
+
+    return $uid;
+}
+
+/** Baris user_roles QA_USER2 persis (untuk pemulihan). */
+function u2Snapshot($c)
+{
+    $uid = u2UserId($c);
+    $rows = [];
+    foreach ($c->table('user_roles')->where('id_user', $uid)->orderBy('id_user_role')->get() as $r) {
+        $rows[] = (array) $r;
+    }
+
+    return ['id_user' => $uid, 'rows' => $rows];
+}
+
+function u2Restore($c, array $snap)
+{
+    $c->table('user_roles')->where('id_user', $snap['id_user'])->delete();
+    if ($snap['rows']) {
+        $c->table('user_roles')->insert($snap['rows']);
+    }
+}
+
+/** Buat role preset dari NAMA permission (dicatat ke jurnal SEBELUM baris role_permissions-nya); mengembalikan id_role. */
+function presetCreate($c, $journal, $label, array $names)
+{
+    $now = date('Y-m-d H:i:s');
+    $id = (int) $c->table('roles')->insertGetId([
+        'role_name' => ROLE_PREFIX . $label, 'description' => 'QA ED-1027 e2e preset (ED-1149)', 'is_superadmin' => 4,
+        'is_active' => 1, 'is_used' => 1, 'created_by' => GRANT_BY, 'created_at' => $now, 'updated_by' => GRANT_BY, 'updated_at' => $now,
+    ]);
+    journalAdd($journal, 'roles', [$id]);
+    foreach ($names as $name) {
+        $perm = $c->table('permissions')->where('permission_name', $name)->first();
+        if (!$perm) {
+            fail("permission '$name' tidak ada di DB uji (seed permission_salesman.sql belum dijalankan)");
+        }
+        $c->table('role_permissions')->insert([
+            'id_role' => $id, 'id_permission' => $perm->id_permission, 'permission_name' => $perm->permission_name,
+            'created_at' => $now, 'updated_at' => $now, 'created_by' => GRANT_BY, 'updated_by' => GRANT_BY,
+        ]);
+    }
+
+    return $id;
+}
+
+/** Taruh QA_USER2 di role preset (satu baris user_roles; lokasi/flag meniru baris asli pertama). */
+function u2UsePreset($c, array $snap, $roleId)
+{
+    $first = $snap['rows'][0] ?? [];
+    $now = date('Y-m-d H:i:s');
+    $c->table('user_roles')->where('id_user', $snap['id_user'])->delete();
+    $c->table('user_roles')->insert([
+        'id_user' => $snap['id_user'], 'id_role' => $roleId, 'is_all_location' => $first['is_all_location'] ?? 1,
+        'id_location' => $first['id_location'] ?? null, 'created_at' => $now, 'updated_at' => $now,
+    ]);
+}
+
+/** Id role preset milik fixture: tercatat di jurnal + nama berawalan ROLE_PREFIX. */
+function presetIds($c, ?array $j)
+{
+    $ids = $c->table('roles')->where('role_name', 'like', ROLE_PREFIX . '%')->pluck('id_role')->all();
+
+    return array_values(array_unique(array_map('intval', array_merge($j['roles'] ?? [], $ids))));
+}
+
+/** Buang role preset (user_roles yang menunjuknya, role_permissions, roles). Hanya id jurnal / berawalan ROLE_PREFIX. */
+function presetPurge($c, ?array $j)
+{
+    $ids = presetIds($c, $j);
+    if ($ids) {
+        $c->table('user_roles')->whereIn('id_role', $ids)->delete();
+        $c->table('role_permissions')->whereIn('id_role', $ids)->delete();
+        $c->table('roles')->whereIn('id_role', $ids)->delete();
+    }
+
+    return count($ids);
+}
+
+/** Sisa preset / user_roles QA_USER2 beda dari jurnal (kosong = bersih). */
+function presetLeftovers($c, array $j)
+{
+    $lines = [];
+    $n = (int) $c->table('roles')->whereIn('id_role', presetIds($c, $j) ?: [0])->count();
+    if ($n) {
+        $lines[] = "SISA $n role preset " . ROLE_PREFIX . '*';
+    }
+    if (!empty($j['u2']) && u2Snapshot($c) !== $j['u2']) {
+        $lines[] = 'BEDA baris user_roles QA_USER2: tidak sama dengan jurnal';
+    }
+
+    return $lines;
+}
+
+/** [jumlah baris, jumlah CRC32 per baris] role_permissions HANYA role preset ($roleIds): bukti pemulihan persis. */
+function rpSum($c, array $roleIds)
 {
     $cols = array_map(function ($r) {
         return $r->Field;
@@ -311,7 +428,8 @@ function rpSum($c)
     $parts = array_map(function ($x) {
         return "IFNULL(CAST(`$x` AS CHAR),'~')";
     }, $cols);
-    $r = $c->selectOne("SELECT COUNT(*) n, IFNULL(SUM(CRC32(CONCAT_WS('|'," . implode(',', $parts) . '))),0) h FROM `role_permissions`');
+    $in = implode(',', array_map('intval', $roleIds ?: [0]));
+    $r = $c->selectOne("SELECT COUNT(*) n, IFNULL(SUM(CRC32(CONCAT_WS('|'," . implode(',', $parts) . '))),0) h FROM `role_permissions` WHERE `id_role` IN (' . $in . ')');
 
     return [(int) $r->n, (string) $r->h];
 }
@@ -323,13 +441,19 @@ function grantRevoke($c, $file)
     if ($j === null) {
         return [];
     }
+    $roles = $j['roles'] ?? [];
+    if ($roles && !$c->table('roles')->whereIn('id_role', $roles)->exists()) { // preset sudah dibuang bersama baris grant-nya
+        @unlink($file);
+
+        return [];
+    }
     $ids = $j['ids'] ?? [];
     if ($ids) {
         $c->table('role_permissions')->whereIn('id_role_permission', $ids)->where('created_by', GRANT_BY)->delete();
     }
     $lines = [];
-    if (rpSum($c) !== ($j['before'] ?? null)) {
-        $lines[] = 'BEDA role_permissions sesudah grant dicabut: sebelum=' . json_encode($j['before'] ?? null) . ' sesudah=' . json_encode(rpSum($c));
+    if (rpSum($c, $roles) !== ($j['before'] ?? null)) {
+        $lines[] = 'BEDA role_permissions preset sesudah grant dicabut: sebelum=' . json_encode($j['before'] ?? null) . ' sesudah=' . json_encode(rpSum($c, $roles));
     } else {
         @unlink($file);
     }
@@ -349,7 +473,11 @@ if ($cmd === 'up') {
         }
         $r = purge($c, $old);
         displayRestore($c, $old['display']);
-        $lines = leftovers($c, $old, $r['sessions']);
+        if (!empty($old['u2'])) {
+            u2Restore($c, $old['u2']);
+        }
+        presetPurge($c, $old);
+        $lines = array_merge(leftovers($c, $old, $r['sessions']), presetLeftovers($c, $old));
         if (displayRows($c) !== $old['display']) {
             $lines[] = 'BEDA baris display setting documentArchive';
         }
@@ -373,6 +501,13 @@ if ($cmd === 'up') {
         fail('QA_USER tidak ditemukan di DB');
     }
 
+    $u2Now = u2Snapshot($c);
+    if ($c->table('roles')->whereIn('id_role', array_map(function ($r) {
+        return (int) $r['id_role'];
+    }, $u2Now['rows']) ?: [0])->where('role_name', 'like', ROLE_PREFIX . '%')->exists()) {
+        fail('QA_USER2 berada di preset sisa ' . ROLE_PREFIX . '* tanpa jurnal: bereskan manual (pulihkan user_roles lalu buang role itu)');
+    }
+
     $before = state($c);
     $baselineTotal = (int) $c->table('archives')->where('type', 2)->where('is_active', '>', 0)->count();
     $baselineVerified = (int) $c->table('archives')->where('type', 2)->where('is_active', '>', 0)->where('is_verified', 1)->count();
@@ -380,7 +515,11 @@ if ($cmd === 'up') {
         'v' => JOURNAL_V, 'state' => $before, 'display' => displayRows($c), 'qa_users' => qaUsernames(),
         'pre_sessions' => $c->table('archive_opnames')->pluck('id_archive_opname')->all(),
         'pre_verif' => verificationSnapshot($c), 'archives' => [], 'sessions' => [],
+        'u2' => u2Snapshot($c), 'roles' => [],
     ]);
+    // QA_USER2 -> preset role (tanpa Opname Document) SEBELUM sesi browser dibuka; role developer tidak disentuh (ED-1149 BR-4)
+    presetPurge($c, null); // sisa preset tanpa jurnal (nama berawalan ROLE_PREFIX) dibuang dulu
+    u2UsePreset($c, u2Snapshot($c), presetCreate($c, $journal, 'U2', U2_PRESET));
 
     $now = \Carbon\Carbon::now('Asia/Jakarta');
     $nowStr = $now->format('Y-m-d H:i:s');
@@ -523,7 +662,7 @@ if ($cmd === 'up') {
     $ids['_user'] = ['id_user' => $user->id_user, 'username' => $user->username];
     file_put_contents($idsFile, json_encode($ids));
     say('fixture up: ' . (count($ids) - 5) . ' entri archive, 4 sesi terkonfirmasi; baseline dokumen aktif=' . $baselineTotal
-        . ' verified=' . $baselineVerified . '; archives=' . $before['archives']['count'] . ' opname=' . $before['archive_opnames']['count']);
+        . ' verified=' . $baselineVerified . '; archives=' . $before['archives']['count'] . ' opname=' . $before['archive_opnames']['count'] . '; QA_USER2 = preset ' . ROLE_PREFIX . 'U2');
     exit(0);
 }
 
@@ -545,7 +684,11 @@ if ($cmd === 'down') {
     }
     $r = purge($c, $old);
     displayRestore($c, $old['display']);
-    $lines = leftovers($c, $old, $r['sessions']);
+    if (!empty($old['u2'])) {
+        u2Restore($c, $old['u2']);
+    }
+    $np = presetPurge($c, $old);
+    $lines = array_merge(leftovers($c, $old, $r['sessions']), presetLeftovers($c, $old));
     if (displayRows($c) !== $old['display']) {
         $lines[] = 'BEDA baris display setting documentArchive: tidak sama dengan snapshot awal';
     }
@@ -563,7 +706,7 @@ if ($cmd === 'down') {
     }
     @unlink($idsFile);
     say('fixture down: ' . $r['archives'] . ' archives fixture + ' . count($r['sessions']) . ' sesi opname fixture dibuang, '
-        . $r['restored'] . ' baris archives lain dipulihkan kolom verifikasinya; '
+        . $r['restored'] . ' baris archives lain dipulihkan kolom verifikasinya; ' . $np . ' role preset dibuang, user_roles QA_USER2 dipulihkan; '
         . ($lines ? 'MASIH ADA SISA MILIK FIXTURE' : 'tidak ada sisa milik fixture, baris display setting identik'));
     exit($lines ? 1 : 0);
 }
@@ -613,17 +756,19 @@ if ($cmd === 'grant-od') {
     if ($stale) {
         fail('sisa grant sebelumnya tidak bisa dibereskan: ' . implode('; ', $stale));
     }
-    $uid = $c->table('users')->where('username', Config::get('QA_USER2'))->value('id_user');
-    if (!$uid) {
-        fail('QA_USER2 tidak ditemukan di DB');
-    }
+    $uid = u2UserId($c);
     $pid = $c->table('permissions')->where('permission_name', GRANT_PERMISSION)->value('id_permission');
     if ($pid === null) {
         fail('permission ' . GRANT_PERMISSION . ' tidak ada (dicari per nama)');
     }
-    $roles = $c->table('user_roles')->where('id_user', $uid)->pluck('id_role')->all();
-    $before = rpSum($c);
-    journalWrite($grantJournal, ['v' => 1, 'ids' => [], 'before' => $before, 'roles' => $roles]);
+    $roles = array_map('intval', $c->table('user_roles')->where('id_user', $uid)->pluck('id_role')->all());
+    // BR-4: hanya PRESET milik fixture yang boleh di-grant; role developer ditolak (tanpa pengecualian)
+    $presets = array_map('intval', $c->table('roles')->whereIn('id_role', $roles ?: [0])->where('role_name', 'like', ROLE_PREFIX . '%')->pluck('id_role')->all());
+    if (!$roles || count($presets) !== count($roles)) {
+        fail('grant-od ditolak: QA_USER2 tidak (hanya) berada di preset ' . ROLE_PREFIX . '* (jalankan fixture up); role developer tidak pernah di-grant');
+    }
+    $before = rpSum($c, $roles);
+    journalWrite($grantJournal, ['v' => 2, 'ids' => [], 'before' => $before, 'roles' => $roles]);
     $made = [];
     foreach ($roles as $role) {
         $has = $c->table('role_permissions')->where('id_role', $role)->where('id_permission', $pid)->exists();
@@ -640,7 +785,7 @@ if ($cmd === 'grant-od') {
     foreach ($roles as $role) {
         $users[$role] = (int) $c->table('user_roles')->where('id_role', $role)->count();
     }
-    say(json_encode(['roles' => $roles, 'made' => $made, 'users_per_role' => $users]));
+    say(json_encode(['roles' => $roles, 'made' => $made, 'users_per_role' => $users, 'preset' => true]));
     exit(0);
 }
 

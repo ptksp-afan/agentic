@@ -10,12 +10,15 @@
  *   q27_cleanup() menghapus baris archive_opname* sesi itu dan mengembalikan kolom verifikasi `archives` yang ditandai sesi itu ke
  *   NILAI SEBELUMNYA (pra-citra .verif-journal-q27.json), bukan ke default. Prasyarat run: TIDAK ada (tabel opname boleh berisi data
  *   developer; q27_baseline() mencatat keadaannya, q27_cleanup() membuktikan sama persis).
- * - Permission sementara (mis. Opname Document untuk role uji) lewat q27_with_grant(): baris role_permissions dibuat dengan
- *   created_by QA27, id di jurnal (.grant-journal-q27.json), dihapus persis di finally.
- * - QA_USER2 tidak bisa login di api_sidomaju: "user lokasi terbatas / tanpa hak / superadmin" = QA_USER sendiri dengan
- *   keadaan sementara (role, lokasi employee, bahasa) lewat q27_with_user(); jurnal pemulihan di .restore-journal-q27.json.
+ * - (ED-1149 BR-1/BR-2/BR-4) TIDAK ada prasyarat/grant pada role developer (3, 5, 6, 22, 29, ...): "hanya List Archive", "tanpa
+ *   permission Archive" dan "role user2" = role preset QA27-ROLE-LIST / -NOLIST / -U2, dibuat dari NAMA permission eksplisit
+ *   (q27_preset) dan dibuang persis (q27_preset_purge; bukti di q27_cleanup). Permission sementara (mis. Opname Document) hanya
+ *   ke preset lewat q27_with_grant()/q27_grant(): baris role_permissions dibuat dengan created_by QA27, id di jurnal
+ *   (.grant-journal-q27.json), dihapus persis di finally; q27_grant MENOLAK role non-preset.
+ * - "User lokasi terbatas / tanpa hak / superadmin" = QA_USER sendiri dengan keadaan sementara (role: preset atau 1/2/3, lokasi
+ *   employee, bahasa) lewat q27_with_user(); jurnal pemulihan di .restore-journal-q27.json. QA_USER2 (adi, non-karyawan, bisa
+ *   login) = user kedua: user_roles-nya diganti preset berjurnal (.restore-journal-q27-user2.json) lewat q27_with_u2_preset().
  *   Role bawaan QA_USER = 3 (is_superadmin 3: TIDAK bypass lokasi/hak folder). Bypass (superadmin 1/2) = role 1 dan 2.
- *   Role 29 = hanya List Archive. Role 6 = tanpa permission Archive.
  * - Tulis lewat koneksi default non-read-only di dalam $t->probe(); baca lewat $t->db() (read-only).
  * - Oracle (q27_oracle) menghitung angka verifikasi dari tabel mentah, tanpa kode BE, untuk satu keadaan user.
  */
@@ -24,8 +27,10 @@ if (!function_exists('q27_dbname')) {
 
     define('Q27_PREFIX', 'QA27-');
     define('Q27_BASE', 'api/v5/document-archive');
-    define('Q27_ROLE_LIST_ONLY', 29);
-    define('Q27_ROLE_NONE', 6);
+    define('Q27_ROLE_PREFIX', 'QA27-ROLE-');
+    define('Q27_PRESET_LIST', 'LIST');   // preset: akses website + List Archive (tanpa Opname Document)
+    define('Q27_PRESET_NONE', 'NOLIST'); // preset: akses website saja (tanpa List Archive dan tanpa Opname Document)
+    define('Q27_PRESET_U2', 'U2');       // preset untuk QA_USER2: akses website + List Archive (tanpa Opname Document)
     define('Q27_RANDOM_ID', '999999999999999999999999999999');
     define('Q27_OD', 'Opname Document'); // permission data verifikasi (id 1139; dicari per nama)
 
@@ -123,17 +128,20 @@ if (!function_exists('q27_dbname')) {
         });
     }
 
-    /** opts: 'role' => int|int[] (id_role), 'emp' => ['SMR', ...] (kode lokasi), 'lang' => 'ID'|'EN' */
+    /** opts: 'role' => kunci preset | id role sistem 1/2/3 | daftar keduanya, 'emp' => ['SMR', ...] (kode lokasi), 'lang' => 'ID'|'EN' */
     function q27_user_apply($t, array $snap, array $opts)
     {
         $locs = q27_locs($t);
-        q27_w($t, function ($c) use ($snap, $opts, $locs) {
+        $roleIds = isset($opts['role']) ? array_map(function ($r) use ($t) {
+            return q27_role_ref($t, $r);
+        }, (array) $opts['role']) : [];
+        q27_w($t, function ($c) use ($snap, $opts, $locs, $roleIds) {
             $uid = $snap['uid'];
             $now = date('Y-m-d H:i:s');
 
             if (isset($opts['role'])) {
                 $c->table('user_roles')->where('id_user', $uid)->delete();
-                foreach ((array) $opts['role'] as $role) {
+                foreach ($roleIds as $role) {
                     $c->table('user_roles')->insert([
                         'id_user' => $uid, 'id_role' => $role, 'is_all_location' => 1, 'id_location' => null,
                         'created_at' => $now, 'updated_at' => $now,
@@ -203,6 +211,199 @@ if (!function_exists('q27_dbname')) {
                 $t->fail('pemulihan user QA tidak persis sama dengan sebelumnya (jurnal dipertahankan)');
             }
             @unlink(q27_journal());
+        }
+    }
+
+    // ------------------------------------------------------------------ role preset QA27-ROLE-* (ED-1149 BR-1/BR-2/BR-4)
+
+    /** Nama permission eksplisit per preset (dicari ke permissions.permission_name -> id_permission; BUKAN salinan role developer). */
+    function q27_preset_perms($key)
+    {
+        $p = [
+            Q27_PRESET_LIST => ['Allow Access Website', 'List Archive'],
+            Q27_PRESET_NONE => ['Allow Access Website'],
+            Q27_PRESET_U2   => ['Allow Access Website', 'List Archive'],
+        ];
+        if (!isset($p[$key])) {
+            throw new \InvalidArgumentException("preset role '$key' tidak dikenal");
+        }
+
+        return $p[$key];
+    }
+
+    /** Hapus SEMUA role preset QA27-ROLE-* (user_roles yang menunjuknya, role_permissions, role). Idempoten; role lain tidak tersentuh. */
+    function q27_preset_purge($t)
+    {
+        q27_w($t, function ($c) {
+            $ids = $c->table('roles')->where('role_name', 'like', Q27_ROLE_PREFIX . '%')->pluck('id_role')->all();
+            if ($ids) {
+                $c->table('user_roles')->whereIn('id_role', $ids)->delete();
+                $c->table('role_permissions')->whereIn('id_role', $ids)->delete();
+                $c->table('roles')->whereIn('id_role', $ids)->delete();
+            }
+        });
+        $GLOBALS['q27_presets'] = [];
+    }
+
+    /** id_role preset $key (dibuat bila belum ada di run ini): bukan superadmin, aktif, permission dari NAMA, created_by QA27. */
+    function q27_preset($t, $key)
+    {
+        if (isset($GLOBALS['q27_presets'][$key])) {
+            return $GLOBALS['q27_presets'][$key];
+        }
+        $names = q27_preset_perms($key);
+        $id = q27_w($t, function ($c) use ($key, $names) {
+            $now = date('Y-m-d H:i:s');
+            $old = $c->table('roles')->where('role_name', Q27_ROLE_PREFIX . $key)->pluck('id_role')->all();
+            if ($old) { // sisa tak dikenal: buang dulu, bangun ulang dari nama
+                $c->table('user_roles')->whereIn('id_role', $old)->delete();
+                $c->table('role_permissions')->whereIn('id_role', $old)->delete();
+                $c->table('roles')->whereIn('id_role', $old)->delete();
+            }
+            $id = $c->table('roles')->insertGetId([
+                'role_name' => Q27_ROLE_PREFIX . $key, 'description' => 'QA ED-1027 preset (ED-1149)', 'is_superadmin' => 4,
+                'is_active' => 1, 'is_used' => 1, 'created_by' => 'QA27', 'created_at' => $now, 'updated_by' => 'QA27', 'updated_at' => $now,
+            ]);
+            foreach ($names as $name) {
+                $perm = $c->table('permissions')->where('permission_name', $name)->first();
+                if (!$perm) {
+                    throw new \RuntimeException("prasyarat: permission '$name' tidak ada di DB uji");
+                }
+                $c->table('role_permissions')->insert([
+                    'id_role' => $id, 'id_permission' => $perm->id_permission, 'permission_name' => $perm->permission_name,
+                    'created_at' => $now, 'updated_at' => $now, 'created_by' => 'QA27', 'updated_by' => 'QA27',
+                ]);
+            }
+
+            return (int) $id;
+        });
+        $GLOBALS['q27_presets'][$key] = $id;
+
+        return $id;
+    }
+
+    /** Kunci preset -> id_role preset; angka hanya boleh role sistem 1/2/3 (role developer lain ditolak: BR-1/BR-4). */
+    function q27_role_ref($t, $role)
+    {
+        if (is_int($role) || (is_string($role) && ctype_digit($role))) {
+            if (!in_array((int) $role, [1, 2, 3], true)) {
+                throw new \InvalidArgumentException("role developer $role tidak boleh dipakai skenario (pakai preset QA27-ROLE-*)");
+            }
+
+            return (int) $role;
+        }
+
+        return q27_preset($t, $role);
+    }
+
+    /** Hanya preset yang boleh menerima/menukar permission: kunci preset atau id role berawalan QA27-ROLE- (selain itu: tolak). */
+    function q27_preset_ref($t, $role)
+    {
+        if (is_int($role) || (is_string($role) && ctype_digit($role))) {
+            $name = $t->db()->table('roles')->where('id_role', (int) $role)->value('role_name');
+            if ($name === null || strpos($name, Q27_ROLE_PREFIX) !== 0) {
+                throw new \InvalidArgumentException("role $role bukan preset QA27-ROLE-*: grant/ubah permission pada role developer dilarang (BR-4)");
+            }
+
+            return (int) $role;
+        }
+
+        return q27_preset($t, $role);
+    }
+
+    /** Nama permission yang dipegang role $role, dibaca per id_permission (join permissions; BR-3), bukan dari kolom role_permissions.permission_name. */
+    function q27_role_names($t, $role)
+    {
+        return $t->db()->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')
+            ->where('rp.id_role', $role)->pluck('p.permission_name')->all();
+    }
+
+    // ------------------------------------------------------------------ QA_USER2 sungguhan (user_roles sementara = preset, berjurnal)
+
+    function q27_u2_journal()
+    {
+        return __DIR__ . '/.restore-journal-q27-user2.json';
+    }
+
+    function q27_u2_id($t)
+    {
+        return $t->db()->table('users')->where('username', $t->conf('QA_USER2'))->value('id_user');
+    }
+
+    function q27_u2_snapshot($t)
+    {
+        return q27_rows($t->db()->table('user_roles')->where('id_user', q27_u2_id($t))->orderBy('id_user_role')->get());
+    }
+
+    function q27_u2_write($t, $uid, array $rows)
+    {
+        q27_w($t, function ($c) use ($uid, $rows) {
+            $c->table('user_roles')->where('id_user', $uid)->delete();
+            if ($rows) {
+                $c->table('user_roles')->insert($rows);
+            }
+        });
+    }
+
+    /** Token user2 terikat DB QA (force_login hanya mencabut token user2 sendiri). */
+    function q27_u2_session($t)
+    {
+        $s = $t->login('QA_USER2');
+        $r = $t->bind($s, q27_dbname($t));
+        $t->eq($r[0], 200, 'bind QA_USER2');
+
+        return $s;
+    }
+
+    /** Pulihkan user_roles QA_USER2 dari jurnal bila run sebelumnya mati di tengah. */
+    function q27_u2_recover($t)
+    {
+        if (is_file(q27_u2_journal())) {
+            $snap = json_decode(file_get_contents(q27_u2_journal()), true);
+            if (is_array($snap) && !empty($snap['rows'])) {
+                q27_u2_write($t, $snap['uid'], $snap['rows']);
+            } elseif (is_array($snap) && $snap && isset($snap[0]['id_user'])) { // bentuk jurnal lama (daftar baris)
+                q27_u2_write($t, $snap[0]['id_user'], $snap);
+            }
+            @unlink(q27_u2_journal());
+        }
+    }
+
+    /** QA_USER2 hanya di preset $key (kunci preset); jurnal tetap memegang user_roles ASLI. */
+    function q27_u2_use($t, $key)
+    {
+        $uid = q27_u2_id($t);
+        $role = q27_preset($t, $key);
+        $now = date('Y-m-d H:i:s');
+        q27_u2_write($t, $uid, [['id_user' => $uid, 'id_role' => $role, 'is_all_location' => 1, 'id_location' => null, 'created_at' => $now, 'updated_at' => $now]]);
+
+        return $role;
+    }
+
+    /**
+     * Jalankan $fn($idRolePreset, $use) dengan QA_USER2 HANYA di preset $key; $use($key2) menukar ke preset lain (mengembalikan id).
+     * user_roles aslinya (role developer, tidak disentuh) dipulihkan persis di finally (jurnal + bukti).
+     */
+    function q27_with_u2_preset($t, $key, callable $fn)
+    {
+        q27_u2_recover($t);
+        $uid = q27_u2_id($t);
+        $rows = q27_u2_snapshot($t);
+        $t->true($uid !== null && count($rows) >= 1, 'prasyarat: QA_USER2 ada dan punya role (dipulihkan persis sesudahnya)');
+        file_put_contents(q27_u2_journal(), json_encode(['uid' => $uid, 'rows' => $rows]));
+        try {
+            $role = q27_u2_use($t, $key);
+
+            return $fn($role, function ($key2) use ($t) {
+                return q27_u2_use($t, $key2);
+            });
+        } finally {
+            q27_u2_write($t, $uid, $rows);
+            $after = q27_u2_snapshot($t);
+            @unlink(q27_u2_journal());
+            if (json_encode($after) !== json_encode($rows)) {
+                $t->fail('pemulihan user_roles QA_USER2 tidak persis sama dengan sebelumnya');
+            }
         }
     }
 
@@ -305,6 +506,32 @@ if (!function_exists('q27_dbname')) {
     function q27_n($t, $id)
     {
         return $t->db()->table('archives')->where('id_archive', $id)->value('name');
+    }
+
+    /**
+     * Oracle baris QA (BR-5): baris berawalan QA27- yang aktif (is_active > 0) dan terlihat lokasi user (is_all_location 1 atau irisan
+     * lokasi $locs = kode lokasi) => [id_archive => is_verified (0/1)]. Dari tabel mentah via koneksi baca saja; tidak menyentuh baris developer.
+     */
+    function q27_qa_rows($t, array $locs)
+    {
+        $c = $t->db();
+        $map = q27_locs($t);
+        $locIds = array_map(function ($code) use ($map) {
+            return $map[$code];
+        }, $locs);
+        $rows = $c->table('archives')->where('name', 'like', Q27_PREFIX . '%')->where('is_active', '>', 0)->get(['id_archive', 'is_all_location', 'is_verified']);
+        $byArchive = [];
+        foreach ($c->table('archive_locations')->whereIn('id_archive', $rows->pluck('id_archive')->all())->get(['id_archive', 'id_location']) as $l) {
+            $byArchive[$l->id_archive][] = $l->id_location;
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            if ((int) $r->is_all_location === 1 || count(array_intersect($byArchive[$r->id_archive] ?? [], $locIds)) > 0) {
+                $out[$r->id_archive] = (int) $r->is_verified === 1 ? 1 : 0;
+            }
+        }
+
+        return $out;
     }
 
     /** Sisipkan baris archive_permissions (hak 0/1) satu user di satu folder. */
@@ -532,7 +759,9 @@ if (!function_exists('q27_dbname')) {
     function q27_baseline($t)
     {
         q27_recover_user($t);
+        q27_u2_recover($t);
         q27_grant_recover($t);
+        q27_preset_purge($t);
         q27_sweep($t);
         @unlink(q27_vjournal());
         q27_purge($t);
@@ -561,6 +790,8 @@ if (!function_exists('q27_dbname')) {
         $tracked = q27_tracked();
         q27_sweep($t);
         q27_purge($t);
+        q27_grant_recover($t);
+        q27_preset_purge($t);
         $c = $t->db();
         $gone = $tracked ? $c->table('archive_opnames')->whereIn('id_archive_opname', $tracked)->count() : 0;
         $now = q27_devstate($t);
@@ -569,6 +800,8 @@ if (!function_exists('q27_dbname')) {
         $t->eq($c->table('archives')->where('name', 'like', Q27_PREFIX . '%')->count(), 0, $label . ' (archives QA27-)');
         $t->eq($c->table('archive_documents')->where('transaction_no', 'like', Q27_PREFIX . '%')->count(), 0, $label . ' (archive_documents)');
         $t->eq($c->table('archive_permissions')->where('created_by', 'QA27')->count(), 0, $label . ' (archive_permissions)');
+        $t->eq($c->table('roles')->where('role_name', 'like', Q27_ROLE_PREFIX . '%')->count(), 0, $label . ' (role preset QA27-ROLE-)');
+        $t->eq($c->table('role_permissions')->where('created_by', 'QA27')->count(), 0, $label . ' (role_permissions QA27)');
         if ($base === null) {
             $t->fail($label . ': keadaan developer sebelum AC tidak tercatat (baseline tidak jalan)');
         }
@@ -609,10 +842,13 @@ if (!function_exists('q27_dbname')) {
             ->where('rp.id_role', $role)->where('p.permission_name', $name)->exists();
     }
 
-    /** Beri role(s) permission $name (per NAMA); mengembalikan [id baris dibuat]. Dicatat di jurnal. Role yang sudah memegangnya tidak disentuh. */
+    /** Beri role(s) permission $name (per NAMA); mengembalikan [id baris dibuat]. Dicatat di jurnal. Hanya role preset QA27-ROLE-*. Role yang sudah memegangnya tidak disentuh. */
     function q27_grant($t, $roles, $name)
     {
-        $roles = (array) $roles;
+        // BR-4: hanya role preset QA27-ROLE-* (kunci preset atau id-nya); role developer ditolak
+        $roles = array_map(function ($r) use ($t) {
+            return q27_preset_ref($t, $r);
+        }, (array) $roles);
         $pid = $t->db()->table('permissions')->where('permission_name', $name)->value('id_permission');
         $t->true($pid !== null, "permission '$name' ada (dicari per nama, id $pid)");
         $made = [];
@@ -645,6 +881,9 @@ if (!function_exists('q27_dbname')) {
      */
     function q27_with_grant($t, $roles, $name, callable $fn)
     {
+        $roles = array_map(function ($r) use ($t) {
+            return q27_preset_ref($t, $r);
+        }, (array) $roles); // preset dibuat DULU (jumlah+CRC role_permissions "sebelum" sudah memuat baris dasarnya)
         q27_grant_recover($t);
         $before = q27_rp_sum($t);
         try {

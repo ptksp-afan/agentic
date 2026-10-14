@@ -3,7 +3,7 @@
  * Fixture e2e ED-1026 (BUKAN skenario regresi; dipanggil lewat qa/e2e/fixtures.json dan spec).
  *
  *   "$PHP_BIN" fixture.php up        buat folder/dokumen uji berawalan "0QA26-", sesi opname terkonfirmasi untuk BETA,
- *                                    atur user QA (lokasi Semarang saja; mode norole: cabut Opname Document dari rolenya)
+ *                                    atur user QA (lokasi Semarang saja; mode norole: QA_USER ditaruh sementara di PRESET role tanpa Opname Document)
  *   "$PHP_BIN" fixture.php down      buang HANYA data milik fixture (lihat "Jurnal"), pulihkan user/role, lalu pastikan tidak ada
  *                                    sisa milik fixture + user/role = snapshot (exit 1 bila tidak); count + CHECKSUM 7 tabel vs
  *                                    baseline hanya INFO (DB bersama)
@@ -19,8 +19,10 @@
  * folder fixture atau di root oleh QA_USER/QA_USER2. Kolom verifikasi archives lain yang disentuh sesi itu dikembalikan ke
  * nilai jurnal. Data developer di tabel yang sama tidak pernah dihapus/direset; down tanpa jurnal tidak melakukan apa pun.
  *
- * Mode: env QA26_MODE = main (default) | norole. norole = baris role_permissions (role user QA, permission 'Opname Document' dicari per nama) dicabut
- * sebelum login e2e dan dikembalikan persis (id baris sama) di down.
+ * Mode: env QA26_MODE = main (default) | norole. norole (ED-1149 AC-10, BR-1..BR-4) = QA_USER ditaruh sementara di PRESET role QA26-ROLE-E2E-NOOD
+ * SEBELUM login e2e: role baru dari NAMA permission eksplisit (NOOD_PRESET = izin Archive yang dipakai spec TANPA 'Opname Document', plus
+ * Allow Access Website), baris user_roles QA_USER dicatat di jurnal dan dikembalikan persis di down, preset dibuang. role_permissions role
+ * developer (3/5/6/22/29 dll.) TIDAK PERNAH dibaca sebagai prasyarat maupun diubah (dulu: baris Opname Document dicabut dari role 3 lalu disisipkan lagi).
  *
  * Revisi tanpa draft (FB-3): fixture tidak lagi membuat/menggeser draft; sesi yang dibuat spec lewat aplikasi (Konfirmasi) pada folder
  * fixture atau di root oleh user QA tetap dianggap milik fixture dan dibuang di down (kolom verifikasi lain dipulihkan dari jurnal).
@@ -52,20 +54,19 @@ use Illuminate\Support\Facades\DB;
 const PREFIX = '0QA26-';
 const ARCH_TABLES = ['archives', 'archive_documents', 'archive_locations', 'archive_permissions'];
 const OP_TABLES = ['archive_opnames', 'archive_opname_folders', 'archive_opname_documents'];
-/** id permission 'Opname Document' dicari per nama (seed 1139 sejak EPIC K-4 a; tidak di-hardcode agar tak salah cabut permission lain). */
-function permissionId($c)
-{
-    static $id = null;
-    if ($id === null) {
-        $id = $c->table('permissions')->where('permission_name', 'Opname Document')->value('id_permission');
-        if ($id === null) {
-            fail("permission 'Opname Document' tidak ada di DB uji (seed permission_salesman.sql belum dijalankan)");
-        }
-    }
-
-    return (int) $id;
-}
-const JOURNAL_V = 2;
+const JOURNAL_V = 3;
+const ROLE_PREFIX = 'QA26-ROLE-E2E-';
+const ROLE_BY = 'QA26E2E';
+/**
+ * Preset mode norole: izin Archive yang dipakai layar (menu baris Info/Pindahkan/Lihat/Hapus, item "+"), NAMA permission eksplisit,
+ * TANPA 'Opname Document'. Allow Access Website + izin Outside Radius = syarat teknis login (bukan permission fitur).
+ */
+const NOOD_PRESET = [
+    'Allow Access Website', 'All Archive', 'List Archive', 'Add Folder', 'Add Document', 'View Folder', 'Update Folder', 'Delete Folder',
+    'Move Archive', 'Handover Document', 'Receive Document', 'Folder Permissions',
+    // QA_USER = karyawan berlokasi Semarang saja: tanpa izin Outside Radius login ditolak 422 (validasi geotag); bukan permission fitur
+    'Allow Sign In Outside Radius', 'Allow Check In Outside Radius', 'Allow Check Out Outside Radius', 'Allow Create & Revise Outside Radius',
+];
 const VERIF_COLS = ['is_verified', 'verified_at', 'verified_by', 'id_archive_opname'];
 
 function say($line)
@@ -115,7 +116,6 @@ function userSnapshot($c)
         fail('QA_USER tidak ditemukan di DB');
     }
     $emp = $c->table('employees')->where('id_user', $user->id_user)->first();
-    $roles = $c->table('user_roles')->where('id_user', $user->id_user)->pluck('id_role')->all();
 
     return [
         'uid'      => $user->id_user,
@@ -124,8 +124,7 @@ function userSnapshot($c)
         'emp_id'   => $emp->id_employee ?? null,
         'emp_all'  => $emp->is_all_location ?? null,
         'emp_locs' => $emp ? rows($c->table('employee_locations')->where('id_employee', $emp->id_employee)->orderBy('id_employee_location')->get()) : [],
-        'role_ids' => $roles,
-        'role_perm' => rows($c->table('role_permissions')->whereIn('id_role', $roles ?: [0])->where('id_permission', permissionId($c))->orderBy('id_role_permission')->get()),
+        'user_roles' => rows($c->table('user_roles')->where('id_user', $user->id_user)->orderBy('id_user_role')->get()),
     ];
 }
 
@@ -141,10 +140,55 @@ function userRestore($c, array $snap)
             $c->table('employee_locations')->insert($snap['emp_locs']);
         }
     }
-    $c->table('role_permissions')->whereIn('id_role', $snap['role_ids'] ?: [0])->where('id_permission', permissionId($c))->delete();
-    if ($snap['role_perm']) {
-        $c->table('role_permissions')->insert($snap['role_perm']);
+    // user_roles QA_USER dikembalikan persis (norole menukarnya ke preset); role developer tidak disentuh
+    $c->table('user_roles')->where('id_user', $snap['uid'])->delete();
+    if (!empty($snap['user_roles'])) {
+        $c->table('user_roles')->insert($snap['user_roles']);
     }
+}
+
+/** Id role preset milik fixture: tercatat di jurnal + nama berawalan ROLE_PREFIX. */
+function presetIds($c, ?array $j)
+{
+    $ids = $c->table('roles')->where('role_name', 'like', ROLE_PREFIX . '%')->pluck('id_role')->all();
+
+    return array_values(array_unique(array_map('intval', array_merge($j['roles'] ?? [], $ids))));
+}
+
+/** Buang role preset (user_roles yang menunjuknya, role_permissions, roles). Hanya id jurnal / berawalan ROLE_PREFIX. */
+function presetPurge($c, ?array $j)
+{
+    $ids = presetIds($c, $j);
+    if ($ids) {
+        $c->table('user_roles')->whereIn('id_role', $ids)->delete();
+        $c->table('role_permissions')->whereIn('id_role', $ids)->delete();
+        $c->table('roles')->whereIn('id_role', $ids)->delete();
+    }
+
+    return count($ids);
+}
+
+/** Buat role preset dari NAMA permission (dicatat ke jurnal SEBELUM baris role_permissions-nya); mengembalikan id_role. */
+function presetCreate($c, $journal, $label, array $names, $superadmin)
+{
+    $now = date('Y-m-d H:i:s');
+    $id = (int) $c->table('roles')->insertGetId([
+        'role_name' => ROLE_PREFIX . $label, 'description' => 'QA ED-1026 e2e preset (ED-1149)', 'is_superadmin' => $superadmin,
+        'is_active' => 1, 'is_used' => 1, 'created_by' => ROLE_BY, 'created_at' => $now, 'updated_by' => ROLE_BY, 'updated_at' => $now,
+    ]);
+    journalAdd($journal, 'roles', [$id]);
+    foreach ($names as $name) {
+        $perm = $c->table('permissions')->where('permission_name', $name)->first();
+        if (!$perm) {
+            fail("permission '$name' tidak ada di DB uji (seed permission_salesman.sql belum dijalankan)");
+        }
+        $c->table('role_permissions')->insert([
+            'id_role' => $id, 'id_permission' => $perm->id_permission, 'permission_name' => $perm->permission_name,
+            'created_at' => $now, 'updated_at' => $now, 'created_by' => ROLE_BY, 'updated_by' => ROLE_BY,
+        ]);
+    }
+
+    return $id;
 }
 
 /** snapshot user sama dengan jurnal (jurnal lama tanpa kunci language: bahasa tidak dibandingkan) */
@@ -325,6 +369,10 @@ function leftovers($c, array $j, array $sessions)
     if ($left) {
         $lines[] = 'SISA ' . count($left) . ' sesi opname milik fixture';
     }
+    $np = (int) $c->table('roles')->whereIn('id_role', presetIds($c, $j) ?: [0])->count();
+    if ($np) {
+        $lines[] = "SISA $np role preset " . ROLE_PREFIX . '*';
+    }
 
     return $lines;
 }
@@ -350,6 +398,7 @@ if ($cmd === 'up') {
         }
         $r = purge($c, $old);
         userRestore($c, $old['user']);
+        presetPurge($c, $old);
         $lines = leftovers($c, $old, $r['sessions']);
         if (!sameUser(userSnapshot($c), $old['user'])) {
             $lines[] = 'BEDA user/role QA';
@@ -368,11 +417,17 @@ if ($cmd === 'up') {
 
     $before = state($c);
     $user = userSnapshot($c);
+    if ($c->table('roles')->whereIn('id_role', array_map(function ($r) {
+        return (int) $r['id_role'];
+    }, $user['user_roles']) ?: [0])->where('role_name', 'like', ROLE_PREFIX . '%')->exists()) {
+        fail('QA_USER berada di preset sisa ' . ROLE_PREFIX . '* tanpa jurnal: bereskan manual (pulihkan user_roles lalu buang role itu)');
+    }
     journalWrite($journal, [
         'v' => JOURNAL_V, 'state' => $before, 'user' => $user, 'qa_users' => qaUsernames(),
         'pre_sessions' => $c->table('archive_opnames')->pluck('id_archive_opname')->all(),
-        'pre_verif' => verificationSnapshot($c), 'archives' => [], 'sessions' => [],
+        'pre_verif' => verificationSnapshot($c), 'archives' => [], 'sessions' => [], 'roles' => [],
     ]);
+    presetPurge($c, null); // sisa preset tanpa jurnal (nama berawalan ROLE_PREFIX) dibuang dulu
 
     $mode = getenv('QA26_MODE') ?: 'main';
     $locs = $c->table('locations')->where('location_code', 'SMR')->pluck('id_location', 'location_code')->all();
@@ -395,7 +450,14 @@ if ($cmd === 'up') {
         ]);
     }
     if ($mode === 'norole') {
-        $c->table('role_permissions')->whereIn('id_role', $user['role_ids'] ?: [0])->where('id_permission', permissionId($c))->delete();
+        // QA_USER -> PRESET tanpa Opname Document (is_superadmin 3 = tingkat yang sama dengan role asli QA_USER, hanya izin Archive-nya eksplisit)
+        $roleId = presetCreate($c, $journal, 'NOOD', NOOD_PRESET, 3);
+        $first = $user['user_roles'][0] ?? [];
+        $c->table('user_roles')->where('id_user', $user['uid'])->delete();
+        $c->table('user_roles')->insert([
+            'id_user' => $user['uid'], 'id_role' => $roleId, 'is_all_location' => $first['is_all_location'] ?? 1,
+            'id_location' => $first['id_location'] ?? null, 'created_at' => $nowStr, 'updated_at' => $nowStr,
+        ]);
     }
 
     $ids = [];
@@ -534,6 +596,7 @@ if ($cmd === 'down') {
     }
     $r = purge($c, $old);
     userRestore($c, $old['user']);
+    $np = presetPurge($c, $old);
     $lines = leftovers($c, $old, $r['sessions']);
     if (!sameUser(userSnapshot($c), $old['user'])) {
         $lines[] = 'BEDA user/role QA: tidak sama dengan snapshot awal';
@@ -551,7 +614,7 @@ if ($cmd === 'down') {
     }
     @unlink($idsFile);
     say('fixture down: ' . $r['archives'] . ' archives fixture + ' . count($r['sessions']) . ' sesi opname fixture dibuang, '
-        . $r['restored'] . ' baris archives lain dipulihkan kolom verifikasinya; '
+        . $r['restored'] . ' baris archives lain dipulihkan kolom verifikasinya; ' . $np . ' role preset dibuang; '
         . ($lines ? 'MASIH ADA SISA MILIK FIXTURE' : 'tidak ada sisa milik fixture, user/role QA = snapshot'));
     exit($lines ? 1 : 0);
 }

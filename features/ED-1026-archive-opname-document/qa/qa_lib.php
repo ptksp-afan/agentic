@@ -13,11 +13,14 @@
  *   persis (bukan default) untuk baris archives yang ditandai sesi QA, membuang hanya sesi QA, lalu membuktikan checksum
  *   developer sama dengan sebelum AC. Jurnal bertahan bila run mati; baseline run berikutnya memulihkannya lebih dulu.
  * - Teardown tidak jalan bila setup gagal: q26_baseline() dipanggil DI LUAR try; q26_cleanup() hanya di finally.
- * - QA_USER2 (role 5, tanpa Opname Document) boleh login di api_sidomaju: dipakai untuk uji 403. "User lokasi lain" /
- *   "user tanpa hak" lain = QA_USER sendiri dengan keadaan sementara (role, lokasi employee, bahasa) lewat
- *   q26_with_user(); jurnal pemulihan user di .restore-journal-q26.json.
- *   Role bawaan QA_USER = 3 (Super Admin, is_superadmin 3: TIDAK bypass lokasi/hak folder, punya Opname Document).
- *   Bypass (superadmin 1/2) = role 1 dan 2. Role 29 = hanya List Archive. Role 6 = tanpa permission Archive.
+ * - (ED-1149 BR-1/BR-2/BR-4) TIDAK ada prasyarat/grant pada role developer (3, 5, 6, 22, 29...): "user tanpa hak" / "hanya List
+ *   Archive" = role preset QA26-ROLE-NONE / QA26-ROLE-LIST yang dibuat dari NAMA permission eksplisit (q26_preset), dipakai lewat
+ *   q26_with_user(['role' => Q26_PRESET_*]) untuk QA_USER atau q26_with_u2_preset() untuk QA_USER2, dan dibuang persis
+ *   (q26_preset_purge; bukti di q26_cleanup). Yang diubah sementara hanya user_roles/lokasi/bahasa QA_USER dan QA_USER2, berjurnal
+ *   (.restore-journal-q26.json, .restore-journal-q26-user2.json) dan dipulihkan persis.
+ *   QA_USER2 boleh login di api_sidomaju (bukan karyawan: preset memuat 'Allow Access Website'). "User lokasi lain" = QA_USER
+ *   sendiri dengan keadaan sementara (role, lokasi employee, bahasa) lewat q26_with_user().
+ *   Role bawaan QA_USER = 3 (Super Admin, is_superadmin 3: TIDAK bypass lokasi/hak folder). Bypass (superadmin 1/2) = role 1 dan 2.
  * - Tulis lewat koneksi default non-read-only di dalam $t->probe(); baca lewat $t->db() (read-only).
  */
 
@@ -25,9 +28,10 @@ if (!function_exists('q26_dbname')) {
 
     define('Q26_PREFIX', 'QA26-');
     define('Q26_BASE', 'api/v5/document-archive');
-    define('Q26_ROLE_PLAIN', 3);
-    define('Q26_ROLE_LIST_ONLY', 29);
-    define('Q26_ROLE_NONE', 6);
+    define('Q26_ROLE_PLAIN', 3); // role bawaan QA_USER sendiri (bukan syarat permission)
+    define('Q26_ROLE_PREFIX', 'QA26-ROLE-');
+    define('Q26_PRESET_NONE', 'NONE'); // preset: akses website saja (tanpa permission Archive)
+    define('Q26_PRESET_LIST', 'LIST'); // preset: akses website + List Archive (tanpa Opname Document)
     define('Q26_RANDOM_ID', '999999999999999999999999999999');
 
     function q26_dbname($t)
@@ -136,17 +140,20 @@ if (!function_exists('q26_dbname')) {
         });
     }
 
-    /** opts: 'role' => int|int[] (id_role), 'emp' => 'all'|['SMR', ...] (kode lokasi), 'lang' => 'ID'|'EN' */
+    /** opts: 'role' => kunci preset ('NONE'|'LIST') | id role sistem 1/2/3 | daftar keduanya, 'emp' => 'all'|['SMR', ...] (kode lokasi), 'lang' => 'ID'|'EN' */
     function q26_user_apply($t, array $snap, array $opts)
     {
         $locs = q26_locs($t);
-        q26_w($t, function ($c) use ($snap, $opts, $locs) {
+        $roleIds = isset($opts['role']) ? array_map(function ($r) use ($t) {
+            return q26_role_ref($t, $r);
+        }, (array) $opts['role']) : [];
+        q26_w($t, function ($c) use ($snap, $opts, $locs, $roleIds) {
             $uid = $snap['uid'];
             $now = date('Y-m-d H:i:s');
 
             if (isset($opts['role'])) {
                 $c->table('user_roles')->where('id_user', $uid)->delete();
-                foreach ((array) $opts['role'] as $role) {
+                foreach ($roleIds as $role) {
                     $c->table('user_roles')->insert([
                         'id_user' => $uid, 'id_role' => $role, 'is_all_location' => 1, 'id_location' => null,
                         'created_at' => $now, 'updated_at' => $now,
@@ -213,6 +220,157 @@ if (!function_exists('q26_dbname')) {
                 $t->fail('pemulihan user QA tidak persis sama dengan sebelumnya (jurnal dipertahankan)');
             }
             @unlink(q26_journal());
+        }
+    }
+
+    // ------------------------------------------------------------------ role preset QA26-ROLE-* (ED-1149 BR-1/BR-2/BR-4)
+
+    /** Nama permission eksplisit per preset (dicari ke permissions.permission_name -> id_permission; BUKAN salinan role developer). */
+    function q26_preset_perms($key)
+    {
+        $p = [
+            Q26_PRESET_NONE => ['Allow Access Website'],
+            Q26_PRESET_LIST => ['Allow Access Website', 'List Archive'],
+        ];
+        if (!isset($p[$key])) {
+            throw new \InvalidArgumentException("preset role '$key' tidak dikenal");
+        }
+
+        return $p[$key];
+    }
+
+    /** Hapus SEMUA role preset QA26-ROLE-* (user_roles yang menunjuknya, role_permissions, role). Idempoten; role lain tidak tersentuh. */
+    function q26_preset_purge($t)
+    {
+        q26_w($t, function ($c) {
+            $ids = $c->table('roles')->where('role_name', 'like', Q26_ROLE_PREFIX . '%')->pluck('id_role')->all();
+            if ($ids) {
+                $c->table('user_roles')->whereIn('id_role', $ids)->delete();
+                $c->table('role_permissions')->whereIn('id_role', $ids)->delete();
+                $c->table('roles')->whereIn('id_role', $ids)->delete();
+            }
+        });
+        $GLOBALS['q26_presets'] = [];
+    }
+
+    /** id_role preset $key (dibuat bila belum ada di run ini): bukan superadmin, aktif, permission dari NAMA, created_by QA26. */
+    function q26_preset($t, $key)
+    {
+        if (isset($GLOBALS['q26_presets'][$key])) {
+            return $GLOBALS['q26_presets'][$key];
+        }
+        $names = q26_preset_perms($key);
+        $id = q26_w($t, function ($c) use ($key, $names) {
+            $now = date('Y-m-d H:i:s');
+            $old = $c->table('roles')->where('role_name', Q26_ROLE_PREFIX . $key)->pluck('id_role')->all();
+            if ($old) { // sisa tak dikenal: buang dulu, bangun ulang dari nama
+                $c->table('user_roles')->whereIn('id_role', $old)->delete();
+                $c->table('role_permissions')->whereIn('id_role', $old)->delete();
+                $c->table('roles')->whereIn('id_role', $old)->delete();
+            }
+            $id = $c->table('roles')->insertGetId([
+                'role_name' => Q26_ROLE_PREFIX . $key, 'description' => 'QA ED-1026 preset (ED-1149)', 'is_superadmin' => 4,
+                'is_active' => 1, 'is_used' => 1, 'created_by' => 'QA26', 'created_at' => $now, 'updated_by' => 'QA26', 'updated_at' => $now,
+            ]);
+            foreach ($names as $name) {
+                $perm = $c->table('permissions')->where('permission_name', $name)->first();
+                if (!$perm) {
+                    throw new \RuntimeException("prasyarat: permission '$name' tidak ada di DB uji");
+                }
+                $c->table('role_permissions')->insert([
+                    'id_role' => $id, 'id_permission' => $perm->id_permission, 'permission_name' => $perm->permission_name,
+                    'created_at' => $now, 'updated_at' => $now, 'created_by' => 'QA26', 'updated_by' => 'QA26',
+                ]);
+            }
+
+            return (int) $id;
+        });
+        $GLOBALS['q26_presets'][$key] = $id;
+
+        return $id;
+    }
+
+    /** Nama permission yang dipegang role $role, dibaca per id_permission (join permissions; BR-3), bukan dari kolom role_permissions.permission_name. */
+    function q26_role_names($t, $role)
+    {
+        return $t->db()->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')
+            ->where('rp.id_role', $role)->pluck('p.permission_name')->all();
+    }
+
+    /** Kunci preset -> id_role preset; angka hanya boleh role sistem 1/2/3 (role developer lain ditolak: BR-1/BR-4). */
+    function q26_role_ref($t, $role)
+    {
+        if (is_int($role) || (is_string($role) && ctype_digit($role))) {
+            if (!in_array((int) $role, [1, 2, 3], true)) {
+                throw new \InvalidArgumentException("role developer $role tidak boleh dipakai skenario (pakai preset QA26-ROLE-*)");
+            }
+
+            return (int) $role;
+        }
+
+        return q26_preset($t, $role);
+    }
+
+    // ------------------------------------------------------------------ QA_USER2 sungguhan (user_roles sementara, berjurnal)
+
+    function q26_u2_journal()
+    {
+        return __DIR__ . '/.restore-journal-q26-user2.json';
+    }
+
+    function q26_u2_id($t)
+    {
+        return $t->db()->table('users')->where('username', $t->conf('QA_USER2'))->value('id_user');
+    }
+
+    function q26_u2_rows($t)
+    {
+        return q26_rows($t->db()->table('user_roles')->where('id_user', q26_u2_id($t))->orderBy('id_user_role')->get());
+    }
+
+    function q26_u2_write($t, $uid, array $rows)
+    {
+        q26_w($t, function ($c) use ($uid, $rows) {
+            $c->table('user_roles')->where('id_user', $uid)->delete();
+            if ($rows) {
+                $c->table('user_roles')->insert($rows);
+            }
+        });
+    }
+
+    /** Pulihkan user_roles QA_USER2 dari jurnal bila run sebelumnya mati di tengah. */
+    function q26_u2_recover($t)
+    {
+        if (is_file(q26_u2_journal())) {
+            $snap = json_decode(file_get_contents(q26_u2_journal()), true);
+            if (is_array($snap) && !empty($snap['rows'])) {
+                q26_u2_write($t, $snap['uid'], $snap['rows']);
+            }
+            @unlink(q26_u2_journal());
+        }
+    }
+
+    /** Jalankan $fn($idRolePreset) dengan QA_USER2 HANYA di preset $key; user_roles aslinya dipulihkan persis (jurnal + bukti). */
+    function q26_with_u2_preset($t, $key, callable $fn)
+    {
+        q26_u2_recover($t);
+        $uid = q26_u2_id($t);
+        $rows = q26_u2_rows($t);
+        $t->true($uid !== null && count($rows) >= 1, 'prasyarat: QA_USER2 ada dan punya role (dipulihkan persis sesudahnya)');
+        file_put_contents(q26_u2_journal(), json_encode(['uid' => $uid, 'rows' => $rows]));
+        try {
+            $role = q26_preset($t, $key);
+            $now = date('Y-m-d H:i:s');
+            q26_u2_write($t, $uid, [['id_user' => $uid, 'id_role' => $role, 'is_all_location' => 1, 'id_location' => null, 'created_at' => $now, 'updated_at' => $now]]);
+
+            return $fn($role);
+        } finally {
+            q26_u2_write($t, $uid, $rows);
+            $after = q26_u2_rows($t);
+            @unlink(q26_u2_journal());
+            if (json_encode($after) !== json_encode($rows)) {
+                $t->fail('pemulihan user_roles QA_USER2 tidak persis sama dengan sebelumnya');
+            }
         }
     }
 
@@ -561,6 +719,8 @@ if (!function_exists('q26_dbname')) {
     function q26_baseline($t)
     {
         q26_recover_user($t);
+        q26_u2_recover($t);
+        q26_preset_purge($t);
         q26_sweep($t);
         @unlink(q26_vjournal());
         q26_purge($t);
@@ -579,6 +739,7 @@ if (!function_exists('q26_dbname')) {
         $tracked = q26_tracked();
         q26_sweep($t);
         q26_purge($t);
+        q26_preset_purge($t);
         $c = $t->db();
         $gone = $tracked ? $c->table('archive_opnames')->whereIn('id_archive_opname', $tracked)->count() : 0;
         $now = q26_devstate($t);
@@ -587,6 +748,8 @@ if (!function_exists('q26_dbname')) {
         $t->eq($c->table('archives')->where('name', 'like', Q26_PREFIX . '%')->count(), 0, $label . ' (archives QA26-)');
         $t->eq($c->table('archive_documents')->where('transaction_no', 'like', Q26_PREFIX . '%')->count(), 0, $label . ' (archive_documents)');
         $t->eq($c->table('archive_permissions')->where('created_by', 'QA26')->count(), 0, $label . ' (archive_permissions QA26)');
+        $t->eq($c->table('roles')->where('role_name', 'like', Q26_ROLE_PREFIX . '%')->count(), 0, $label . ' (role preset QA26-ROLE-)');
+        $t->eq($c->table('role_permissions')->where('created_by', 'QA26')->count(), 0, $label . ' (role_permissions QA26)');
         if ($base === null) {
             $t->fail($label . ': keadaan developer sebelum AC tidak tercatat (baseline tidak jalan)');
         }

@@ -16,12 +16,15 @@
  *   (q28_hkeys membuang sesi asing); sesi QA diberi confirmed_at DI ATAS semua sesi developer (q28_times/q28_day) supaya
  *   urutan/halaman deterministik, dan SEMUA sesi yang saling beririsan dibuat SEBELUM confirmed_at digeser ke depan (bentrok
  *   ARCHIVE414 membandingkan confirmed_at >= selected_at).
- * - Permission sementara (mis. Opname Document untuk role user2) lewat q28_grant()/q28_with_grant(): baris role_permissions dibuat
- *   dengan created_by QA28, id di jurnal (.grant-journal-q28.json), dihapus persis di finally; permission dicari per NAMA.
- * - QA_USER2 (adi, role asli 5 = List Archive TANPA Opname Document, lokasi SMR) = user2 sungguhan (qa_hist.php); QA_USER
- *   (role 3, TIDAK bypass lokasi/hak folder) juga dipakai dengan keadaan sementara (role, lokasi employee, bahasa) lewat
- *   q28_with_user(); jurnal pemulihan di .restore-journal-q28.json. Bypass (superadmin 1/2) = role 1 dan 2.
- *   Role 29 = hanya List Archive. Role 6 / 22 = tanpa permission Archive.
+ * - (ED-1149 BR-1/BR-2/BR-4) TIDAK ada prasyarat/grant pada role developer (3, 5, 6, 22, 29, ...): "R0" (List Archive tanpa Opname
+ *   Document), "tanpa permission Archive" dan role user2 = role preset QA28-ROLE-R0 / QA28-ROLE-NONE, dibuat dari NAMA permission
+ *   eksplisit (q28_preset) dan dibuang persis (q28_preset_purge; bukti di q28_cleanup). Permission sementara (mis. Opname Document)
+ *   hanya ke preset lewat q28_grant()/q28_with_grant(): baris role_permissions dibuat dengan created_by QA28, id di jurnal
+ *   (.grant-journal-q28.json), dihapus persis di finally; q28_grant MENOLAK role non-preset. Permission dicari per NAMA.
+ * - QA_USER2 (adi, non-karyawan, lokasi SMR, bisa login) = user2 sungguhan (qa_hist.php): user_roles-nya diganti SEMENTARA ke preset
+ *   R0 oleh q28_guard (jurnal .restore-journal-q28-user2.json memegang baris ASLI, dipulihkan persis); QA_USER
+ *   (role 3, TIDAK bypass lokasi/hak folder) juga dipakai dengan keadaan sementara (role: preset atau 1/2/3, lokasi employee, bahasa)
+ *   lewat q28_with_user(); jurnal pemulihan di .restore-journal-q28.json. Bypass (superadmin 1/2) = role 1 dan 2.
  * - Tulis lewat koneksi default non-read-only di dalam $t->probe(); baca lewat $t->db() (read-only).
  * - Oracle (q28_oracle) menghitung angka verifikasi dari tabel mentah, tanpa kode BE, untuk satu keadaan user.
  */
@@ -30,8 +33,9 @@ if (!function_exists('q28_dbname')) {
 
     define('Q28_PREFIX', 'QA28-');
     define('Q28_BASE', 'api/v5/document-archive');
-    define('Q28_ROLE_LIST_ONLY', 29);
-    define('Q28_ROLE_NONE', 6);
+    define('Q28_ROLE_PREFIX', 'QA28-ROLE-');
+    define('Q28_PRESET_R0', 'R0');     // preset R0: akses website + List Archive, TANPA Opname Document (role user2 di q28_guard)
+    define('Q28_PRESET_NONE', 'NONE'); // preset: akses website saja (tanpa permission Archive apa pun)
     define('Q28_RANDOM_ID', '999999999999999999999999999999');
     define('Q28_OD', 'Opname Document'); // permission riwayat & data opname (id 1139, dicari per NAMA)
     define('Q28_LA', 'List Archive');
@@ -134,13 +138,16 @@ if (!function_exists('q28_dbname')) {
     function q28_user_apply($t, array $snap, array $opts)
     {
         $locs = q28_locs($t);
-        q28_w($t, function ($c) use ($snap, $opts, $locs) {
+        $roleIds = isset($opts['role']) ? array_map(function ($r) use ($t) {
+            return q28_role_ref($t, $r);
+        }, (array) $opts['role']) : [];
+        q28_w($t, function ($c) use ($snap, $opts, $locs, $roleIds) {
             $uid = $snap['uid'];
             $now = date('Y-m-d H:i:s');
 
             if (isset($opts['role'])) {
                 $c->table('user_roles')->where('id_user', $uid)->delete();
-                foreach ((array) $opts['role'] as $role) {
+                foreach ($roleIds as $role) {
                     $c->table('user_roles')->insert([
                         'id_user' => $uid, 'id_role' => $role, 'is_all_location' => 1, 'id_location' => null,
                         'created_at' => $now, 'updated_at' => $now,
@@ -203,6 +210,109 @@ if (!function_exists('q28_dbname')) {
             }
             @unlink(q28_journal());
         }
+    }
+
+    // ------------------------------------------------------------------ role preset QA28-ROLE-* (ED-1149 BR-1/BR-2/BR-4)
+
+    /** Nama permission eksplisit per preset (dicari ke permissions.permission_name -> id_permission; BUKAN salinan role developer). */
+    function q28_preset_perms($key)
+    {
+        $p = [
+            Q28_PRESET_R0   => ['Allow Access Website', 'List Archive'],
+            Q28_PRESET_NONE => ['Allow Access Website'],
+        ];
+        if (!isset($p[$key])) {
+            throw new \InvalidArgumentException("preset role '$key' tidak dikenal");
+        }
+
+        return $p[$key];
+    }
+
+    /** Hapus SEMUA role preset QA28-ROLE-* (user_roles yang menunjuknya, role_permissions, role). Idempoten; role lain tidak tersentuh. */
+    function q28_preset_purge($t)
+    {
+        q28_w($t, function ($c) {
+            $ids = $c->table('roles')->where('role_name', 'like', Q28_ROLE_PREFIX . '%')->pluck('id_role')->all();
+            if ($ids) {
+                $c->table('user_roles')->whereIn('id_role', $ids)->delete();
+                $c->table('role_permissions')->whereIn('id_role', $ids)->delete();
+                $c->table('roles')->whereIn('id_role', $ids)->delete();
+            }
+        });
+        $GLOBALS['q28_presets'] = [];
+    }
+
+    /** id_role preset $key (dibuat bila belum ada di run ini): bukan superadmin, aktif, permission dari NAMA, created_by QA28. */
+    function q28_preset($t, $key)
+    {
+        if (isset($GLOBALS['q28_presets'][$key])) {
+            return $GLOBALS['q28_presets'][$key];
+        }
+        $names = q28_preset_perms($key);
+        $id = q28_w($t, function ($c) use ($key, $names) {
+            $now = date('Y-m-d H:i:s');
+            $old = $c->table('roles')->where('role_name', Q28_ROLE_PREFIX . $key)->pluck('id_role')->all();
+            if ($old) { // sisa tak dikenal: buang dulu, bangun ulang dari nama
+                $c->table('user_roles')->whereIn('id_role', $old)->delete();
+                $c->table('role_permissions')->whereIn('id_role', $old)->delete();
+                $c->table('roles')->whereIn('id_role', $old)->delete();
+            }
+            $id = $c->table('roles')->insertGetId([
+                'role_name' => Q28_ROLE_PREFIX . $key, 'description' => 'QA ED-1028 preset (ED-1149)', 'is_superadmin' => 4,
+                'is_active' => 1, 'is_used' => 1, 'created_by' => 'QA28', 'created_at' => $now, 'updated_by' => 'QA28', 'updated_at' => $now,
+            ]);
+            foreach ($names as $name) {
+                $perm = $c->table('permissions')->where('permission_name', $name)->first();
+                if (!$perm) {
+                    throw new \RuntimeException("prasyarat: permission '$name' tidak ada di DB uji");
+                }
+                $c->table('role_permissions')->insert([
+                    'id_role' => $id, 'id_permission' => $perm->id_permission, 'permission_name' => $perm->permission_name,
+                    'created_at' => $now, 'updated_at' => $now, 'created_by' => 'QA28', 'updated_by' => 'QA28',
+                ]);
+            }
+
+            return (int) $id;
+        });
+        $GLOBALS['q28_presets'][$key] = $id;
+
+        return $id;
+    }
+
+    /** Kunci preset -> id_role preset; angka hanya boleh role sistem 1/2/3 (role developer lain ditolak: BR-1/BR-4). */
+    function q28_role_ref($t, $role)
+    {
+        if (is_int($role) || (is_string($role) && ctype_digit($role))) {
+            if (!in_array((int) $role, [1, 2, 3], true)) {
+                throw new \InvalidArgumentException("role developer $role tidak boleh dipakai skenario (pakai preset QA28-ROLE-*)");
+            }
+
+            return (int) $role;
+        }
+
+        return q28_preset($t, $role);
+    }
+
+    /** Hanya preset yang boleh menerima permission: kunci preset atau id role berawalan QA28-ROLE- (selain itu: tolak). */
+    function q28_preset_ref($t, $role)
+    {
+        if (is_int($role) || (is_string($role) && ctype_digit($role))) {
+            $name = $t->db()->table('roles')->where('id_role', (int) $role)->value('role_name');
+            if ($name === null || strpos($name, Q28_ROLE_PREFIX) !== 0) {
+                throw new \InvalidArgumentException("role $role bukan preset QA28-ROLE-*: grant permission pada role developer dilarang (BR-4)");
+            }
+
+            return (int) $role;
+        }
+
+        return q28_preset($t, $role);
+    }
+
+    /** Nama permission yang dipegang role $role, dibaca per id_permission (join permissions; BR-3), bukan dari kolom role_permissions.permission_name. */
+    function q28_role_names($t, $role)
+    {
+        return $t->db()->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')
+            ->where('rp.id_role', $role)->pluck('p.permission_name')->all();
     }
 
     // ------------------------------------------------------------------ data uji archive
@@ -543,6 +653,7 @@ if (!function_exists('q28_dbname')) {
     {
         q28_recover_user($t);
         q28_grant_recover($t);
+        q28_preset_purge($t);
         q28_sweep($t);
         @unlink(q28_vjournal());
         q28_bulk_purge($t);
@@ -571,6 +682,8 @@ if (!function_exists('q28_dbname')) {
         q28_sweep($t);
         q28_bulk_purge($t);
         q28_purge($t);
+        q28_grant_recover($t);
+        q28_preset_purge($t);
         $c = $t->db();
         $gone = $tracked ? $c->table('archive_opnames')->whereIn('id_archive_opname', $tracked)->count() : 0;
         $now = q28_devstate($t);
@@ -579,6 +692,8 @@ if (!function_exists('q28_dbname')) {
         $t->eq($c->table('archives')->where('name', 'like', Q28_PREFIX . '%')->count(), 0, $label . ' (archives QA28-)');
         $t->eq($c->table('archive_documents')->where('transaction_no', 'like', Q28_PREFIX . '%')->count(), 0, $label . ' (archive_documents)');
         $t->eq($c->table('archive_permissions')->where('created_by', 'QA28')->count(), 0, $label . ' (archive_permissions)');
+        $t->eq($c->table('roles')->where('role_name', 'like', Q28_ROLE_PREFIX . '%')->count(), 0, $label . ' (role preset QA28-ROLE-)');
+        $t->eq($c->table('role_permissions')->where('created_by', 'QA28')->count(), 0, $label . ' (role_permissions QA28)');
         $t->eq($c->table('archive_opnames')->where('id_archive_opname', 'like', 'QA28BULK%')->count(), 0, $label . ' (sisipan massal)');
         if ($base === null) {
             $t->fail($label . ': keadaan developer sebelum AC tidak tercatat (baseline tidak jalan)');
@@ -625,10 +740,13 @@ if (!function_exists('q28_dbname')) {
             ->where('rp.id_role', $role)->where('p.permission_name', $name)->exists();
     }
 
-    /** Beri role(s) permission $name (per NAMA); mengembalikan [id baris dibuat]. Dicatat di jurnal. Role yang sudah memegangnya tidak disentuh. */
+    /** Beri role(s) permission $name (per NAMA); mengembalikan [id baris dibuat]. Dicatat di jurnal. Hanya role preset QA28-ROLE-*. Role yang sudah memegangnya tidak disentuh. */
     function q28_grant($t, $roles, $name)
     {
-        $roles = (array) $roles;
+        // BR-4: hanya role preset QA28-ROLE-* (kunci preset atau id-nya); role developer ditolak
+        $roles = array_map(function ($r) use ($t) {
+            return q28_preset_ref($t, $r);
+        }, (array) $roles);
         $pid = q28_perm_id($t, $name);
         $t->true($pid !== null, "permission '$name' ada (dicari per nama, id $pid)");
         $made = [];
@@ -661,6 +779,9 @@ if (!function_exists('q28_dbname')) {
      */
     function q28_with_grant($t, $roles, $name, callable $fn)
     {
+        $roles = array_map(function ($r) use ($t) {
+            return q28_preset_ref($t, $r);
+        }, (array) $roles); // preset dibuat DULU (jumlah+CRC role_permissions "sebelum" sudah memuat baris dasarnya)
         q28_grant_recover($t);
         $before = q28_rp_sum($t);
         try {

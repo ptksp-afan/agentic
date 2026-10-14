@@ -11,7 +11,7 @@
       "ref": "AC-2"
     },
     {
-      "name": "Archive Permission E (QA_USER2 role 18, tanpa Update Folder dan tanpa Folder Permissions) - ditolak ke /unathorized, tanpa request user-permissions maupun select user",
+      "name": "Archive Permission E (QA_USER2 preset QA29F-ROLE-E, tanpa Update Folder dan tanpa Folder Permissions) - ditolak ke /unathorized, tanpa request user-permissions maupun select user",
       "path": "/archives/permissions",
       "profiles": [
         "user2"

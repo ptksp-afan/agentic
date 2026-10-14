@@ -7,12 +7,16 @@
  * - Perubahan data hanya lewat q1_with_user() (role/lokasi employee/bahasa user QA) dan q1_add_*() (baris
  *   berawalan "QA01-"), selalu dipulihkan di finally. Jurnal pemulihan user ada di .restore-journal.json;
  *   bila sebuah run mati di tengah, run berikutnya memulihkan dari jurnal itu lebih dulu.
+ * - (ED-1149 BR-1/BR-2/BR-4) Peran uji "tanpa permission Archive" / "hanya List Archive" / "List+Move+..." = role fixture QA01-ROLE-* dari
+ *   NAMA permission eksplisit (q1_role), dibuang q1_role_purge(); TIDAK ada prasyarat/ubah/grant pada role atau permissions developer
+ *   (q1_user_apply menolak id role selain fixture dan role sistem 1/2/3).
  * - Tulis lewat koneksi default non-read-only di dalam $t->probe(); baca lewat $t->db() (read-only).
  */
 
 if (!function_exists('q1_dbname')) {
 
     define('Q1_PREFIX', 'QA01-');
+    define('Q1_ROLE_PREFIX', 'QA01-ROLE-');
 
     function q1_dbname($t)
     {
@@ -95,7 +99,7 @@ if (!function_exists('q1_dbname')) {
     }
 
     /**
-     * opts: 'role' => int|int[] (id_role), 'emp' => 'all'|'none'|['JOG', ...] (kode lokasi), 'lang' => 'ID'|'EN'
+     * opts: 'role' => id role fixture QA01-ROLE-* | role sistem 1/2/3 (atau daftar), 'emp' => 'all'|'none'|['JOG', ...] (kode lokasi), 'lang' => 'ID'|'EN'
      */
     function q1_user_apply($t, array $snap, array $opts)
     {
@@ -105,6 +109,12 @@ if (!function_exists('q1_dbname')) {
             $now = date('Y-m-d H:i:s');
 
             if (isset($opts['role'])) {
+                foreach ((array) $opts['role'] as $role) {
+                    $name = $c->table('roles')->where('id_role', $role)->value('role_name');
+                    if (!in_array((int) $role, [1, 2, 3], true) && strpos((string) $name, Q1_ROLE_PREFIX) !== 0) {
+                        throw new \InvalidArgumentException("role developer $role tidak boleh dipakai skenario (pakai fixture QA01-ROLE-* / role sistem 1/2/3)");
+                    }
+                }
                 $c->table('user_roles')->where('id_user', $uid)->delete();
                 foreach ((array) $opts['role'] as $role) {
                     $c->table('user_roles')->insert([
@@ -459,59 +469,78 @@ if (!function_exists('q1_dbname')) {
     }
 
 
-    // ------------------------------------------------------------------ simulasi "tanpa lisensi Salesman Activity"
+    // ------------------------------------------------------------------ role fixture QA01-ROLE-* (ED-1149 BR-1/BR-2/BR-4)
 
-    function q1_perm_journal()
+    /**
+     * Buat role fixture QA01-ROLE-<label> (aktif, is_superadmin $superadmin) dengan permission bernama $names (nama -> id dari permissions).
+     * Dibuang q1_role_purge(). Tidak menyentuh role bawaan/pengembang.
+     * @return int id_role
+     */
+    function q1_role($t, $label, array $names, $superadmin = 4)
     {
-        return __DIR__ . '/.perm-journal.json';
+        return q1_w($t, function ($c) use ($label, $names, $superadmin) {
+            $now = date('Y-m-d H:i:s');
+            $id = $c->table('roles')->insertGetId([
+                'role_name' => Q1_ROLE_PREFIX . $label, 'description' => 'QA ED-1024 fixture (ED-1149)', 'is_superadmin' => $superadmin,
+                'is_active' => 1, 'is_used' => 1, 'created_by' => 'QA01', 'created_at' => $now, 'updated_by' => 'QA01', 'updated_at' => $now,
+            ]);
+            foreach ($names as $name) {
+                $perm = $c->table('permissions')->where('permission_name', $name)->first();
+                if (!$perm) {
+                    throw new \RuntimeException("prasyarat: permission '$name' tidak ada di DB uji");
+                }
+                $c->table('role_permissions')->insert([
+                    'id_role' => $id, 'id_permission' => $perm->id_permission, 'permission_name' => $perm->permission_name,
+                    'created_at' => $now, 'updated_at' => $now, 'created_by' => 'QA01', 'updated_by' => 'QA01',
+                ]);
+            }
+
+            return (int) $id;
+        });
     }
 
-    /** (rev ED-1025, EPIC K-4 a) id permission modul Archive di permission_salesman.sql: 1081-1090 + 1139 (Opname Document) + 1140 (Folder Permissions). */
+    /** Hapus semua role fixture QA01-ROLE- (user_roles yang menunjuknya, role_permissions, lalu role). Idempoten. */
+    function q1_role_purge($t)
+    {
+        q1_w($t, function ($c) {
+            $ids = $c->table('roles')->where('role_name', 'like', Q1_ROLE_PREFIX . '%')->pluck('id_role')->all();
+            if ($ids) {
+                $c->table('user_roles')->whereIn('id_role', $ids)->delete();
+                $c->table('role_permissions')->whereIn('id_role', $ids)->delete();
+                $c->table('roles')->whereIn('id_role', $ids)->delete();
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ simulasi "tanpa lisensi Salesman Activity"
+
+    /** (rev ED-1025, EPIC K-4 a) nama permission modul Archive di permission_salesman.sql: 1081-1090 + 1139 (Opname Document) + 1140 (Folder Permissions). */
     function q1_archive_perm_ids()
     {
         return array_merge(range(1081, 1090), [1139, 1140]);
     }
 
-    function q1_perm_restore($t, array $rows)
-    {
-        q1_w($t, function ($c) use ($rows) {
-            $c->table('permissions')->whereIn('id_permission', q1_archive_perm_ids())->delete();
-            $c->table('permissions')->insert($rows);
-        });
-    }
-
     /**
-     * Simulasi tenant tanpa seed permission Archive: baris permissions modul Archive (q1_archive_perm_ids()) dihapus sementara
-     * (persis seperti bila permission_salesman.sql tidak dimuat), dipulihkan persis di finally.
+     * Role fixture $label (is_superadmin $superadmin) yang memegang SEMUA permission aktif KECUALI 12 permission modul Archive: untuk
+     * middleware v5 (yang hanya menilai nama permission milik role) ini sama dengan tenant tanpa seed permission_salesman.sql, tanpa
+     * menghapus sementara baris permissions developer (ED-1149 BR-4; dulu: hapus 12 baris permissions lalu pulihkan).
      */
-    function q1_without_archive_permissions($t, callable $fn)
+    function q1_role_without_archive($t, $label, $superadmin)
     {
-        if (is_file(q1_perm_journal())) {
-            $old = json_decode(file_get_contents(q1_perm_journal()), true);
-            if (is_array($old) && $old) {
-                q1_perm_restore($t, $old);
-            }
-            @unlink(q1_perm_journal());
-        }
+        return q1_w($t, function ($c) use ($label, $superadmin) {
+            $now = date('Y-m-d H:i:s');
+            $id = $c->table('roles')->insertGetId([
+                'role_name' => Q1_ROLE_PREFIX . $label, 'description' => 'QA ED-1024 fixture tanpa seed Archive (ED-1149)', 'is_superadmin' => $superadmin,
+                'is_active' => 1, 'is_used' => 1, 'created_by' => 'QA01', 'created_at' => $now, 'updated_by' => 'QA01', 'updated_at' => $now,
+            ]);
+            $c->statement(
+                'INSERT INTO role_permissions (id_role, id_permission, permission_name, created_at, updated_at, created_by, updated_by) '
+                . 'SELECT ?, id_permission, permission_name, ?, ?, ?, ? FROM permissions WHERE is_active = 1 AND id_permission NOT IN (' . implode(',', q1_archive_perm_ids()) . ')',
+                [$id, $now, $now, 'QA01', 'QA01']
+            );
 
-        $rows = q1_rows($t->db()->table('permissions')->whereIn('id_permission', q1_archive_perm_ids())->orderBy('id_permission')->get());
-        $t->eq(count($rows), 12, 'prasyarat: 12 baris permissions modul Archive ada (1081-1090, 1139, 1140)');
-        file_put_contents(q1_perm_journal(), json_encode($rows));
-
-        try {
-            q1_w($t, function ($c) {
-                $c->table('permissions')->whereIn('id_permission', q1_archive_perm_ids())->delete();
-            });
-
-            return $fn();
-        } finally {
-            q1_perm_restore($t, $rows);
-            $after = q1_rows($t->db()->table('permissions')->whereIn('id_permission', q1_archive_perm_ids())->orderBy('id_permission')->get());
-            if (json_encode($after) !== json_encode($rows)) {
-                $t->fail('pemulihan permissions Archive tidak persis (jurnal dipertahankan)');
-            }
-            @unlink(q1_perm_journal());
-        }
+            return (int) $id;
+        });
     }
 
     define('Q1_RANDOM_ID', '999999999999999999999999999999');

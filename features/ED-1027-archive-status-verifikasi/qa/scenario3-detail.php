@@ -302,8 +302,8 @@ return [
                     $t->status($r, 200, "role bawaan: $label");
                 }
 
-                // role 29: hanya List Archive -> list 200 (tanpa data verifikasi), verifications* 403 GE0114 parameter Opname Document
-                q27_with_user($t, ['role' => Q27_ROLE_LIST_ONLY], function () use ($t, $calls) {
+                // preset LIST (QA27-ROLE-LIST): hanya List Archive -> list 200 (tanpa data verifikasi), verifications* 403 GE0114 parameter Opname Document
+                q27_with_user($t, ['role' => Q27_PRESET_LIST], function () use ($t, $calls) {
                     foreach ($calls() as $label => $r) {
                         if ($label === 'GET archives (list)') {
                             $t->status($r, 200, "role List Archive saja: $label");
@@ -316,8 +316,8 @@ return [
                     }
                 });
 
-                // role 6: tanpa permission Archive -> 403 GE0114, tanpa data
-                q27_with_user($t, ['role' => Q27_ROLE_NONE], function () use ($t, $calls) {
+                // preset NOLIST (QA27-ROLE-NOLIST): tanpa permission Archive -> 403 GE0114, tanpa data
+                q27_with_user($t, ['role' => Q27_PRESET_NONE], function () use ($t, $calls) {
                     foreach ($calls() as $label => $r) {
                         q27_deny($t, $r, 403, 'GE0114', "role tanpa List Archive: $label");
                         $t->true(!isset($r[1]['result']) || empty($r[1]['result']), "role tanpa List Archive: $label tanpa data");

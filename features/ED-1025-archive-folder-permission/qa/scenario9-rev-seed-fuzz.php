@@ -81,7 +81,7 @@ return [
 
     [
         'id'    => 'AC-25',
-        'title' => '(rev EPIC K-4 a) permission_salesman.sql: Opname Document 1139 + Folder Permissions 1140 (module 1266, label en/id), tanpa id 1133-1138, checks/unchecks sesuai spec 3, hanya di berkas itu; DB QA sama dengan seed (role 1/2/3 memegangnya, tanpa sisa 1133); seed utuh jalan di DB scratch; kode BE/FE tanpa id permission',
+        'title' => '(rev EPIC K-4 a; ED-1149 K-4 b) permission_salesman.sql: Opname Document 1139 + Folder Permissions 1140 (module 1266, label en/id), tanpa id 1133-1138, checks/unchecks sesuai spec 3, hanya di berkas itu; DB QA: baris permissions 1139/1140 sama dengan seed (per id; role_permissions developer TIDAK diasersikan); seed utuh (permission_salesman.sql lalu role_permissions.sql) di DB scratch: role 1/2/3 memegang 1139/1140 dengan permission_name = seed, tanpa sisa 1133-1138 dan tanpa permission_name NULL; kode BE/FE tanpa id permission',
         'run'   => function ($t) {
             $c = $t->db();
             $beDir = $t->probe(function () {
@@ -163,21 +163,22 @@ return [
             $range = range(1133, 1140);
             $t->eq(q2_db_pairs($c, 'permission_checks', $range), $wantChecks, 'DB: permission_checks 1133-1140 = seed (tanpa sisa 1133)');
             $t->eq(q2_db_pairs($c, 'permission_unchecks', $range), $wantUnchecks, 'DB: permission_unchecks 1133-1140 = seed (tanpa sisa 1133)');
-            foreach ([1, 2, 3] as $role) {
-                foreach ([1139 => 'Opname Document', 1140 => 'Folder Permissions'] as $id => $name) {
-                    $t->eq($c->table('role_permissions')->where('id_role', $role)->where('id_permission', $id)->where('permission_name', $name)->count(), 1, "DB: role $role memegang $name ($id)");
-                }
-            }
-            $t->eq($c->table('role_permissions')->whereBetween('id_permission', [1133, 1138])->count(), 0, 'DB: tanpa role_permissions untuk id 1133-1138 (grant lama dibuang)');
-            $t->eq($c->table('role_permissions')->where('id_role', 3)->where('permission_name', 'Folder Permissions')->count(), 1, 'DB: role uji A (3) memegang Folder Permissions');
+            // (ED-1149 K-4 b / BR-1 / BR-5) TIDAK ada asersi role_permissions di DB bersama: hak role 1/2/3 atas 1139/1140 dan permission_name-nya
+            // (juga baris NULL hasil UI role developer) diasersikan di DB scratch hasil seed utuh (bagian "seed utuh" di bawah).
             $t->eq($c->table('modules')->where('id_module', 1266)->count(), 1, 'DB: modul Archive 1266 ada');
 
             // ---------- seed utuh jalan di DB scratch (sintaks, PK, urutan); dibuang sesudahnya
+            // Urutan = ApplicationSetupService: permission_salesman.sql (fitur lisensi) lalu role_permissions.sql (role 1/2/3 memegang semua permission
+            // aktif, DELETE + INSERT). Pra-seed scratch: permissions dasar disalin dari DB QA TANPA id yang disuntik seed, role_permissions berisi
+            // sisa grant lama 1133-1138 untuk role 1/2/3 dan satu baris role 3 atas 1140 ber-permission_name NULL (bentuk hasil UI role developer):
+            // sesudah seed semuanya harus bersih / tertulis ulang.
             $scratch = 'qa25_scratch_' . substr(uniqid(), -6);
             $db = q2_dbname($t);
             $error = null;
             $result = null;
-            $t->probe(function () use ($db, $scratch, $sql, &$error, &$result) {
+            $roleSql = file_get_contents($dir . '/role_permissions.sql');
+            $seedIds = array_map('intval', array_keys($byId));
+            $t->probe(function () use ($db, $scratch, $sql, $roleSql, $seedIds, &$error, &$result) {
                 $src = \Illuminate\Support\Facades\DB::connection($db);
                 $cfg = $src->getConfig();
                 $src->statement("CREATE DATABASE `$scratch` CHARACTER SET latin1 COLLATE latin1_general_ci");
@@ -186,18 +187,43 @@ return [
                     config(['database.connections.qa25scratch' => $cfg]);
                     \Illuminate\Support\Facades\DB::purge('qa25scratch');
                     $sc = \Illuminate\Support\Facades\DB::connection('qa25scratch');
-                    foreach (['permissions', 'permission_checks', 'permission_unchecks', 'modules'] as $tb) {
+                    foreach (['permissions', 'permission_checks', 'permission_unchecks', 'modules', 'role_permissions', 'role_allow_backdates', 'role_allow_backdate_transactions'] as $tb) {
                         $sc->statement("CREATE TABLE `$tb` LIKE `$db`.`$tb`");
                     }
-                    foreach (preg_split('/;\s*\n/', trim($sql)) as $stmt) {
-                        $stmt = trim($stmt);
-                        if ($stmt !== '') {
-                            $sc->unprepared($stmt);
+                    $sc->statement("INSERT INTO `permissions` SELECT * FROM `$db`.`permissions` WHERE id_permission NOT IN (" . implode(',', $seedIds) . ')');
+                    $preBase = $sc->table('permissions')->count();
+                    $now = date('Y-m-d H:i:s');
+                    foreach ([1, 2, 3] as $role) {
+                        foreach (range(1133, 1138) as $legacy) {
+                            $sc->table('role_permissions')->insert(['id_role' => $role, 'id_permission' => $legacy, 'permission_name' => 'Legacy ' . $legacy, 'created_at' => $now]);
                         }
                     }
+                    $sc->table('role_permissions')->insert(['id_role' => 3, 'id_permission' => 1140, 'permission_name' => null, 'created_at' => $now]);
+                    $run = function ($body) use ($sc) {
+                        foreach (preg_split('/;\s*\n/', trim($body)) as $stmt) {
+                            $stmt = trim($stmt);
+                            if ($stmt !== '') {
+                                $sc->unprepared($stmt);
+                            }
+                        }
+                    };
                     $pairs = function ($table, $ids) use ($sc) {
                         return $sc->table($table)->whereIn('id_permission', $ids)->orWhereIn('id_permission_ref', $ids)->count();
                     };
+                    $rpState = function () use ($sc) {
+                        $out = ['holds' => [], 'counts' => [], 'null_names' => 0, 'legacy' => 0];
+                        foreach ([1, 2, 3] as $role) {
+                            foreach ([1139, 1140] as $id) {
+                                $out['holds'][$role][$id] = $sc->table('role_permissions')->where('id_role', $role)->where('id_permission', $id)->pluck('permission_name')->all();
+                            }
+                            $out['counts'][$role] = $sc->table('role_permissions')->where('id_role', $role)->count();
+                        }
+                        $out['null_names'] = $sc->table('role_permissions')->whereIn('id_role', [1, 2, 3])->whereNull('permission_name')->count();
+                        $out['legacy'] = $sc->table('role_permissions')->whereBetween('id_permission', [1133, 1138])->count();
+
+                        return $out;
+                    };
+                    $run($sql);
                     $result = [
                         'p1139' => $sc->table('permissions')->where('id_permission', 1139)->count(),
                         'p1140' => $sc->table('permissions')->where('id_permission', 1140)->count(),
@@ -207,6 +233,13 @@ return [
                         'checks_old'   => $pairs('permission_checks', range(1133, 1138)),
                         'unchecks_old' => $pairs('permission_unchecks', range(1133, 1138)),
                     ];
+                    $result['pre_legacy'] = $sc->table('role_permissions')->whereBetween('id_permission', [1133, 1138])->count();
+                    $run($roleSql);
+                    $result['active'] = $sc->table('permissions')->where('is_active', 1)->count();
+                    $result['base'] = $preBase;
+                    $result['rp'] = $rpState();
+                    $run($roleSql); // role_permissions.sql dijalankan ulang (setup ulang): hasil sama, tanpa duplikat
+                    $result['rp_again'] = $rpState();
                 } catch (\Throwable $e) {
                     $error = get_class($e) . ': ' . substr($e->getMessage(), 0, 300);
                 } finally {
@@ -214,9 +247,21 @@ return [
                     \Illuminate\Support\Facades\DB::purge('qa25scratch');
                 }
             });
-            $t->eq($error, null, 'seed permission_salesman.sql dijalankan utuh di DB scratch tanpa error');
-            $t->eq($result, ['p1139' => 1, 'p1140' => 1, 'old' => 0, 'checks' => count($wantChecks), 'unchecks' => count($wantUnchecks), 'checks_old' => 0, 'unchecks_old' => 0],
+            $t->eq($error, null, 'seed permission_salesman.sql + role_permissions.sql dijalankan utuh di DB scratch tanpa error');
+            $t->eq(array_intersect_key($result ?? [], array_flip(['p1139', 'p1140', 'old', 'checks', 'unchecks', 'checks_old', 'unchecks_old'])),
+                ['p1139' => 1, 'p1140' => 1, 'old' => 0, 'checks' => count($wantChecks), 'unchecks' => count($wantUnchecks), 'checks_old' => 0, 'unchecks_old' => 0],
                 'scratch: 1139 dan 1140 satu baris, checks/unchecks sesuai, tanpa 1133-1138');
+            $t->eq($result['pre_legacy'] ?? null, 18, 'scratch (pra-seed role): sisa grant lama 1133-1138 untuk role 1/2/3 ada (6 id x 3 role) sebelum role_permissions.sql');
+            $t->true(($result['base'] ?? 0) > 100 && ($result['active'] ?? 0) > ($result['base'] ?? 0), 'scratch: permissions dasar disalin dari DB QA (' . ($result['base'] ?? 0) . ') dan seed menambah permission aktif (' . ($result['active'] ?? 0) . ')');
+            foreach ([1, 2, 3] as $role) {
+                foreach ([1139 => 'Opname Document', 1140 => 'Folder Permissions'] as $id => $name) {
+                    $t->eq($result['rp']['holds'][$role][$id] ?? null, [$name], "scratch (seed utuh): role $role memegang $name ($id) tepat satu baris dengan permission_name = seed");
+                }
+                $t->eq($result['rp']['counts'][$role] ?? null, $result['active'] ?? -1, "scratch (seed utuh): role $role memegang semua permission aktif (" . ($result['active'] ?? '?') . ')');
+            }
+            $t->eq($result['rp']['legacy'] ?? null, 0, 'scratch (seed utuh): tanpa role_permissions untuk id 1133-1138 (grant lama dibuang)');
+            $t->eq($result['rp']['null_names'] ?? null, 0, 'scratch (seed utuh): tanpa permission_name NULL pada role 1/2/3 (baris NULL role 3 atas Folder Permissions ditulis ulang = nama seed)');
+            $t->eq($result['rp_again'] ?? null, $result['rp'] ?? 'x', 'scratch: role_permissions.sql dijalankan ulang menghasilkan keadaan yang sama (idempoten)');
             $left = $c->selectOne("SELECT COUNT(*) n FROM information_schema.schemata WHERE schema_name LIKE 'qa25_scratch_%'")->n;
             $t->eq($left, 0, 'DB scratch dibuang');
             $t->note('MANUAL (Gate 2 epic): tanpa lisensi Salesman Activity permission tidak ada -> dibuktikan lewat baris seed yang hanya di permission_salesman.sql; tukar lisensi sungguhan tidak dijalankan (PROFILES kosong)');

@@ -151,12 +151,12 @@ return [
                     $get('superadmin role 2', ['Z', 'G', 'E']);
 
                     // --- (rev EPIC K-3 a) role List Archive saja (lokasi asli QA_USER): verifications 403 GE0114 (tanpa Opname Document);
-                    //     dengan Opname Document (grant sementara role 29): 200, sesi root & buatan sendiri tetap terlihat, tidak 500
-                    $set(['role' => Q27_ROLE_LIST_ONLY, 'emp' => ['SMR']]);
+                    //     dengan Opname Document (grant sementara ke preset QA27-ROLE-LIST): 200, sesi root & buatan sendiri tetap terlihat, tidak 500
+                    $set(['role' => Q27_PRESET_LIST, 'emp' => ['SMR']]);
                     $r = q27_verif($t, $s);
                     q27_deny($t, $r, 403, 'GE0114', 'role List Archive saja (SMR) tanpa Opname Document');
                     $t->true(empty($r[1]['result']), 'role List Archive saja: tanpa result');
-                    q27_with_grant($t, Q27_ROLE_LIST_ONLY, Q27_OD, function () use ($t, $s, $ids, $q27_ids) {
+                    q27_with_grant($t, Q27_PRESET_LIST, Q27_OD, function () use ($t, $s, $ids, $q27_ids) {
                         $r = q27_verif($t, $s);
                         $t->status($r, 200, 'role List Archive saja + Opname Document (SMR)');
                         $t->true(in_array('G', $q27_ids($r[1]['result'], $ids), true) && in_array('Z', $q27_ids($r[1]['result'], $ids), true), 'role List Archive saja + Opname Document: sesi Z (OTH) dan G (sendiri) terlihat');

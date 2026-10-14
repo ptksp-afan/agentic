@@ -14,10 +14,13 @@
  * Lihat kepala fixture.php untuk angka tangan dan format Scope ("<folder> + N subfolder", root "Semua Arsip · root" / "All Archive · root").
  *
  * User [default] = QA_USER (role 3, pemegang Opname Document, semua lokasi, bahasa ID, bukan superadmin).
- * User [user2] = QA_USER2 (Sales Supervisor, lokasi SMR, EN, role asli TANPA Opname Document = "R0"):
- *   - AC-27 R0: role asli tanpa permission -> tanpa CTA, tanpa riwayat di DOM, tanpa request opnames*;
- *   - AC-21: `Opname Document` diberikan SEMENTARA lewat fixture.php grant-od (baris role_permissions yang dibuat saja, dicari per NAMA,
- *     dicabut persis di finally + revoke-od + down) lalu halaman dimuat ulang (FE membaca permission dari auth/info saat mount).
+ * User [user2] = QA_USER2 (lokasi SMR, EN) di PRESET role QA28-ROLE-E2E-R0 tanpa Opname Document = "R0" (ED-1149; dipasang fixture.php `up`
+ *   sebelum login dari NAMA permission eksplisit: List Archive/Add/Update/Delete/Move/View/Handover/Receive + Allow Access Website; role
+ *   developer 3/5/6/22/29 tidak dibaca, tidak di-grant, tidak di-revoke; user_roles QA_USER2 dipulihkan persis di `down`):
+ *   - AC-27 R0: preset tanpa permission -> tanpa CTA, tanpa riwayat di DOM, tanpa request opnames*;
+ *   - AC-21: `Opname Document` diberikan SEMENTARA ke PRESET itu lewat fixture.php grant-od (baris role_permissions yang dibuat saja, dicari
+ *     per NAMA, ditolak untuk role non-preset; dicabut persis di finally + revoke-od + down) lalu halaman dimuat ulang (FE membaca permission
+ *     dari auth/info saat mount).
  *
  * Mutasi: Display Setting `documentArchiveOpnameHistory` (baris global; dipulihkan spec lalu fixture), Confirm Opname GAMMA lewat UI
  * (sesi baru dibuang fixture), grant sementara (role_permissions). Test berbagi state itu, jadi tiap test mengambil kunci lintas-proses
@@ -1602,9 +1605,9 @@ test.describe('ED-1028 Opname History', () => {
     monitor.check();
   });
 
-  // ------------------------------------------------------------------------------------------- AC-27 R0: role asli user2 tanpa Opname Document
+  // ------------------------------------------------------------------------------------------- AC-27 R0: user2 di preset tanpa Opname Document
   test('[user2] ED-1028 AC-27 R0 (role List Archive tanpa Opname Document): tanpa CTA riwayat, tanpa .archive-opname-history di DOM, tanpa request opnames*; daftar Setup tanpa documentArchiveOpnameHistory; show dan GET opnames 403', async ({ app, page, monitor }) => {
-    revokeOd(); // jaga-jaga: sisa grant run yang mati dicabut; role asli user2 tidak memegang Opname Document
+    revokeOd(); // jaga-jaga: sisa grant run yang mati dicabut; preset R0 user2 tidak memegang Opname Document
     const calls = trace(page);
     await openArchive(app, page);
     const L = LANG.en;
@@ -1685,7 +1688,8 @@ test.describe('ED-1028 Opname History', () => {
     const grant = grantOd();
     monitor.note(`[user2] grant sementara Opname Document: ${JSON.stringify(grant)}`);
     try {
-      expect(grant.made.length, '[user2] grant: satu baris role_permissions dibuat per role (role belum memegangnya)').toBe(grant.roles.length);
+      expect(grant.preset, '[user2] grant hanya ke role PRESET QA28-ROLE-E2E-*').toBe(true);
+      expect(grant.made.length, '[user2] grant: satu baris role_permissions dibuat per role (preset belum memegangnya)').toBe(grant.roles.length);
       await openArchive(app, page); // halaman baru: FE membaca permission (auth/info) sesudah grant
       const { resp } = await openHistoryFromModal(app, page, 'en');
       expect(resp.status(), '[user2] GET opnames 200 (dengan Opname Document)').toBe(200);

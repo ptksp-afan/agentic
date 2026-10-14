@@ -138,10 +138,12 @@ return [
         'run'   => function ($t) {
             $s = $t->session();
             q1_purge($t);
+            q1_role_purge($t);
             q1_add($t, ['name' => 'QA01-TANPA-LOKASI', 'type' => 1, 'all' => 0, 'locs' => []]);
             q1_add($t, ['name' => 'QA01-SMR', 'type' => 1, 'all' => 0, 'locs' => ['SMR']]);
 
             try {
+                $roleMove = q1_role($t, 'MOVE', ['Allow Access Website', 'List Archive', 'Move Archive', 'Handover Document', 'Receive Document']);
                 $has = function ($set) use ($t, $s) {
                     $r = q1_list($t, $s, ['pagination' => 100]);
                     $t->status($r, 200, 'root');
@@ -150,7 +152,7 @@ return [
                     return [in_array('QA01-TANPA-LOKASI', $n, true), in_array('QA01-SMR', $n, true), $r];
                 };
 
-                q1_with_user($t, ['role' => 1, 'emp' => ['JOG']], function ($set) use ($t, $has) {
+                q1_with_user($t, ['role' => 1, 'emp' => ['JOG']], function ($set) use ($t, $has, $roleMove) {
                     list($a, $b, $r) = $has($set);
                     $t->true($a && $b, 'is_superadmin 1 (employee JOG): melihat QA01-TANPA-LOKASI dan QA01-SMR');
                     $t->true(in_array('CABANG - SEMARANG', q1_names($r), true), 'is_superadmin 1: CABANG - SEMARANG tampil');
@@ -163,10 +165,10 @@ return [
                     list($a, $b) = $has($set);
                     $t->true($a && $b, 'is_superadmin 1 tanpa employee (seperti equal_admin): melihat keduanya');
 
-                    // bukan bypass
-                    $set(['role' => 16, 'emp' => ['JOG']]);
+                    // bukan bypass (ED-1149: role biasa = fixture QA01-ROLE-MOVE dari nama permission, bukan role developer 16)
+                    $set(['role' => $roleMove, 'emp' => ['JOG']]);
                     list($a, $b) = $has($set);
-                    $t->true(!$a && !$b, 'role biasa (16) employee JOG: tidak melihat keduanya');
+                    $t->true(!$a && !$b, 'role biasa (fixture MOVE) employee JOG: tidak melihat keduanya');
 
                     $set(['role' => 3, 'emp' => ['JOG']]);
                     list($a, $b) = $has($set);
@@ -179,6 +181,7 @@ return [
                 });
             } finally {
                 q1_purge($t);
+                q1_role_purge($t);
             }
             q1_assert_clean($t, 'data uji AC-4 sudah dibuang');
         },

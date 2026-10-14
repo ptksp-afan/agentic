@@ -11,7 +11,7 @@
  *   0QA29-Q On (A View saja, B View+Update)         0QA29-R Off > 0QA29-R-R1 On (A penuh)
  *   0QA29-J On (A View saja) > J-JA On (A penuh) | J-JB On (tanpa baris A) | J-JC Off (B View+Store)       0QA29-F Off, tanpa baris
  * Profil: [default] = A (QA_USER, role 3 non-bypass = Update Folder + Folder Permissions, employee dibatasi lokasi MGL, bahasa ID),
- *         [user2]   = QA_USER2, bahasa EN: E (role 18, keadaan awal fixture, tanpa Update Folder dan tanpa Folder Permissions), lalu per test
+ *         [user2]   = QA_USER2, bahasa EN: E (preset QA29F-ROLE-E, keadaan awal fixture, tanpa Update Folder dan tanpa Folder Permissions), lalu per test
  *                     `fixture.php uprofile <M|D|E>`: M = Folder Permissions tanpa Update Folder, D = Update Folder tanpa Folder Permissions.
  *                     FE membaca peran dari GET auth/info, jadi setiap tukar peran diikuti muat ulang penuh (app.open) dan dipulihkan di finally.
  * B dan B2 = dua user target hasil pilihan fixture (lihat `fixture.php ids`).
@@ -305,7 +305,7 @@ const B0 = { P: [1, 0, 0, 0], 'P-C2': [1, 0, 0, 1], Q: [1, 1, 0, 0], 'J-JC': [1,
 const ITEM_RE = /Set Permission by User|Atur Izin per User/;
 const flagsOf = (p) => [p.is_view ?? p.isView, p.is_update ?? p.isUpdate, p.is_delete ?? p.isDelete, p.is_store ?? p.isStore];
 
-/** Jalankan $fn dengan role QA_USER2 = profil D|M; role E (role 18) selalu dipulihkan sesudahnya. */
+/** Jalankan $fn dengan role QA_USER2 = profil D|M; role E (preset QA29F-ROLE-E) selalu dipulihkan sesudahnya. */
 async function asProfile(profile, fn) {
   fixture('uprofile', profile);
   try {
@@ -1967,7 +1967,7 @@ test.describe('ED-1029 set permission by user', () => {
       await box(root, fullName('P-C1'), 'View').check();
       const dirty = (await tableRows(root)).map((r) => r.boxes.map((b) => b.checked));
 
-      // di antara buka dan Save: role pengguna diganti ke role tanpa Folder Permissions (role E = role 18)
+      // di antara buka dan Save: role pengguna diganti ke role tanpa Folder Permissions (role E = preset QA29F-ROLE-E)
       fixture('uprofile', 'E');
       const put = page.waitForResponse((r) => r.request().method() === 'PUT' && GET_RE.test(r.url()), { timeout: 45000 });
       const nGet = calls.filter((c) => c.method === 'GET').length;
@@ -2026,7 +2026,7 @@ test.describe('ED-1029 set permission by user', () => {
 
   // ------------------------------------------------------------------------------------------------ AC-1, AC-3 (E)
   test('[user2] ED-1029 AC-1 E: menu "+" tanpa Set Permission by User (di root dan di dalam folder)', async ({ app, page, monitor, session }) => {
-    monitor.note(`DB sesi ${session.dbName}; E=QA_USER2 sementara role 18 (List Archive + Handover/Receive/Add Document, tanpa Update Folder dan tanpa Folder Permissions)`);
+    monitor.note(`DB sesi ${session.dbName}; E=QA_USER2 sementara preset QA29F-ROLE-E (List Archive + Handover/Receive/Add Document, tanpa Update Folder dan tanpa Folder Permissions)`);
     await app.open('/archives', { waitFor: '.archive-page .ant-table' });
     const items = await menuTexts(await openPlus(page));
     monitor.note(`"+" di root (E): ${items.join(' | ')}`);

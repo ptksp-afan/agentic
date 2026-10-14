@@ -2,7 +2,7 @@
 /**
  * ED-1028 - akses baca & permission: AC-12 (rev, K-8 a: user2 BER-Opname Document membaca opnames/{id} & /documents sesi terlihat = 200;
  * 404 ARCHIVE412 untuk sesi tak terlihat / tak ada / id bekas draft / sisa baris status 1 dan 3; alur opname ED-1026 jalan), AC-14 (rev:
- * R0 = role asli user2 tanpa Opname Document dan role 22 tanpa permission Archive: 403 GE0114 parameter "Opname Document" tanpa data;
+ * R0 = preset QA28-ROLE-R0 (user2 tanpa Opname Document; ED-1149: bukan role 5) dan preset QA28-ROLE-NONE (tanpa permission Archive; bukan role 22): 403 GE0114 parameter "Opname Document" tanpa data;
  * select opname-users options []; select folders tetap scope), X-1 (display setting lewat API: kolom aktif = kunci baris, sort/filter
  * kolom tersembunyi tetap jalan), X-2 (banyak sesi: waktu respons + keluaran), X-3 (isolasi: gantian user tanpa bocor state; tenant tunggal =
  * tidak bisa diverifikasi). Permission dicari per NAMA; grant sementara & role user2 dipulihkan persis (jumlah + CRC role_permissions).
@@ -29,13 +29,16 @@ return [
         'run'   => function ($t) {
             $s = $t->session();
             q28_guard($t, function () use ($t, $s) {
-                // prasyarat per NAMA permission (bukan id): role asli user2 = List Archive TANPA Opname Document (R0); Opname Document hanya dari grant sementara
+                // prasyarat per id_permission (join permissions, BR-3): user2 ada di preset R0 (List Archive TANPA Opname Document); Opname Document hanya dari grant sementara KE PRESET
                 $roles = q28_u2_roles_now($t);
-                $names = $t->db()->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')
-                    ->whereIn('rp.id_role', $roles)->pluck('p.permission_name')->all();
+                $t->eq(count($roles), 1, 'prasyarat: QA_USER2 hanya di satu role (preset R0)');
+                $t->eq($t->db()->table('roles')->whereIn('id_role', $roles)->value('role_name'), Q28_ROLE_PREFIX . Q28_PRESET_R0, 'prasyarat: role user2 = preset QA28-ROLE-R0 (bukan role developer)');
+                $names = q28_role_names($t, $roles[0]);
                 $t->true(in_array(Q28_LA, $names, true), 'prasyarat: role user2 punya ' . Q28_LA . ' (dicari per nama)');
                 $t->true(in_array(Q28_OD, $names, true), 'prasyarat: role user2 punya ' . Q28_OD . ' (grant sementara QA28 aktif)');
-                $t->eq($t->db()->table('role_permissions')->where('created_by', 'QA28')->whereIn('id_role', $roles)->count(), count($roles), 'prasyarat: ' . Q28_OD . ' milik role user2 HANYA dari grant sementara (role asli = R0)');
+                $odId = q28_perm_id($t, Q28_OD);
+                $t->eq($t->db()->table('role_permissions')->where('created_by', 'QA28')->where('id_permission', $odId)->whereIn('id_role', $roles)->count(), count($roles), 'prasyarat: ' . Q28_OD . ' milik role user2 HANYA dari grant sementara (baris created_by QA28 = jumlah role preset)');
+                $t->eq($t->db()->table('role_permissions')->where('created_by', 'QA28')->where('id_permission', $odId)->count(), count($roles), 'prasyarat: satu-satunya baris Opname Document berpenanda QA28 = grant ke preset');
                 $uMe = (string) q28_uname($t);
 
                 $x = null;
@@ -170,7 +173,7 @@ return [
 
     [
         'id'    => 'AC-14',
-        'title' => '(rev, K-8 a) R0 = role asli user2 (List Archive tanpa Opname Document): GET opnames, opnames/{S}, /documents (juga id tidak ada & id_archive di luar scope) = 403 GE0114 parameter "Opname Document" tanpa data; select opname-users 200 options []; select folders tetap = scope; role 22 (tanpa permission Archive) = 403 GE0114 "Opname Document"; tulis opname 403; tanpa token 401; dengan grant sementara = 200; role & grant dipulihkan persis',
+        'title' => '(rev, K-8 a; ED-1149) R0 = preset QA28-ROLE-R0 untuk user2 (List Archive tanpa Opname Document; bukan role 5): GET opnames, opnames/{S}, /documents (juga id tidak ada & id_archive di luar scope) = 403 GE0114 parameter "Opname Document" tanpa data; select opname-users 200 options []; select folders tetap = scope; preset QA28-ROLE-NONE (tanpa permission Archive; bukan role 22) = 403 GE0114 "Opname Document"; tulis opname 403; tanpa token 401; dengan grant sementara = 200; role & grant dipulihkan persis',
         'run'   => function ($t) {
             $s = $t->session();
             q28_guard($t, function () use ($t, $s) {
@@ -180,13 +183,13 @@ return [
                     $x = q28_tree($t);
                     $ids = q28_hfix($t, $s, $x);
                 });
-                $snap = q28_u2_snapshot($t);
+                $snap = q28_u2_snapshot($t); // keadaan di dalam guard (preset R0); user_roles ASLI dipegang jurnal guard
                 $t->true(count($snap) >= 1, 'prasyarat: user2 punya role');
-                file_put_contents(q28_u2_journal(), json_encode($snap));
                 $roles = q28_u2_roles_now($t);
-                $names = $t->db()->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')
-                    ->whereIn('rp.id_role', $roles)->pluck('p.permission_name')->all();
-                $t->true(in_array(Q28_LA, $names, true) && !in_array(Q28_OD, $names, true), 'prasyarat: R0 = role asli user2 punya ' . Q28_LA . ' TANPA ' . Q28_OD . ' (per nama)');
+                $t->eq($t->db()->table('roles')->whereIn('id_role', $roles)->pluck('role_name')->all(), [Q28_ROLE_PREFIX . Q28_PRESET_R0], 'prasyarat: R0 = preset QA28-ROLE-R0 (bukan role developer)');
+                $names = q28_role_names($t, $roles[0]);
+                $t->true(in_array(Q28_LA, $names, true) && !in_array(Q28_OD, $names, true), 'prasyarat: R0 = preset user2 punya ' . Q28_LA . ' TANPA ' . Q28_OD . ' (per id_permission)');
+                q28_preset($t, Q28_PRESET_NONE); // preset NONE dibuat DULU supaya jumlah+CRC role_permissions "sebelum" sudah memuat baris dasarnya
                 $rpBefore = q28_rp_sum($t);
                 $deny = function ($label, $r) use ($t, $ids) {
                     q28_no500($t, $r, $label);
@@ -241,20 +244,19 @@ return [
                     $rq = $t->call($s, 'GET', Q28_SEL_BASE . '/opname-users');
                     $t->true(in_array('qa28alice', array_column($rq[1]['result']['options'], 'value'), true), 'kontrol: pemegang Opname Document melihat qa28alice di select opname-users');
 
-                    // --- role 22 'Pusat - Admin AR/AP': tanpa permission Archive apa pun -> 403 GE0114 "Opname Document" (bukan "List Archive")
-                    q28_u2_roles($t, [22]);
-                    $perms = $t->db()->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')
-                        ->where('rp.id_role', 22)->pluck('p.permission_name')->all();
-                    $t->true(!in_array(Q28_LA, $perms, true) && !in_array(Q28_OD, $perms, true), 'prasyarat: role 22 tanpa ' . Q28_LA . ' dan tanpa ' . Q28_OD);
+                    // --- (ED-1149) preset QA28-ROLE-NONE (akses website saja; menggantikan role 22): tanpa permission Archive apa pun -> 403 GE0114 "Opname Document" (bukan "List Archive")
+                    $roleNone = q28_u2_use($t, Q28_PRESET_NONE);
+                    $perms = q28_role_names($t, $roleNone);
+                    $t->true(!in_array(Q28_LA, $perms, true) && !in_array(Q28_OD, $perms, true) && in_array('Allow Access Website', $perms, true), 'prasyarat: preset NONE tanpa ' . Q28_LA . ' dan tanpa ' . Q28_OD . ' (hanya akses website; per id_permission)');
                     foreach ($urls as $label => $path) {
-                        $deny("role 22: $label", $t->call($s2, 'GET', Q28_BASE . $path));
+                        $deny("preset NONE: $label", $t->call($s2, 'GET', Q28_BASE . $path));
                     }
                     $ru = $t->call($s2, 'GET', Q28_SEL_BASE . '/opname-users');
-                    $t->eq([$ru[0], $ru[1]['result']['options'] ?? null], [200, []], 'role 22: select opname-users 200 options []');
+                    $t->eq([$ru[0], $ru[1]['result']['options'] ?? null], [200, []], 'preset NONE: select opname-users 200 options []');
 
-                    // --- role asli dipulihkan: tetap 403 (List Archive saja tidak cukup); lalu dengan grant sementara Opname Document: 200
+                    // --- preset R0 dipulihkan: tetap 403 (List Archive saja tidak cukup); lalu dengan grant sementara Opname Document (ke preset): 200
                     q28_u2_restore($t, $snap);
-                    $deny('role asli dipulihkan: GET opnames', $t->call($s2, 'GET', Q28_BASE . '/opnames'));
+                    $deny('preset R0 dipulihkan: GET opnames', $t->call($s2, 'GET', Q28_BASE . '/opnames'));
                     q28_with_grant($t, $roles, Q28_OD, function () use ($t, $s2, $ids) {
                         foreach (['/opnames' => 200, '/opnames/' . $ids['A'] => 200, '/opnames/' . $ids['A'] . '/documents' => 200, '/opnames/999999999999' => 404] as $path => $http) {
                             $r = $t->call($s2, 'GET', Q28_BASE . $path);
@@ -266,11 +268,10 @@ return [
                     $deny('grant dicabut: GET opnames kembali 403', $t->call($s2, 'GET', Q28_BASE . '/opnames'));
                     $t->call($s2, 'GET', 'api/v5/auth/log-out');
                 } finally {
-                    q28_u2_restore($t, $snap);
-                    @unlink(q28_u2_journal());
+                    q28_u2_restore($t, $snap); // kembali ke keadaan guard (preset R0); jurnal guard memulihkan user_roles ASLI
                     q28_grant_recover($t);
                 }
-                $t->eq(json_encode(q28_u2_snapshot($t)), json_encode($snap), 'role user2 dipulihkan persis');
+                $t->eq(json_encode(q28_u2_snapshot($t)), json_encode($snap), 'role user2 (preset R0) dipulihkan persis ke keadaan awal AC');
                 $t->eq(json_encode(q28_rp_sum($t)), json_encode($rpBefore), 'role_permissions sama persis (grant sementara dicabut)');
 
                 // tanpa token: 401 (semua endpoint baru & diubah)

@@ -4,9 +4,10 @@
  * ED-1024 - layar Archive (tanpa perubahan kode FE; diverifikasi e2e).
  *
  * Keadaan user QA dipasang fixture (fixtures.json -> state.php) menurut env E2E_STATE:
- *   jog    : AC-16  (QA_USER = role 26 Pusat - Support + employee lokasi JOG saja; is_superadmin 4, tidak di-bypass)
- *   super  : AC-17  (QA_USER = role 1 is_superadmin 1; employee JOG saja; satu dokumen Billing diaktifkan sementara)
- *   noperm : AC-13 sisi FE (role 28 tanpa permission Archive = simulasi tenant tanpa lisensi; lisensi sungguhan = MANUAL Gate 2)
+ *   jog    : AC-16  (QA_USER = PRESET QA24-ROLE-E2E-JOG (izin Archive lengkap, nama permission eksplisit) + employee lokasi JOG saja; is_superadmin 4, tidak di-bypass)
+ *   super  : AC-17  (QA_USER = role sistem 1 is_superadmin 1; employee JOG saja; satu dokumen Billing MILIK FIXTURE BILL/QA24-E2E/00001 dibuat lalu dibuang)
+ *   noperm : AC-13 sisi FE (PRESET QA24-ROLE-E2E-NOPERM tanpa permission Archive = simulasi tenant tanpa lisensi; lisensi sungguhan = MANUAL Gate 2)
+ * (ED-1149: tidak ada lagi role developer 26/28 atau baris archives developer yang dipakai/diubah; role 1 = role sistem, hanya user_roles QA_USER yang ditukar.)
  * Jalankan satu keadaan per run, mis.:  E2E_STATE=jog scripts/e2e/run.sh ED-1024 -- --grep "AC-16|route"
  * Semua flow NON-mutasi: modal/drawer dibuka lalu ditutup tanpa simpan.
  */
@@ -106,7 +107,7 @@ test.describe('ED-1024 Archive', () => {
   test('[default] ED-1024 AC-16 user JOG: layar Archive, scope lokasi, filter Type, drawer & modal', async ({ app, page, monitor, session }) => {
     needState('jog');
     traceArchiveApi(page, monitor);
-    monitor.note(`DB sesi ${session.dbName}; state=${STATE}: QA_USER role 26 (is_superadmin 4) + employee lokasi JOG saja`);
+    monitor.note(`DB sesi ${session.dbName}; state=${STATE}: QA_USER preset QA24-ROLE-E2E-JOG (is_superadmin 4) + employee lokasi JOG saja`);
 
     // 1. layar terbuka tanpa error, menu Archive tampil (lisensi ada), root tanpa CABANG - SEMARANG
     const rootResp = listResponse(page, (u) => !folderParam(u));
@@ -266,7 +267,7 @@ test.describe('ED-1024 Archive', () => {
   test('[default] ED-1024 AC-17 superadmin (is_superadmin 1): root lengkap, filter Type Billing', async ({ app, page, monitor, session }) => {
     needState('super');
     traceArchiveApi(page, monitor);
-    monitor.note(`DB sesi ${session.dbName}; state=${STATE}: QA_USER role 1 (is_superadmin 1) + employee lokasi JOG saja; dokumen Billing diaktifkan sementara`);
+    monitor.note(`DB sesi ${session.dbName}; state=${STATE}: QA_USER role 1 (is_superadmin 1) + employee lokasi JOG saja; dokumen Billing milik fixture dibuat sementara`);
 
     const rootResp = listResponse(page, (u) => !folderParam(u));
     await app.open(PATH, { waitFor: '.archive-page .ant-table' });
@@ -322,7 +323,7 @@ test.describe('ED-1024 Archive', () => {
   test('[default] ED-1024 AC-13 FE (simulasi): role tanpa permission Archive - menu hilang, BE menolak, route', async ({ app, page, monitor, session }) => {
     needState('noperm');
     traceArchiveApi(page, monitor);
-    monitor.note(`DB sesi ${session.dbName}; state=${STATE}: QA_USER role 28 (tanpa List Archive; lisensi Salesman Activity TETAP aktif) = simulasi akibat lisensi tanpa seed permission Archive`);
+    monitor.note(`DB sesi ${session.dbName}; state=${STATE}: QA_USER preset QA24-ROLE-E2E-NOPERM (tanpa List Archive; lisensi Salesman Activity TETAP aktif) = simulasi akibat lisensi tanpa seed permission Archive`);
 
     const infoP = page.waitForResponse((r) => /\/auth\/info(\?|$)/.test(r.url()), { timeout: 30000 });
     const listP = page.waitForResponse((r) => r.request().method() === 'GET' && LIST_RE.test(r.url()), { timeout: 30000 }).catch(() => null);

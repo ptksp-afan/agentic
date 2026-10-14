@@ -2,7 +2,7 @@
 /**
  * ED-1028 (REVISI 2026-10-10, subtask ED-1101 / ED-1102):
  *   AC-28  display setting `documentArchiveOpnameHistory` (K-8 a, K-9 a; entri SELURUH MODUL di peta saringan ColumnDisplaySettingService
- *          milik ED-1027): R0 (role asli user2 = List Archive tanpa Opname Document) -> GET / PUT setting/display-columns/
+ *          milik ED-1027): R0 (preset QA28-ROLE-R0 untuk user2 = List Archive tanpa Opname Document; ED-1149: bukan role 5) -> GET / PUT setting/display-columns/
  *          documentArchiveOpnameHistory = 403 GE0114 parameter "Opname Document", DB tetap, baris TIDAK dibuat bila belum ada; juga varian
  *          nama (huruf besar, spasi akhir: kolasi DB tak peka); GET setting/display-columns (index, juga search=documentArchive) tanpa baris
  *          itu dan `total` ikut berkurang; documentArchive tetap 200 (aturan ED-1027 AC-24); pemegang (profil default): baris tampil,
@@ -30,9 +30,10 @@ return [
                 $docRowArr = (array) $docRow;
 
                 $roles = q28_u2_roles_now($t);
-                $names = $t->db()->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')
-                    ->whereIn('rp.id_role', $roles)->pluck('p.permission_name')->all();
-                $t->true(in_array(Q28_LA, $names, true) && !in_array(Q28_OD, $names, true), 'prasyarat: R0 = role asli user2: ' . Q28_LA . ' tanpa ' . Q28_OD . ' (per nama)');
+                $t->eq($t->db()->table('roles')->whereIn('id_role', $roles)->pluck('role_name')->all(), [Q28_ROLE_PREFIX . Q28_PRESET_R0], 'prasyarat: R0 = preset QA28-ROLE-R0 (ED-1149: bukan role developer)');
+                $names = q28_role_names($t, $roles[0]);
+                $t->true(in_array(Q28_LA, $names, true) && !in_array(Q28_OD, $names, true), 'prasyarat: R0 = preset user2: ' . Q28_LA . ' tanpa ' . Q28_OD . ' (per id_permission)');
+                $ulBefore = q28_sum($t, 'updater_logs', q28_cols($t, 'updater_logs'));
                 $s2 = q28_u2_session($t);
 
                 $deny = function ($label, $r) use ($t) {
@@ -186,6 +187,7 @@ return [
                 q28_ds_restore($t, $ds);
                 $t->eq(json_encode(q28_dsrow($t)), json_encode($ds), 'baris documentArchiveOpnameHistory dipulihkan persis (ke keadaan sebelum AC)');
                 $t->eq(q28_sum($t, 'column_display_settings', q28_cols($t, 'column_display_settings')), $fpBefore, 'sidik jari seluruh tabel column_display_settings sama dengan sebelum AC');
+                $t->eq(q28_sum($t, 'updater_logs', q28_cols($t, 'updater_logs')), $ulBefore, 'sidik jari seluruh tabel updater_logs sama dengan sebelum AC (GET/PUT display setting tidak menulis updater_logs)');
             }, ['od' => false]);
         },
     ],

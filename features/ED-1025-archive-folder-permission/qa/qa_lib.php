@@ -115,6 +115,7 @@ if (!function_exists('q2_dbname')) {
             }
             @unlink(q2_journal());
         }
+        q2_u2_recover($t);
     }
 
     /**
@@ -372,16 +373,17 @@ if (!function_exists('q2_dbname')) {
 
     /**
      * Buat role fixture berawalan QA02-ROLE- dengan permission bernama $names (nama -> id dari tabel permissions),
-     * bukan superadmin (is_superadmin 4), aktif. Dibuang oleh q2_role_purge(). Tidak menyentuh role bawaan/pengembang.
+     * bukan superadmin (is_superadmin 4, atau $superadmin 1/2 untuk uji bypass), aktif ($active 0 = nonaktif). Dibuang oleh q2_role_purge().
+     * Tidak menyentuh role bawaan/pengembang (ED-1149 BR-1/BR-4: peran uji SELALU fixture ini, bukan role developer).
      * @return int id_role
      */
-    function q2_role($t, $label, array $names)
+    function q2_role($t, $label, array $names, $superadmin = 4, $active = 1)
     {
-        return q2_w($t, function ($c) use ($label, $names) {
+        return q2_w($t, function ($c) use ($label, $names, $superadmin, $active) {
             $now = date('Y-m-d H:i:s');
             $id = $c->table('roles')->insertGetId([
-                'role_name' => Q2_ROLE_PREFIX . $label, 'description' => 'QA ED-1025 fixture', 'is_superadmin' => 4,
-                'is_active' => 1, 'is_used' => 1, 'created_by' => 'QA02', 'created_at' => $now, 'updated_by' => 'QA02', 'updated_at' => $now,
+                'role_name' => Q2_ROLE_PREFIX . $label, 'description' => 'QA ED-1025 fixture', 'is_superadmin' => $superadmin,
+                'is_active' => $active, 'is_used' => 1, 'created_by' => 'QA02', 'created_at' => $now, 'updated_by' => 'QA02', 'updated_at' => $now,
             ]);
             foreach ($names as $name) {
                 $perm = $c->table('permissions')->where('permission_name', $name)->first();
@@ -409,6 +411,82 @@ if (!function_exists('q2_dbname')) {
                 $c->table('roles')->whereIn('id_role', $ids)->delete();
             }
         });
+    }
+
+    // ------------------------------------------------------------------ QA_USER2 (user_roles sementara, berjurnal; ED-1149)
+
+    function q2_u2_journal()
+    {
+        return __DIR__ . '/.restore-journal-q2-user2.json';
+    }
+
+    function q2_u2_id($t)
+    {
+        return $t->db()->table('users')->where('username', $t->conf('QA_USER2'))->value('id_user');
+    }
+
+    function q2_u2_rows($t)
+    {
+        return q2_rows($t->db()->table('user_roles')->where('id_user', q2_u2_id($t))->orderBy('id_user_role')->get());
+    }
+
+    function q2_u2_write($t, $uid, array $rows)
+    {
+        q2_w($t, function ($c) use ($uid, $rows) {
+            $c->table('user_roles')->where('id_user', $uid)->delete();
+            if ($rows) {
+                $c->table('user_roles')->insert($rows);
+            }
+        });
+    }
+
+    /** Pulihkan user_roles QA_USER2 dari jurnal bila run sebelumnya mati di tengah. */
+    function q2_u2_recover($t)
+    {
+        if (is_file(q2_u2_journal())) {
+            $snap = json_decode(file_get_contents(q2_u2_journal()), true);
+            if (is_array($snap) && !empty($snap['rows'])) {
+                q2_u2_write($t, $snap['uid'], $snap['rows']);
+            }
+            @unlink(q2_u2_journal());
+        }
+    }
+
+    /**
+     * Jalankan $fn($set) dengan user_roles QA_USER2 = $roleIds (role fixture QA02-ROLE-* dan/atau role sistem 1/2/3; role developer lain
+     * ditolak). $set(array $roleIds) menukar lagi. user_roles ASLI dipulihkan persis di finally (jurnal + bukti).
+     */
+    function q2_with_u2_roles($t, array $roleIds, callable $fn)
+    {
+        q2_u2_recover($t);
+        $uid = q2_u2_id($t);
+        $rows = q2_u2_rows($t);
+        $t->true($uid !== null && count($rows) >= 1, 'prasyarat: QA_USER2 ada dan punya role (dipulihkan persis sesudahnya)');
+        file_put_contents(q2_u2_journal(), json_encode(['uid' => $uid, 'rows' => $rows]));
+        $set = function (array $ids) use ($t, $uid) {
+            $now = date('Y-m-d H:i:s');
+            $new = [];
+            foreach ($ids as $role) {
+                $name = $t->db()->table('roles')->where('id_role', $role)->value('role_name');
+                if (!in_array((int) $role, [1, 2, 3], true) && strpos((string) $name, Q2_ROLE_PREFIX) !== 0) {
+                    throw new \InvalidArgumentException("role $role bukan fixture QA02-ROLE-* / role sistem 1/2/3: role developer tidak boleh dipakai (BR-1/BR-4)");
+                }
+                $new[] = ['id_user' => $uid, 'id_role' => $role, 'is_all_location' => 1, 'id_location' => null, 'created_at' => $now, 'updated_at' => $now];
+            }
+            q2_u2_write($t, $uid, $new);
+        };
+        try {
+            $set($roleIds);
+
+            return $fn($set);
+        } finally {
+            q2_u2_write($t, $uid, $rows);
+            $after = q2_u2_rows($t);
+            @unlink(q2_u2_journal());
+            if (json_encode($after) !== json_encode($rows)) {
+                $t->fail('pemulihan user_roles QA_USER2 tidak persis sama dengan sebelumnya');
+            }
+        }
     }
 
     // permission modul Archive per peran uji (nama persis di tabel permissions)

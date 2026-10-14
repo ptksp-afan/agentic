@@ -14,7 +14,9 @@
  *
  * User QA = [default] (role 3, bahasa ID), lokasi Semarang saja (diatur fixture). Mode role (env QA26_MODE):
  *   main   = role dengan Opname Document (semua test kecuali AC-3 negatif)
- *   norole = Opname Document dicabut dari role user QA (hanya test AC-3 negatif / FB-8a; dijalankan sebagai run kedua)
+ *   norole = QA_USER ditaruh sementara di PRESET role QA26-ROLE-E2E-NOOD (izin Archive eksplisit TANPA Opname Document, dipasang fixture.php `up`
+ *            sebelum login; user_roles dipulihkan persis dan preset dibuang di `down`; role developer tidak disentuh, ED-1149) - hanya test
+ *            AC-3 negatif / FB-8a; dijalankan sebagai run kedua
  *
  * Mutasi hanya pada data fixture + tabel archive_opname* (dibuang teardown). Opname root tidak pernah dikonfirmasi (menyentuh seluruh
  * dokumen root milik developer). Test berurutan (E2E_WORKERS=1): satu user, satu token.
@@ -494,7 +496,7 @@ test.describe('ED-1026 opname per folder (tanpa draft)', () => {
     monitor.check();
   });
 
-  test('[default] ED-1026 AC-3/FB-8a role TANPA Opname Document: "+" dan menu baris tanpa Opname, modal tidak di DOM, nol request opnames/*', async ({ app, page, monitor }) => {
+  test('[default] ED-1026 AC-3/FB-8a role (preset) TANPA Opname Document: "+" dan menu baris tanpa Opname, modal tidak di DOM, nol request opnames/*', async ({ app, page, monitor }) => {
     test.skip(MODE !== 'norole', 'mode norole (run kedua, QA26_MODE=norole)');
     const calls = trace(page, monitor);
     await openArchive(app, page);
@@ -1708,7 +1710,9 @@ test.describe('ED-1026 opname per folder (tanpa draft)', () => {
     monitor.note(`Steps desktop: ${JSON.stringify(d1)}`);
     expect(d1.cls, 'Steps size small').toMatch(/ant-steps-small/);
     expect(d1.cls, 'Steps type navigation').toMatch(/ant-steps-navigation/);
-    expect(d1.containerW, '.steps-container dibatasi <= 803 px').toBeLessThanOrEqual(803);
+    // (ED-1149) usang: FE 41480e37c (penyesuaian UI developer 2026-10-12, docs/specs/Archive/018) menghapus max-width 803px dari `.steps-container`;
+    // desain sekarang = container selebar isi modal, stepper tetap min-width 803px (di layar kecil terpotong + gulir otomatis, dites di 375 px di bawah)
+    expect(d1.stepsScrollW, '.ant-steps tetap min-width 803 px (container tanpa max-width sejak 41480e37c)').toBeGreaterThanOrEqual(803);
     expect(d1.containerW, 'stepper tidak memenuhi modal (lebih sempit dari body modal)').toBeLessThan(d1.bodyW - 40);
     expect(d1.scrollLeft, 'desktop Step 1: tidak tergulir').toBe(0);
     expect(d1.title, 'langkah aktif Step 1').toBe('Pilih Folder');

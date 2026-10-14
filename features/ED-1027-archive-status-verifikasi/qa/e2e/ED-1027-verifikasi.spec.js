@@ -14,18 +14,20 @@
  *   Sesi terkonfirmasi (ED-1026 rev: hanya status 2): S4 ALPHA ("0QA27-ALPHA + 2 subfolder"), S3 root, S2 GAMMA, S1 BETA (terlama,
  *   di luar 3 terbaru). Scope = format ED-1026 rev (K-14 a): "<folder> + N subfolder"; root id "Semua Arsip · root", en "All Archive · root".
  * User [default] = QA_USER (role 3, pemegang Opname Document + Folder Permissions, semua lokasi, bahasa ID).
- * User [user2] = QA_USER2 (role 5 Sales Supervisor: List Archive/Update/Move, TANPA Opname Document, bahasa EN, lokasi terbatas):
+ * User [user2] = QA_USER2 di PRESET role QA27-ROLE-E2E-U2 (ED-1149; dipasang fixture.php `up` sebelum login, dari NAMA permission eksplisit:
+ *   List Archive/Add/Update/Delete/Move/View/Handover/Receive + Allow Access Website, TANPA Opname Document; bahasa EN, lokasi terbatas;
+ *   role developer 3/5/6/22/29 tidak dibaca, tidak di-grant, tidak di-revoke; user_roles QA_USER2 dipulihkan persis di `down`):
  *   - test pertama = AC-25 (role tanpa permission: tidak ada tampilan verifikasi sama sekali, tidak ada request verifications*);
- *   - test kedua memberi role itu `Opname Document` SEMENTARA lewat fixture.php grant-od (baris role_permissions yang dibuat saja,
- *     dicabut persis di finally + revoke-od + down) lalu memuat ulang halaman (FE membaca permission dari auth/info saat mount):
- *     AC-13/16/17/26/28 versi EN dengan angka user lokasi terbatas.
+ *   - test kedua memberi PRESET itu `Opname Document` SEMENTARA lewat fixture.php grant-od (baris role_permissions yang dibuat saja,
+ *     ditolak untuk role non-preset; dicabut persis di finally + revoke-od + down) lalu memuat ulang halaman (FE membaca permission dari
+ *     auth/info saat mount): AC-13/16/17/26/28 versi EN dengan angka user lokasi terbatas.
  *
  * Mutasi: Display Setting (baris global modul diganti-ganti lalu dipulihkan fixture), Confirm Opname GAMMA lewat UI (POST opnames
- * tunggal, test terakhir [default]), Save drawer ALPHA (deskripsi), grant sementara Opname Document (role_permissions). Semuanya data
+ * tunggal, test terakhir [default]), Save drawer ALPHA (deskripsi), grant sementara Opname Document ke preset (role_permissions preset). Semuanya data
  * fixture / tabel archive_opname* / baris jurnal yang dibuang teardown.
  * Test dijalankan berurutan (E2E_WORKERS=1): satu user, satu token.
  * QA FE rev r2: default harness = 2 worker + `fullyParallel`, dan test di berkas ini mengubah state bersama (Display Setting global per
- * modul, grant `Opname Document` ke role 5, Confirm Opname). Dua worker membuat test saling menimpa (AC-13/15/17/25 gagal acak).
+ * modul, grant `Opname Document` ke preset QA_USER2, Confirm Opname). Dua worker membuat test saling menimpa (AC-13/15/17/25 gagal acak).
  * Karena itu tiap test mengambil kunci lintas-proses (`takeStateLock`, lihat bawah) sehingga hasil tidak bergantung pada `--workers`.
  */
 
@@ -62,7 +64,7 @@ function displayDb() {
   return JSON.parse(out.trim().split('\n').pop());
 }
 
-/** perintah fixture.php (grant-od / revoke-od): grant sementara `Opname Document` untuk role QA_USER2, jurnal + pencabutan persis */
+/** perintah fixture.php (grant-od / revoke-od): grant sementara `Opname Document` untuk PRESET role QA_USER2, jurnal + pencabutan persis */
 function fixtureCmd(cmd) {
   return execFileSync(config.get('PHP_BIN'), [path.join(__dirname, 'fixture.php'), cmd], { encoding: 'utf8', timeout: 90000 }).trim();
 }
@@ -1731,7 +1733,8 @@ test.describe('ED-1027 status verifikasi dokumen', () => {
     const grant = grantOd();
     monitor.note(`[user2] grant sementara Opname Document: ${JSON.stringify(grant)}`);
     try {
-      expect(grant.made.length, '[user2] grant: satu baris role_permissions dibuat (role belum memegangnya)').toBe(grant.roles.length);
+      expect(grant.preset, '[user2] grant hanya ke role PRESET QA27-ROLE-E2E-*').toBe(true);
+      expect(grant.made.length, '[user2] grant: satu baris role_permissions dibuat (preset belum memegangnya)').toBe(grant.roles.length);
       const first = await openArchive(app, page); // page baru: FE membaca permission (auth/info) sesudah grant
       const res0 = first.body.result;
       const apiSum = res0.document_verified_summary;

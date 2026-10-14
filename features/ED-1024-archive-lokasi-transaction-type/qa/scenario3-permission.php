@@ -29,10 +29,11 @@ return [
 
     [
         'id'    => 'AC-12',
-        'title' => 'Permission per route: role 6 semua 403 GE0114; role 29 (List) hanya GET 200; role 16 (Move) put-in lolos guard; role 18 (Add Document) put-in lolos; tanpa token 401',
+        'title' => 'Permission per route (ED-1149: peran = role fixture QA01-ROLE-*, bukan role developer 6/29/16/18): NOARCH semua 403 GE0114; LISTONLY hanya GET 200; MOVE put-in lolos guard; ADDDOC put-in lolos; tanpa token 401',
         'run'   => function ($t) use ($archiveRoutes) {
             $s = $t->session();
             q1_purge($t);
+            q1_role_purge($t);
 
             $real = q1_id_by_name($t, 'Backup Arsip', null);
             $qaFolder = q1_add($t, ['name' => 'QA01-PERMFOLDER', 'type' => 1, 'all' => 1]);
@@ -51,56 +52,62 @@ return [
             };
 
             try {
+                // peran uji dari NAMA permission (ED-1149 BR-1/BR-2); 'Allow Access Website' agar login non-karyawan tidak dicabut
+                $rNone = q1_role($t, 'NOARCH', ['Allow Access Website']);
+                $rList = q1_role($t, 'LISTONLY', ['Allow Access Website', 'List Archive']);
+                $rMove = q1_role($t, 'MOVE', ['Allow Access Website', 'List Archive', 'Move Archive', 'Handover Document', 'Receive Document']);
+                $rAdd = q1_role($t, 'ADDDOC', ['Allow Access Website', 'List Archive', 'Handover Document', 'Receive Document', 'Add Document']);
+
                 // --- tanpa token
                 $r = $t->raw('GET', 'api/v5/document-archive/archives');
                 $t->status($r, 401, 'tanpa token');
                 $t->code($r, 'GE0111', 'tanpa token');
 
-                // --- role 6 (Sales): tidak punya permission Archive apa pun
-                q1_with_user($t, ['role' => 6], function ($set) use ($t, $routes, $call, $forbid) {
+                // --- NOARCH: tidak punya permission Archive apa pun
+                q1_with_user($t, ['role' => $rNone], function ($set) use ($t, $routes, $call, $forbid) {
                     foreach ($routes as $label => $r) {
-                        $forbid($call($r), "role 6: $label", $r[3]);
+                        $forbid($call($r), "NOARCH: $label", $r[3]);
                     }
                 });
 
-                // --- role 29: hanya List Archive
-                q1_with_user($t, ['role' => 29], function ($set) use ($t, $routes, $call, $forbid) {
+                // --- LISTONLY: hanya List Archive
+                q1_with_user($t, ['role' => $rList], function ($set) use ($t, $routes, $call, $forbid) {
                     foreach (['GET archives', 'GET archives/{id}', 'GET history/{id}'] as $label) {
                         $r = $call($routes[$label]);
-                        $t->status($r, 200, "role 29: $label");
+                        $t->status($r, 200, "LISTONLY: $label");
                     }
                     foreach ($routes as $label => $r) {
                         if (strpos($label, 'GET') === 0) {
                             continue;
                         }
-                        $forbid($call($r), "role 29: $label", $r[3]);
+                        $forbid($call($r), "LISTONLY: $label", $r[3]);
                     }
                 });
-                $t->true(q1_same($before, q1_snap($t, [$qaFolder, $qaDoc])), 'DB: baris uji tidak berubah oleh penolakan role 6/29');
-                $t->eq($t->db()->table('archives')->count(), $totalRows, 'DB: tidak ada baris baru dari penolakan role 6/29');
+                $t->true(q1_same($before, q1_snap($t, [$qaFolder, $qaDoc])), 'DB: baris uji tidak berubah oleh penolakan NOARCH/LISTONLY');
+                $t->eq($t->db()->table('archives')->count(), $totalRows, 'DB: tidak ada baris baru dari penolakan NOARCH/LISTONLY');
 
-                // --- role 16: List + Move + Handover + Receive
-                q1_with_user($t, ['role' => 16], function ($set) use ($t, $routes, $call, $forbid, $qaFolder) {
-                    $t->status($call($routes['GET archives']), 200, 'role 16: GET archives');
+                // --- MOVE: List + Move + Handover + Receive
+                q1_with_user($t, ['role' => $rMove], function ($set) use ($t, $routes, $call, $forbid, $qaFolder) {
+                    $t->status($call($routes['GET archives']), 200, 'MOVE: GET archives');
                     $r = $call($routes['POST put-in']);
-                    $t->status($r, 200, 'role 16 (Move Archive): put-in lolos guard');
-                    $t->code($r, 'ARCHIVE204', 'role 16: put-in');
+                    $t->status($r, 200, 'MOVE (Move Archive): put-in lolos guard');
+                    $t->code($r, 'ARCHIVE204', 'MOVE: put-in');
                     $r = $call($routes['POST hand-over']);
-                    $t->status($r, 200, 'role 16: hand-over (Handover Document)');
-                    $t->code($r, 'ARCHIVE209', 'role 16: hand-over');
+                    $t->status($r, 200, 'MOVE: hand-over (Handover Document)');
+                    $t->code($r, 'ARCHIVE209', 'MOVE: hand-over');
                     $r = $call($routes['POST receive']);
-                    $t->status($r, 200, 'role 16: receive (Receive Document)');
-                    $t->code($r, 'ARCHIVE210', 'role 16: receive');
+                    $t->status($r, 200, 'MOVE: receive (Receive Document)');
+                    $t->code($r, 'ARCHIVE210', 'MOVE: receive');
                     foreach (['POST create-folder', 'PUT archives/{id}', 'PUT archives/{id} izin saja', 'PUT rename/{id}', 'DELETE delete/{id}'] as $label) {
-                        $forbid($call($routes[$label]), "role 16: $label", $routes[$label][3]);
+                        $forbid($call($routes[$label]), "MOVE: $label", $routes[$label][3]);
                     }
                 });
 
-                // --- role 18: List + Handover + Receive + Add Document (tanpa Move Archive)
-                q1_with_user($t, ['role' => 18], function ($set) use ($t, $routes, $call, $forbid, $qaDoc) {
+                // --- ADDDOC: List + Handover + Receive + Add Document (tanpa Move Archive)
+                q1_with_user($t, ['role' => $rAdd], function ($set) use ($t, $routes, $call, $forbid, $qaDoc) {
                     $r = $call($routes['POST put-in']);
-                    $t->status($r, 200, 'role 18 (Add Document saja): put-in lolos guard (salah satu permission cukup)');
-                    $forbid($call($routes['POST create-folder']), 'role 18: create-folder', 'Add Folder');
+                    $t->status($r, 200, 'ADDDOC (Add Document saja): put-in lolos guard (salah satu permission cukup)');
+                    $forbid($call($routes['POST create-folder']), 'ADDDOC: create-folder', 'Add Folder');
                 });
 
                 // --- superadmin 1: semua lolos guard
@@ -110,8 +117,10 @@ return [
                 });
             } finally {
                 q1_purge($t);
+                q1_role_purge($t);
             }
             q1_assert_clean($t, 'data uji AC-12 sudah dibuang');
+            $t->eq($t->db()->table('roles')->where('role_name', 'like', Q1_ROLE_PREFIX . '%')->count(), 0, 'role fixture QA01-ROLE- dibuang');
         },
     ],
 
@@ -121,38 +130,48 @@ return [
         'run'   => function ($t) use ($archiveRoutes) {
             $s = $t->session();
             q1_purge($t);
+            q1_role_purge($t);
             $real = q1_id_by_name($t, 'Backup Arsip', null);
             $routes = $archiveRoutes($real, $real, 'QA01-NOPE');
             $totalRows = $t->db()->table('archives')->count();
 
-            // 1. cara seragam EPIC K-2 b: role tanpa List Archive -> 403 GE0114 + parameter
-            q1_with_user($t, ['role' => 6], function ($set) use ($t, $s) {
-                $r = q1_list($t, $s);
-                $t->status($r, 403, 'role tanpa List Archive');
-                $t->code($r, 'GE0114', 'role tanpa List Archive');
-                $t->eq($r[1]['parameter'] ?? null, 'List Archive', 'parameter');
-                $t->true(!array_key_exists('result', $r[1]), 'tanpa data (result) pada penolakan');
-            });
+            try {
+                // 1. cara seragam EPIC K-2 b: role tanpa List Archive -> 403 GE0114 + parameter (ED-1149: role fixture NOARCH, bukan role developer 6)
+                $rNone = q1_role($t, 'NOARCH', ['Allow Access Website']);
+                q1_with_user($t, ['role' => $rNone], function ($set) use ($t, $s) {
+                    $r = q1_list($t, $s);
+                    $t->status($r, 403, 'role tanpa List Archive');
+                    $t->code($r, 'GE0114', 'role tanpa List Archive');
+                    $t->eq($r[1]['parameter'] ?? null, 'List Archive', 'parameter');
+                    $t->true(!array_key_exists('result', $r[1]), 'tanpa data (result) pada penolakan');
+                });
 
-            // 2. simulasi tenant tanpa seed Archive: permissions modul Archive (1081-1090, (rev) 1139 Opname Document, 1140 Folder Permissions)
-            //    tidak ada -> bahkan superadmin/Super Admin 403, juga untuk PUT kelompok izin saja
-
-            q1_without_archive_permissions($t, function () use ($t, $s, $routes) {
-                foreach ([3, 1] as $role) {
-                    q1_with_user($t, ['role' => $role], function ($set) use ($t, $s, $routes, $role) {
+                // 2. simulasi tenant tanpa seed Archive: tidak ada permission modul Archive (1081-1090, (rev) 1139 Opname Document, 1140 Folder
+                //    Permissions) -> bahkan superadmin/Super Admin 403, juga untuk PUT kelompok izin saja. (ED-1149 BR-4) Disimulasikan dengan
+                //    role fixture is_superadmin 3 dan 1 yang memegang SEMUA permission aktif KECUALI 12 permission Archive (middleware menilai
+                //    nama permission milik role), BUKAN dengan menghapus sementara baris permissions developer.
+                $seedless = ['3' => q1_role_without_archive($t, 'NOSEED3', 3), '1' => q1_role_without_archive($t, 'NOSEED1', 1)];
+                foreach ($seedless as $sa => $roleId) {
+                    $held = $t->db()->table('role_permissions as rp')->join('permissions as p', 'p.id_permission', '=', 'rp.id_permission')->where('rp.id_role', $roleId)->pluck('p.permission_name')->all();
+                    $t->true(count($held) > 100 && !array_intersect($held, ['List Archive', 'Add Folder', 'View Folder', 'Update Folder', 'Delete Folder', 'Move Archive', 'Handover Document', 'Receive Document', 'Add Document', 'Opname Document', 'Folder Permissions', 'All Archive']),
+                        "fixture tanpa seed (is_superadmin $sa): memegang " . count($held) . ' permission lain, tanpa satu pun permission Archive (per id_permission)');
+                    q1_with_user($t, ['role' => $roleId], function ($set) use ($t, $s, $routes, $sa) {
                         foreach ($routes as $label => $rt) {
                             $r = $t->call($s, $rt[0], $rt[1], $rt[2]);
-                            q1_no500($t, $r, "tanpa seed, role $role, $label");
-                            $t->status($r, 403, "tanpa seed, role $role, $label");
-                            $t->code($r, 'GE0114', "tanpa seed, role $role, $label");
-                            $t->true(!array_key_exists('result', $r[1]), "tanpa seed, role $role, $label: tanpa data");
+                            q1_no500($t, $r, "tanpa seed, superadmin $sa, $label");
+                            $t->status($r, 403, "tanpa seed, superadmin $sa, $label");
+                            $t->code($r, 'GE0114', "tanpa seed, superadmin $sa, $label");
+                            $t->true(!array_key_exists('result', $r[1]), "tanpa seed, superadmin $sa, $label: tanpa data");
                         }
                     });
                 }
-            });
-            $r = q1_list($t, $s, ['pagination' => 5]);
-            $t->status($r, 200, 'sesudah permission dipulihkan: GET archives 200 lagi');
-            $t->eq($t->db()->table('archives')->count(), $totalRows, 'DB: jumlah baris archives tidak berubah');
+                $r = q1_list($t, $s, ['pagination' => 5]);
+                $t->status($r, 200, 'role asli QA_USER kembali: GET archives 200 lagi');
+                $t->eq($t->db()->table('archives')->count(), $totalRows, 'DB: jumlah baris archives tidak berubah');
+            } finally {
+                q1_role_purge($t);
+            }
+            $t->eq($t->db()->table('roles')->where('role_name', 'like', Q1_ROLE_PREFIX . '%')->count(), 0, 'role fixture QA01-ROLE- dibuang');
 
             // 3. bukti kode (statis): seed permission Archive hanya dimuat untuk SALESMAN_ACTIVITY
             $be = rtrim($t->conf('BE_DIR'), '/');

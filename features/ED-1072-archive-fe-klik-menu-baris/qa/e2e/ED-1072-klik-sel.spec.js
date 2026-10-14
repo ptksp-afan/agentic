@@ -262,7 +262,9 @@ test('[default] ED-1072 AC-3: hasil pencarian root, ⋯ D1 → Info: drawer saja
   expect(await snap(page), 'sesudah klik ⋯').toEqual(before);
   await pickMenuItem(page, /^Info$/);
   await drawer(page).waitFor({ state: 'visible', timeout: 15000 });
-  await expect(drawerTitle(page), 'drawer Info').toHaveText('Info');
+  // (ED-1149) usang: FE 41480e37c (penyesuaian UI developer 2026-10-12) menambah subjudul drawer Info = nomor transaksi / nama folder baris;
+  // judul "Info" tetap, dan sekarang subjudul harus = baris yang diklik (lebih ketat dari sebelumnya)
+  await expect(drawerTitle(page), 'drawer Info: judul "Info" + subjudul = nomor dokumen D1').toHaveText(new RegExp(`^Info\\s*${P}D1$`));
   expect((await info).status(), 'drawer Info memuat riwayat D1 (GET archives/history/{id D1})').toBe(200);
   await app.settle();
   await shot(app, page, 'AC3-drawer-info');
@@ -465,7 +467,7 @@ test('[default] ED-1072 AC-7 (regresi folder): Nama folder + ikon perisai membuk
   const infoF = infoResponse(page, ids()[`${P}F`]);
   await pickMenuItem(page, /^Info$/);
   await drawer(page).waitFor({ state: 'visible', timeout: 15000 });
-  await expect(drawerTitle(page)).toHaveText('Info');
+  await expect(drawerTitle(page), 'drawer Info: judul "Info" + subjudul = nama folder F (FE 41480e37c)').toHaveText(new RegExp(`^Info\\s*${P}F$`));
   expect((await infoF).status(), 'Info folder F: GET archives/history/{id F}').toBe(200);
   expect(folderCalls(calls).length, 'Info tidak membuka folder').toBe(nBefore);
   expect(await crumbs(page)).toEqual(['Arsip']);
