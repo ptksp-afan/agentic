@@ -439,11 +439,12 @@ return [
                 $t->status($r, 200, 'PUT JA3 id_archive_parent = X');
                 $t->code($r, 'ARCHIVE207', 'PUT JA3');
                 $t->eq(q2_row($t, $JA3)['id_archive_parent'], $X, 'DB: JA3 di X');
-                // lewat name (scan) juga: Update di folder yang dipindah, induk asal tidak dicek
+                // lewat name (scan): dibalik ED-1124 K-2 b - name yang hanya cocok folder = tidak ada (findName hanya dokumen) -> 404 ARCHIVE400, JA5 tetap di J
                 $JA5 = $mkJa('JA5');
                 $r = q2_putin($t, $s, $X, null, q2_name_of($t, $JA5));
-                $t->status($r, 200, 'put-in JA5 lewat name ke X');
-                $t->eq(q2_row($t, $JA5)['id_archive_parent'], $X, 'DB: JA5 di X');
+                $t->status($r, 404, 'put-in JA5 lewat name ke X: nama folder tidak dikenal');
+                $t->code($r, 'ARCHIVE400', 'put-in JA5 lewat name');
+                $t->eq(q2_row($t, $JA5)['id_archive_parent'], $J, 'DB: JA5 tetap di J');
 
                 // tujuan tanpa Store: Y (A View+Update) dan J (View saja)
                 $Y = q2_folder($t, 'Y', ['perm' => 1]);

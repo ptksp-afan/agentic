@@ -131,7 +131,9 @@ return [
                 $D3 = q2_doc($t, 'D3');
                 $snap = q2_snap($t, [$Fv, $Fu, $D3, $S]);
                 q2_deny($t, q2_putin($t, $s, $S, $Fv), 403, 'ARCHIVE408', 'folder tanpa Update ke S (id_archives)', $fvName);
-                q2_deny($t, q2_putin($t, $s, $S, null, $fvName), 403, 'ARCHIVE408', 'folder tanpa Update ke S (name)', $fvName);
+                // dibalik ED-1124 K-2 b: name yang hanya cocok folder = tidak ada (findName hanya dokumen) -> 404 ARCHIVE400, bukan 403 ARCHIVE408; baris tidak berubah
+                q2_deny($t, q2_putin($t, $s, $S, null, $fvName), 404, 'ARCHIVE400', 'folder tanpa Update ke S (name): nama folder tidak dikenal');
+                $t->true(q2_same($snap, q2_snap($t, [$Fv, $Fu, $D3, $S])), 'name = folder: data tidak berubah');
                 q2_deny($t, q2_putin($t, $s, $S, [$D3, $Fv]), 403, 'ARCHIVE408', 'campuran dokumen + folder tanpa Update', $fvName);
                 $t->eq(q2_row($t, $D3)['id_archive_parent'], null, 'atomik: dokumen D3 tidak ikut pindah');
                 q2_deny($t, q2_putin($t, $s, null, $Fv), 403, 'ARCHIVE408', 'folder tanpa Update ke root', $fvName);

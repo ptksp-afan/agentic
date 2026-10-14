@@ -296,7 +296,7 @@ return [
 
     [
         'id'    => 'X-4',
-        'title' => 'petunjuk orkestrator (a): folder bernama sama dengan nomor transaksi terkait + showRelatedTransaction; (b): put-in sumber nonaktif mengaktifkannya lagi',
+        'title' => 'petunjuk orkestrator (a): folder bernama sama dengan nomor transaksi terkait + showRelatedTransaction = 200 tanpa folder (diperbaiki ED-1124 AC-1); (b): put-in id_archives sumber dihapus = 404 ARCHIVE400 tanpa perubahan (K-1 a, ED-1124 AC-4)',
         'run'   => function ($t) {
             q69_recover($t);
             $s = $t->session();
@@ -317,7 +317,7 @@ return [
                     $r = $t->call($s, 'GET', Q69_API . 'archives?pagination=100&id_archive=' . $F . '&search=' . urlencode($search));
                     foreach ($r[1]['result']['data'] ?? [] as $row) {
                         if ($row['id_archive'] === $doc && !empty($row['related_transactions'])) {
-                            $found = [$doc, $row['related_transactions'][0]['name']];
+                            $found = [$doc, $row['related_transactions'][0]['name'], $row['related_transactions']];
                             break 2;
                         }
                     }
@@ -325,16 +325,24 @@ return [
                 if ($found === null) {
                     $t->note('MANUAL: tidak ada dokumen DO nyata dengan transaksi terkait yang ketemu dalam 12 kandidat; petunjuk (a) tidak diuji');
                 } else {
-                    list($doc, $relatedNo) = $found;
-                    // folder (bukan dokumen) bernama persis nomor transaksi terkait itu
-                    $fid = q69_add($t, ['name' => $relatedNo, 'type' => 1]);
+                    list($doc, $relatedNo, $relatedBefore) = $found;
+                    // folder (bukan dokumen) bernama persis nomor transaksi terkait itu; ED-1124 K-3: di dalam folder uji QA, bukan root
+                    $FG = q69_folder($t, 'FG');
+                    $fid = q69_add($t, ['name' => $relatedNo, 'type' => 1, 'parent' => $FG]);
                     q69_track($fid);
                     $r = $t->call($s, 'GET', Q69_API . 'archives?pagination=100&id_archive=' . $F . '&search=' . urlencode($search));
                     $t->note('petunjuk (a): folder bernama "' . $relatedNo . '" (nomor transaksi terkait dokumen DO uji) -> list showRelatedTransaction = HTTP ' . $r[0] . ' ' . substr(json_encode($r[1]), 0, 260));
-                    // KARAKTERISASI bug terbuka di luar ED-1069 (petunjuk a): relatedTransaction() memuat arsip senama nomor transaksi
-                    // TANPA filter tipe; folder tidak punya `document` -> ArchiveService.php:701 -> 500. Bila kelak bukan 500: bug sudah
-                    // diperbaiki, ubah menjadi asersi 200 dan hapus karakterisasi ini.
-                    $f->eq($r[0], 500, 'KARAKTERISASI BUG TERBUKA (a): folder senama nomor transaksi terkait = HTTP 500 (bila berubah, bug diperbaiki: perbarui skenario)');
+                    // ED-1124 AC-1 (karakterisasi usang dibalik, ED-1022 Gate 1 F-4): relatedTransaction() hanya memuat dokumen (type FILE
+                    // ber-archive_documents); folder senama nomor transaksi tidak ikut -> 200 (dulu 500 ArchiveService.php:701).
+                    $f->resp($r, 200, null, 'petunjuk (a): folder senama nomor transaksi terkait = HTTP 200 (ED-1124, dulu 500)');
+                    $rowsNow = [];
+                    foreach ($r[1]['result']['data'] ?? [] as $row) {
+                        $rowsNow[$row['id_archive']] = $row;
+                    }
+                    $f->eq(json_encode($rowsNow[$doc]['related_transactions'] ?? 'tidak ada'), json_encode($relatedBefore), 'petunjuk (a): related_transactions D sama dengan sebelum folder ada');
+                    foreach ($rowsNow[$doc]['related_transactions'] ?? [] as $rt) {
+                        $f->ok($rt['id_archive'] !== $fid, 'petunjuk (a): folder senama tidak ikut di related_transactions');
+                    }
                     q69_purge($t);
                 }
 
@@ -345,9 +353,10 @@ return [
                 $fOff = q69_folder($t, 'FOFF', ['active' => 0]);
                 $r = q69_putin($t, $s, $T, [$dOff, $fOff]);
                 $t->note('petunjuk (b): put-in [dokumen nonaktif, folder nonaktif] -> HTTP ' . $r[0] . ' ' . (q69_code($r) ?? '') . '; is_active dokumen=' . q69_row($t, $dOff)['is_active'] . ', folder=' . q69_row($t, $fOff)['is_active']);
-                $f->resp($r, 200, 'ARCHIVE204', 'put-in sumber nonaktif = 200');
-                // KARAKTERISASI perilaku pra-ada (petunjuk b): DocumentService::putInFolder menulis is_active = 1 pada sumber
-                $f->eq([q69_row($t, $dOff)['is_active'], q69_row($t, $fOff)['is_active']], [1, 1], 'KARAKTERISASI (b): sumber nonaktif menjadi aktif lagi sesudah put-in (bila berubah, perbarui skenario)');
+                // ED-1124 AC-4 (K-1 a, ED-1022 Gate 1 F-4): sumber is_active = 0 lewat id_archives = id tak ada: semua dihapus -> 404 ARCHIVE400, tanpa perubahan
+                $f->resp($r, 404, 'ARCHIVE400', 'put-in sumber dihapus (semua) = 404 ARCHIVE400 (ED-1124, dulu 200 dan aktif lagi)');
+                $f->eq([q69_row($t, $dOff)['is_active'], q69_row($t, $fOff)['is_active']], [0, 0], 'sumber dihapus tetap is_active 0 (ED-1124)');
+                $f->eq([q69_parent($t, $dOff), q69_parent($t, $fOff)], [null, null], 'sumber dihapus tetap di tempat lama (ED-1124)');
 
                 $f->done();
             } finally {

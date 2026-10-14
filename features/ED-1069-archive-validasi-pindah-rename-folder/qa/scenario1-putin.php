@@ -137,7 +137,7 @@ return [
 
     [
         'id'    => 'AC-3',
-        'title' => 'A>B>C, X di root: put-in [A]->C, [A]->B, name=A->B, name=A->A, [X,A]->C, [A]->A = 400 ARCHIVE404 (teks K-2 a id/en); tak ada baris berubah',
+        'title' => 'A>B>C, X di root: put-in [A]->C, [A]->B, [X,A]->C, [A]->A = 400 ARCHIVE404 (teks K-2 a id/en); name=A->B, name=A->A (A folder) = 404 ARCHIVE400 (dibalik ED-1124 K-2 b); tak ada baris berubah',
         'run'   => function ($t) {
             q69_recover($t);
             $s = $t->session();
@@ -166,8 +166,6 @@ return [
                     'put-in [A]->B'              => function () use ($t, $s, $A, $B) { return q69_putin($t, $s, $B, [$A]); },
                     'put-in [A]->E (4 tingkat)'  => function () use ($t, $s, $A, $E) { return q69_putin($t, $s, $E, [$A]); },
                     'put-in [A]->NC (lewat nonaktif)' => function () use ($t, $s, $A, $NC) { return q69_putin($t, $s, $NC, [$A]); },
-                    'put-in name=A->B'           => function () use ($t, $s, $B, $nameA) { return q69_putin($t, $s, $B, null, $nameA); },
-                    'put-in name=A->A'           => function () use ($t, $s, $A, $nameA) { return q69_putin($t, $s, $A, null, $nameA); },
                     'put-in [A]->A'              => function () use ($t, $s, $A) { return q69_putin($t, $s, $A, [$A]); },
                     'put-in [X, A]->C'           => function () use ($t, $s, $X, $A, $C) { return q69_putin($t, $s, $C, [$X, $A]); },
                     'put-in [A, X]->C'           => function () use ($t, $s, $X, $A, $C) { return q69_putin($t, $s, $C, [$A, $X]); },
@@ -179,6 +177,11 @@ return [
                     $r = $call();
                     $f->resp($r, 400, 'ARCHIVE404', $label);
                     $f->eq(q69_msg($r), $idText, $label . ': teks ID');
+                }
+                // dibalik ED-1124 K-2 b: put-in name=A->B dan name=A->A (A folder): name yang hanya cocok folder = tidak ada (findName hanya dokumen) -> 404 ARCHIVE400, bukan 400 ARCHIVE404
+                foreach (['put-in name=A->B' => $B, 'put-in name=A->A' => $A] as $label => $dest) {
+                    $r = q69_putin($t, $s, $dest, null, $nameA);
+                    $f->resp($r, 404, 'ARCHIVE400', $label . ' (nama folder tidak dikenal)');
                 }
                 $f->ok(q69_snap($t, $all) === $snap, 'tidak ada baris berubah (archives + archive_documents, semua kolom termasuk history/updated_*)');
                 $f->eq(q69_parent($t, $A), null, 'A tetap di root');

@@ -1,0 +1,3 @@
+be	NEW	.M	Modules/V5/Entities/Models/Archive.php
+be	NEW	.M	Modules/V5/Http/Services/DocumentArchive/ArchiveService.php
+be	NEW	.M	Modules/V5/Http/Services/Select/DocumentArchive/SelectArchiveService.php

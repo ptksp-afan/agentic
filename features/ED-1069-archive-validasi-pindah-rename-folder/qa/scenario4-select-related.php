@@ -103,9 +103,10 @@ return [
                     $f->resp($r, 404, 'ARCHIVE400', "induk tak ada ($label)");
                 }
 
-                // dicatat, bukan asersi item ini: id "0" dibaca kosong oleh empty() (200 semua lokasi; ED-1124)
+                // ED-1124 AC-6 (karakterisasi usang dibalik, ED-1022 Gate 1 F-5): id "0" = id yang tidak ada = 404 ARCHIVE400
+                // (dulu dibaca kosong oleh empty() = 200 semua lokasi)
                 $r0 = q69_loc($t, $s, ['id_archive_parent' => '0']);
-                $t->note('observasi: id_archive_parent="0" -> HTTP ' . $r0[0] . ' (ED-1124)');
+                $f->resp($r0, 404, 'ARCHIVE400', 'induk "0" tak ada (ED-1124)');
 
                 // ED-1071 (AC-4): id di luar latin1 tidak mungkin ada = 404 ARCHIVE400 tanpa kueri (dulu 500 kolasi)
                 foreach (['sirilik' => "\u{0431}\u{044f}", 'omega' => "\u{03A9}", 'emoji' => "\u{1F600}", 'cjk' => "\u{4E2D}\u{6587}"] as $label => $v) {
