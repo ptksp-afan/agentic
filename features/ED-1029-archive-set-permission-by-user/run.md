@@ -3,7 +3,7 @@ key: ED-1029
 epic: ED-1022
 title: Archive - Set Permission by User
 slug: archive-set-permission-by-user
-phase: gate2
+phase: done
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -18,7 +18,7 @@ agents:
   be_reviewer: {id: ac5e12190261989bf, at: 2026-10-12 08:51}
 ---
 ## Status ringkas
-**Review (rev3, 2026-10-12)** - menunggu `/v5-epic review ED-1022`. Commit: BE 6a5c069bb, FE d56ce3962, agentic (commit ini). QA BE r1 PASS (0 defect), QA FE r1 PASS 18 / MANUAL 1 (AC-20), e2e 30/30. Jira: label ai-review + komentar siap review (dikerjakan epic loop sesudah runner dijeda karena kuota).
+**Selesai (Done) - disetujui developer di review batch ED-1022 ronde 3 (2026-10-14).** Jira item + subtask Done, label ai-review dilepas, komentar serah terima ditambahkan.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -67,3 +67,4 @@ agents:
 - 2026-10-12 14:56 commit FE d56ce3962 (8 path ED-1129, di atas f1fd4f69e, tanpa push)
 - 2026-10-12 14:57 pause: permintaan epic loop (kuota) tiba sesudah commit BE 6a5c069bb + FE d56ce3962, sebelum langkah Jira; tidak ada agen/perintah terputus; commit tidak di-revert; Jira belum diubah (label masih v5); berikutnya Jira label ai-review + komentar siap review -> phase gate2 -> commit agentic
 - 2026-10-12 15:00 epic loop: sisa langkah commit diselesaikan - Jira ED-1029 label ai-review + komentar siap review; phase gate2; commit agentic
+- 2026-10-14 review batch ronde 3: disetujui developer -> Jira Done (item + subtask), label ai-review dilepas, komentar serah terima; phase done

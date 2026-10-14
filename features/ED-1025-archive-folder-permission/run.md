@@ -3,7 +3,7 @@ key: ED-1025
 epic: ED-1022
 title: Archive - Folder Permission per folder (tab Permission & akses ditolak)
 slug: archive-folder-permission
-phase: gate2
+phase: done
 qa_round: 1   # revisi: ronde dihitung ulang dari 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -15,13 +15,7 @@ agents:
   qa_fe: {id: a64bc7ff2a53a2f4e, at: 2026-10-12 (rev3)}
 ---
 ## Status ringkas
-**Rev3 selesai, siap review batch (phase gate2).** QA FE rev3 r1 PASS: AC-39..42 PASS, 4 PASS / 0 FAIL / 1 MANUAL (tampilan visual, Gate 2);
-unit Archive 405/405 (in-band), e2e ED-1025 21/21 (galeri `work/e2e/ED-1025-archive-folder-permission-20261012-082117/`).
-Commit lokal rev3: FE f1fd4f69e (di atas 41480e37c, tanpa amend); BE tanpa perubahan (HEAD 581569981). Jira ED-1025 In Progress + label ai-review
-+ komentar siap review; ED-1131/1132/1133 In Progress. Done hanya lewat `/v5-epic review`.
-Untuk ED-1029 (berikutnya): helper `getFolderPermissionAllState`/`onChangeAllFolderPermission` tetap; baru `toFolderPermissionRowFields`,
-`isSameFolderPermissionUser`, `ArchiveRestrictedIcon`. Data QA DB (QA F-1): role 3 & 5 memegang `Folder Permissions` dgn `permission_name` NULL
--> `qa/scenario9-rev-seed-fuzz.php:168,172` diperkirakan FAIL (data, bukan kode) bila suite BE ED-1025 dijalankan; ED-1029 mengulang `--only` AC-5, AC-38.
+**Selesai (Done) - disetujui developer di review batch ED-1022 ronde 3 (2026-10-14).** Jira item + subtask Done, label ai-review dilepas, komentar serah terima ditambahkan.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -104,3 +98,4 @@ Untuk ED-1029 (berikutnya): helper `getFolderPermissionAllState`/`onChangeAllFol
 - 2026-10-12 fe-review (rev3): convention-reviewer (ad2e906c7c4cd4530, sonnet, general-purpose dgn definisi agent) Harus diperbaiki 0, Perlu dikonfirmasi 0, Catatan 3 (tanpa test sendiri ArchiveFolderPermission/ArchiveTable = diuji lewat Drawer/MoveModal; `_module.md:107` tak memuat fungsi baru; prettier gagal hanya baris lama); phase qa-fe r1
 - 2026-10-12 qa-fe (rev3) r1: v5-qa (a64bc7ff2a53a2f4e, sonnet) PASS - AC-39/40/41/42 PASS, 4/0/1 MANUAL; unit Archive 405/405 in-band (8 timeout beban saat paralel, lulus diulang); e2e ED-1025 21/21 (+4 flow baru, oracle :124 -> Folder Permissions), kontrol negatif HEAD: AC-39/40 gagal; data: hanya teardown fixture QA (30 baris `0QA25-`, 3 role `QA25-ROLE-`), archive* = baseline; `QA01-R2-*` sudah 0 baris; penolakan 0
 - 2026-10-12 commit (rev3): FE f1fd4f69e (14 berkas, path eksplisit); BE tidak berubah; agentic: commit [DOC] ED-1025 rev3 (hash di laporan runner)
+- 2026-10-14 review batch ronde 3: disetujui developer -> Jira Done (item + subtask), label ai-review dilepas, komentar serah terima; phase done

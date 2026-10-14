@@ -3,7 +3,7 @@ key: ED-1071
 epic: ED-1022
 title: V5 - input berkarakter di luar latin1 (emoji, CJK, Yunani) = 500 "Illegal mix of collations" (Archive)
 slug: v5-collation-latin1
-phase: gate2
+phase: done
 qa_round: 2
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -15,10 +15,7 @@ agents:
   qa_be: {id: aa83814b128e7e63d, at: 2026-10-13 04:06}
 ---
 ## Status ringkas
-**Siap review developer (long run ED-1022).** QA BE r2 PASS, QA FE r1 PASS; commit lokal BE 6fcc91fd0 (FE tidak berubah), agentic lihat Log. Jira ED-1071 In Progress + label ai-review + komentar siap review. Done hanya lewat `/v5-epic review`.
-Untuk review batch: be-review Perlu dikonfirmasi 2 (isLatin1 ganda dgn OpnameService; cabang S_BAD select lokasi menyalin Location::optionSelects); fix D-2: angka/array di put-in/hand-over/receive name + add-document id_archive kini 422; 8 skenario regresi lama berhenti karena baseline developer (qa-be.md).
-Bug baru: ED-1144 (scopeSearchAll method sembarang, keamanan), ED-1145 (lanjutan K-3 + Opname U+FFFD).
-Untuk developer: ED-1027/qa/.restore-journal-q27-user2.json (untracked, hapus ditolak classifier) dibiarkan.
+**Selesai (Done) - disetujui developer di review batch ED-1022 ronde 3 (2026-10-14).** Jira item + subtask Done, label ai-review dilepas, komentar serah terima ditambahkan.
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -44,3 +41,5 @@ Untuk developer: ED-1027/qa/.restore-journal-q27-user2.json (untracked, hapus di
 - 2026-10-13 04:58 qa-fe r1: v5-qa (a7604bc6bce351139, sonnet) PASS 1/0/0 (AC-10); sidik jari BE sama dgn QA BE r2; build staging OK; Jest Archive 12 suite lulus sendiri (5 timeout beban), full 71/80, 4 non-Archive pra-ada (BatchOut, production.function, CustomerPurchaseOrderView, InterbankTransferForm); e2e --workers 1 7/7, galeri work/e2e/ED-1071-v5-collation-latin1-20261013-045901/; regresi BE 1071 16/16, 1025 39/1 (AC-25 baseline), 1029 40/1S, 1069 16/16; 1024/1026/1027/1028 dikutip dari qa-be r2 (kode sama); data: fixture QA71-E2E-A dibuang, snapshot sama; 0 ditolak
 - 2026-10-13 05:03 commit: BE 6fcc91fd0 (17 berkas NEW, path eksplisit), FE tidak ada perubahan; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
 - 2026-10-13 05:03 jira: bug baru ED-1144 (scopeSearchAll memanggil method Builder dari key search, High, dari baca kode) dan ED-1145 (lanjutan K-3 modul lain + OpnameService::isLatin1 U+FFFD), label ai-found, parent ED-1022; ED-1071 label ai-review + komentar siap review
+- 2026-10-13 commit agentic: 8fd8275 (features/ED-1071-*, AC-9 di ED-1025 scenario5-input-types.php, ED-1029 scenario4-robust.php, ED-1069 scenario4-select-related.php)
+- 2026-10-14 review batch ronde 3: disetujui developer -> Jira Done (item + subtask), label ai-review dilepas, komentar serah terima; phase done
