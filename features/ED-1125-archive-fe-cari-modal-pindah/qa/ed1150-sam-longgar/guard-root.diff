@@ -1,0 +1,4 @@
+274c274
+<   const ok = rows.length === 3 && rows.includes('Folder A');
+---
+>   const ok = rows.includes('Folder A'); // QA ED-1125 r2: root sam kini 4 baris (Folder X milik developer); hanya Folder A wajib ada

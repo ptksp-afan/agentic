@@ -14,7 +14,11 @@
  *   AC-14  : scan saat modal Pindahkan terbuka -> halaman utuh, tepat 1 GET search (picker)
  *   AC-15  : scan di pindah massal: Konfirmasi = halaman utuh; Pilih Folder = seperti AC-14
  *   AC-16  : modal ditutup lewat Batal, ✕, sukses (single & massal) -> scan mencari di tabel halaman
- *   AC-17  : regresi Letakkan Dokumen: scan -> review berisi kode, halaman utuh; tutup -> scan halaman mencari
+ *   AC-17  : (ED-1153) Letakkan Dokumen: scan -> review; Kembali / ✕ -> langkah scanner, modal terbuka; scan -> review kode baru, 0 GET archives,
+ *            halaman utuh; Batal -> scan -> 1 GET search (ronde 2: dari "regresi" jadi asersi bug C)
+ *   AC-19  : (bug C) "+" -> Serahkan Dokumen: sama dengan AC-17, GET modal `search={"name":…}` saja
+ *   AC-20  : sama untuk Terima Dokumen
+ *   tambahan (BR-8 jalur sukses, bukan syarat AC): Letakkan Simpan, Serahkan "Simpan & Baru", Terima (data fixture D6, dipulihkan)
  *
  * Definisi (spec.md): "0 navigasi" = CDP Page.frameRequestedNavigation kosong dan penanda window bertahan; "GET search" = GET
  * document-archive/archives?search={"query":"<teks>"}&page=1 = 200; "scan" = fokus di luar input (klik judul modal), ketik kode tanpa
@@ -61,6 +65,13 @@ const queryOf = (u) => {
     return undefined;
   }
 };
+const nameOf = (u) => {
+  try {
+    return (JSON.parse(searchOf(u)) || {}).name;
+  } catch (e) {
+    return undefined;
+  }
+};
 const rowsOf = (resp) => (resp.body && resp.body.result && resp.body.result.data) || [];
 
 const listResponse = (page, pred, timeout = 45000) =>
@@ -68,6 +79,7 @@ const listResponse = (page, pred, timeout = 45000) =>
     .waitForResponse((r) => r.request().method() === 'GET' && LIST_RE.test(r.url()) && (!pred || pred(new URL(r.url()))), { timeout })
     .then(async (r) => ({ status: r.status(), url: r.url(), body: await r.json().catch(() => null) }));
 const searchResponse = (page, query) => listResponse(page, (u) => queryOf(u) === query);
+const nameResponse = (page, name) => listResponse(page, (u) => nameOf(u) === name);
 
 /** Catat setiap GET list dan POST put-in (untuk menghitung request sesudah aksi). */
 function trace(page, monitor) {
@@ -76,7 +88,7 @@ function trace(page, monitor) {
     const u = r.url();
     if (r.method() === 'GET' && LIST_RE.test(u)) {
       const url = new URL(u);
-      calls.gets.push({ query: queryOf(url), search: searchOf(url), folder: folderParam(url), page: url.searchParams.get('page') });
+      calls.gets.push({ query: queryOf(url), name: nameOf(url), search: searchOf(url), folder: folderParam(url), page: url.searchParams.get('page') });
     }
     if (r.method() === 'POST' && PUTIN_RE.test(u)) calls.posts.push(u);
   });
@@ -91,6 +103,9 @@ function trace(page, monitor) {
     mark: () => ({ gets: calls.gets.length, posts: calls.posts.length }),
     getsSince: (m) => calls.gets.slice(m.gets),
     searchGetsSince: (m) => calls.gets.slice(m.gets).filter((g) => g.search),
+    /** GET search milik tabel halaman (`search={"query":…}`) dan GET milik modal Serahkan/Terima (`search={"name":…}`) */
+    queriesSince: (m) => calls.gets.slice(m.gets).filter((g) => g.query !== undefined),
+    namesSince: (m) => calls.gets.slice(m.gets).filter((g) => g.name !== undefined),
     postsSince: (m) => calls.posts.slice(m.posts),
     all: calls,
   };
@@ -1080,67 +1095,273 @@ test.describe('ED-1125 Cari dan scan di modal Pindahkan / pindah massal (e2e)', 
     monitor.check();
   });
 
-  // ---------------------------------------------------------------------------------------------------- AC-17
-  test('[default] ED-1125 AC-17 regresi Letakkan Dokumen: scan -> langkah review berisi kode, halaman utuh; modal ditutup -> scan halaman mencari', async ({ app, page, monitor }) => {
-    const calls = trace(page, monitor);
-    await openArchive(app, page);
-    await openFolder(page, P + 'A');
-    await app.settle();
-    const before = await pageState(page);
-    const nav = await navTracker(page);
+  // ==================================================================================================================
+  // AC-17 / AC-19 / AC-20 (bug C, ED-1153): Letakkan, Serahkan, Terima Dokumen. Kembali / ✕ di review hanya kembali ke langkah scanner dan
+  // modal tetap terbuka: scanner halaman TETAP mati, scan hanya diterima modal. Scanner halaman menyala lagi hanya saat modal tertutup.
+  // ==================================================================================================================
+  const DOC = {
+    store: { tag: 'AC17', item: /^(Letakkan Dokumen|Store Document)$/, title: /Letakkan Dokumen|Store Document/, own: false, codes: ['DOC17A', 'DOC17B', 'DOC17C'] },
+    handover: { tag: 'AC19', item: /^(Serahkan Dokumen|Hand Over Document)$/, title: /Serahkan Dokumen|Hand Over Document/, own: true, codes: ['HO1', 'HO2', 'HO3'] },
+    receive: { tag: 'AC20', item: /^(Terima Dokumen|Receive Document)$/, title: /Terima Dokumen|Receive Document/, own: true, codes: ['RC1', 'RC2', 'RC3'] },
+  };
+  const SAVE_BTN = { store: /^(Simpan|Save)$/, handover: /^(Serahkan|Hand Over)$/, receive: /^(Terima|Receive)$/ };
+  const BACK = /^(Kembali|Back)$/;
+  const ANY_MODAL = '.ant-modal-wrap:not([style*="display: none"]) .ant-modal';
 
-    const plus = page.locator('.archive-page button.ant-btn-primary').filter({ has: page.locator('.anticon') }).first();
+  /** "+" -> item menu; kembalikan modal sesudah terbuka. */
+  async function openPlus(app, page, item) {
+    const plus = page.locator('.archive-page button.ant-btn-primary.btn-icon').first();
+    await plus.waitFor({ state: 'visible', timeout: 15000 });
     await plus.click();
     const menu = page.locator('.ant-dropdown:not(.ant-dropdown-hidden)').last();
     await menu.waitFor({ state: 'visible', timeout: 10000 });
-    await menu.locator('li.ant-dropdown-menu-item', { hasText: /^(Letakkan Dokumen|Store Document)$/ }).first().click();
+    await menu.locator('li.ant-dropdown-menu-item', { hasText: item }).first().click();
     const modal = visibleModal(page);
     await modal.waitFor({ state: 'visible', timeout: 15000 });
     await app.settle();
-    await app.screenshot('AC17-01-modal-letakkan-scanner');
+    return modal;
+  }
 
-    const code = `${P}DOC17`;
+  const activePane = (modal) => modal.locator('.ant-tabs-tabpane-active').first();
+
+  /** Kembali atau ✕ -> langkah scanner; modal tetap terbuka (judul sama, tombol Batal). */
+  async function backToScanner(page, d, how, label) {
+    const modal = visibleModal(page);
+    if (how === 'x') await modal.locator('.ant-modal-close').click();
+    else await modal.locator('button', { hasText: BACK }).first().click();
+    await expect(activePane(visibleModal(page)), `${label}: kembali ke langkah scanner ("Scan Code")`).toContainText('Scan Code', { timeout: 10000 });
+    await expect(visibleModal(page), `${label}: modal tetap terbuka`).toBeVisible();
+    await expect(visibleModal(page).locator('.ant-modal-title'), `${label}: judul modal sama`).toContainText(d.title);
+    await expect(visibleModal(page).locator('button', { hasText: CANCEL }).first(), `${label}: tombol Batal (langkah scanner)`).toBeVisible();
+    await page.waitForTimeout(400);
+  }
+
+  /** Scan USB saat modal terbuka: modal menerima (review berisi kode), scanner halaman tidak: 0 GET search, halaman utuh. */
+  async function scanInModal(env, d, code, notIn, label) {
+    const { app, page, calls, before, nav } = env;
+    const modal = visibleModal(page);
     const m = calls.mark();
+    const respP = d.own ? nameResponse(page, code) : null;
     await scan(page, code, modal.locator('.ant-modal-title'));
-    await page.waitForTimeout(2000);
-    await expect(modal.getByText(code, { exact: false }).first(), 'langkah review memuat kode hasil scan').toBeVisible({ timeout: 10000 });
-    expect(calls.searchGetsSince(m).length, 'tanpa GET search saat modal Letakkan terbuka').toBe(0);
-    expect(calls.getsSince(m).length, 'tanpa GET archives apa pun').toBe(0);
-    await nav.expectNone('scan di Letakkan Dokumen');
-    expect(await pageState(page), 'halaman utuh').toEqual(before);
-    expect((await pageState(page)).search, 'Cari halaman tetap kosong').toBe('');
-    await app.screenshot('AC17-02-review-berisi-kode');
-
-    // ✕ di langkah review = kembali ke langkah scanner (perilaku lama `onCloseAdd`), ✕ kedua menutup modal
-    await visibleModal(page).locator('.ant-modal-close').click();
-    await page.waitForTimeout(800);
-    await expect(visibleModal(page), 'sesudah ✕ pertama di review: modal masih terbuka (kembali ke scanner)').toBeVisible();
-    await app.screenshot('AC17-02b-sesudah-x-pertama-kembali-ke-scanner');
-    // pengamatan di luar item (pra-ada): `onCloseAdd` menyalakan scanner halaman walau modal masih terbuka di langkah scanner
-    const mObs = calls.mark();
-    await scan(page, `${P}DOC17B`, visibleModal(page).locator('.ant-modal-title'));
-    await page.waitForTimeout(2000);
-    monitor.note(`PENGAMATAN pra-ada (bukan bagian ED-1125): scan di langkah scanner Letakkan Dokumen sesudah ✕ pertama (modal masih terbuka): GET search=${JSON.stringify(calls.searchGetsSince(mObs).map((g) => g.query))}`);
-    while ((await page.locator('.ant-modal-wrap:not([style*="display: none"]) .ant-modal').count()) > 0) {
-      await visibleModal(page).locator('.ant-modal-close').click();
-      await page.waitForTimeout(800);
+    if (respP) {
+      const r = await respP;
+      expect(r.status, `${label}: GET modal search={"name":"${code}"} 200`).toBe(200);
     }
-    await page.waitForTimeout(500);
-    await pageReset(page);
-    const m2 = calls.mark();
+    await page.waitForTimeout(2000); // beri waktu scanner halaman (bila salah menyala) untuk mencari tabel halaman
+    const pane = activePane(visibleModal(page));
+    await expect(pane, `${label}: langkah review memuat kode ${code}`).toContainText(code, { timeout: 10000 });
+    await expect(pane, `${label}: langkah review (Nama Dokumen)`).toContainText(/Nama Dokumen|Document Name/);
+    for (const o of notIn) await expect(pane, `${label}: review tidak lagi memuat kode lama ${o}`).not.toContainText(o);
+    expect(calls.queriesSince(m).map((g) => g.query), `${label}: 0 GET search (tabel halaman tidak dicari)`).toEqual([]);
+    expect(calls.namesSince(m).map((g) => g.name), `${label}: hanya GET milik modal`).toEqual(d.own ? [code] : []);
+    expect(calls.getsSince(m).length, `${label}: tidak ada GET archives lain`).toBe(d.own ? 1 : 0);
+    await nav.expectNone(label);
+    expect(await pageState(page), `${label}: halaman utuh (baris, breadcrumb, Cari halaman)`).toEqual(before);
+    await expect(visibleModal(page), `${label}: modal terbuka`).toBeVisible();
+  }
+
+  /** Modal sudah tertutup: scan -> tabel halaman mencari (tepat 1 GET search, Cari halaman = kode). */
+  async function scanPageAfterClose(env, code, label) {
+    const { app, page, calls } = env;
+    await expect(page.locator(ANY_MODAL), `${label}: modal tertutup`).toHaveCount(0, { timeout: 10000 });
+    const m = calls.mark();
     const respP = searchResponse(page, code);
     await scan(page, code, null);
     const resp = await respP;
     await app.settle();
-    await page.waitForTimeout(1200);
-    expect(resp.status, 'sesudah tutup: GET search 200').toBe(200);
-    expect(calls.searchGetsSince(m2).length, 'sesudah tutup: tepat 1 GET search').toBe(1);
-    expect((await pageState(page)).search, 'sesudah tutup: Cari halaman berisi kode').toBe(code);
-    expect(calls.all.posts.length, 'tanpa POST put-in').toBe(0);
-    await app.screenshot('AC17-03-sesudah-tutup-scan-halaman');
-    await pageReset(page);
+    await page.waitForTimeout(1500);
+    expect(resp.status, `${label}: GET search 200`).toBe(200);
+    expect(calls.searchGetsSince(m).length, `${label}: tepat 1 GET search`).toBe(1);
+    expect(calls.queriesSince(m).map((g) => g.query), `${label}: GET search = {"query":"${code}"}`).toEqual([code]);
+    const st = await pageState(page);
+    expect(st.search, `${label}: Cari halaman berisi kode`).toBe(code);
+    expect(st.rows.length, `${label}: jumlah baris halaman = respons`).toBe(rowsOf(resp).length);
+    return resp;
+  }
 
+  async function prepare({ app, page, monitor }, kind) {
+    const calls = trace(page, monitor);
+    await openArchive(app, page);
+    if (kind === 'store') {
+      await openFolder(page, P + 'A');
+      await app.settle();
+    }
+    const before = await pageState(page);
+    const nav = await navTracker(page);
+    return { app, page, monitor, calls, before, nav };
+  }
+
+  async function flowKembaliX(fx3, kind) {
+    const d = DOC[kind];
+    const { app, page, monitor } = fx3;
+    const env = await prepare(fx3, kind);
+    const { calls, nav } = env;
+    const modal = await openPlus(app, page, d.item);
+    await expect(modal.locator('.ant-modal-title'), 'judul modal').toContainText(d.title);
+    await app.screenshot(`${d.tag}-01-modal-scanner`);
+    const [c1, c2, c3] = d.codes.map((c) => P + c);
+
+    await scanInModal(env, d, c1, [], 'scan 1');
+    await app.screenshot(`${d.tag}-02-review-${d.codes[0]}`);
+
+    await backToScanner(page, d, 'kembali', 'Kembali (review -> scanner)');
+    await app.screenshot(`${d.tag}-03-kembali-ke-scanner`);
+    await scanInModal(env, d, c2, [c1], 'scan 2 sesudah Kembali');
+    await app.screenshot(`${d.tag}-04-review-${d.codes[1]}-sesudah-kembali`);
+
+    await backToScanner(page, d, 'x', '✕ (review -> scanner)');
+    await app.screenshot(`${d.tag}-05-x-ke-scanner`);
+    await scanInModal(env, d, c3, [c2], 'scan 3 sesudah ✕');
+    await app.screenshot(`${d.tag}-06-review-${d.codes[2]}-sesudah-x`);
+
+    // tutup modal benar-benar: Kembali (ke scanner) lalu Batal
+    await backToScanner(page, d, 'kembali', 'Kembali sebelum Batal');
+    await closeModalBatal(page, visibleModal(page));
+    await app.settle();
+    await scanPageAfterClose(env, P + 'T', 'sesudah Batal');
+    await expect(rowOf(page, P + 'T'), 'T tampil di tabel halaman').toBeVisible();
+    await app.screenshot(`${d.tag}-07-sesudah-batal-scan-halaman`);
+    await nav.expectNone(`${d.tag} seluruh alur`);
+    expect(calls.all.posts.length, 'tanpa POST put-in').toBe(0);
+    await pageReset(page);
     noServerError(monitor);
     monitor.check();
+  }
+
+  test('[default] ED-1125 AC-17 Letakkan Dokumen (ED-1153): scan -> review; Kembali dan ✕ -> scanner, modal terbuka; scan -> review kode baru, 0 GET archives, halaman utuh; Batal -> scan -> 1 GET search', async ({ app, page, monitor }) => {
+    test.setTimeout(240000);
+    await flowKembaliX({ app, page, monitor }, 'store');
+  });
+
+  test('[default] ED-1125 AC-19 Serahkan Dokumen (bug C): scan HO1 -> review; Kembali dan ✕ -> scanner; scan -> hanya GET {"name"} milik modal, review kode baru, 0 GET search, halaman utuh; Batal -> scan -> 1 GET search', async ({ app, page, monitor }) => {
+    test.setTimeout(240000);
+    await flowKembaliX({ app, page, monitor }, 'handover');
+  });
+
+  test('[default] ED-1125 AC-20 Terima Dokumen (bug C): sama dengan AC-19 (RC1/RC2/RC3)', async ({ app, page, monitor }) => {
+    test.setTimeout(240000);
+    await flowKembaliX({ app, page, monitor }, 'receive');
+  });
+
+  /** Langkah hasil (dokumen tidak bisa diserahkan/diterima): tombol simpan nonaktif; Batal menutup modal; scan sesudahnya -> halaman mencari. */
+  async function resultThenBatal(env, kind, code, texts, label) {
+    const { app, page } = env;
+    const d = DOC[kind];
+    const modal = await openPlus(app, page, d.item);
+    const m = env.calls.mark();
+    await scan(page, code, modal.locator('.ant-modal-title'));
+    for (const t of texts) await expect(activePane(visibleModal(page)), `${label}: langkah hasil memuat "${t}"`).toContainText(t, { timeout: 15000 });
+    await expect(visibleModal(page).locator('button.ant-btn-primary', { hasText: SAVE_BTN[kind] }).first(), `${label}: tombol simpan nonaktif`).toBeDisabled();
+    await page.waitForTimeout(1500);
+    expect(env.calls.queriesSince(m).map((g) => g.query), `${label}: 0 GET search selama modal terbuka`).toEqual([]);
+    await app.screenshot(`AC18d-${label.replace(/[^A-Za-z0-9]+/g, '-')}`);
+    await closeModalBatal(page, visibleModal(page));
+    await app.settle();
+    await scanPageAfterClose(env, P + 'T', `${label}: sesudah Batal`);
+    await pageReset(page);
+  }
+
+  // ---------------------------------------------------------------------------------------------------- tambahan: jalur sukses (BR-8)
+  // Bukan syarat AC (AC-18 c/d = unit), tetapi jalur yang paling berisiko dari perubahan: sukses -> `onCloseAdd` kedua (500 ms) harus menutup
+  // modal DAN menyalakan scanner halaman. Memakai dokumen fixture 0QA125-D6 (milik QA), dipulihkan `fixture.php restore`.
+  test('[default] ED-1125 AC-17 tambahan: Letakkan Dokumen Simpan sukses (D6 -> A): modal menutup, scanner halaman menyala (1 GET search); dipulihkan', async ({ app, page, monitor }) => {
+    test.setTimeout(240000);
+    const fx3 = { app, page, monitor };
+    const d = DOC.store;
+    const snap = prop('D6');
+    try {
+      const env = await prepare(fx3, 'store');
+      const idA = ids()[P + 'A'];
+      const modal = await openPlus(app, page, d.item);
+      await scan(page, P + 'D6', modal.locator('.ant-modal-title'));
+      await expect(activePane(visibleModal(page)), 'review memuat D6').toContainText(P + 'D6', { timeout: 15000 });
+      await app.screenshot('AC17t-01-review-D6');
+      const post = page.waitForResponse((r) => r.request().method() === 'POST' && PUTIN_RE.test(r.url()), { timeout: 45000 });
+      await visibleModal(page).locator('button.ant-btn-primary', { hasText: SAVE_BTN.store }).first().click();
+      const pr = await post;
+      const body = JSON.parse(pr.request().postData() || '{}');
+      expect(pr.status(), 'POST put-in D6 -> A').toBe(200);
+      expect(body.name, 'body put-in: name').toBe(P + 'D6');
+      expect(parentOfBody(body), 'body put-in: idArchiveParent = A').toBe(idA);
+      expect(prop('D6').id_archive_parent, 'DB: D6 sekarang di bawah A').toBe(idA);
+      await scanPageAfterClose(env, P + 'T', 'sesudah Simpan sukses');
+      await app.screenshot('AC17t-02-sesudah-sukses-scan-halaman');
+      await pageReset(page);
+      await env.nav.expectNone('Letakkan sukses');
+      await noErrorToast(page, 'Letakkan sukses');
+      noServerError(monitor);
+      monitor.check();
+    } finally {
+      fx('restore');
+    }
+    expect(prop('D6'), 'D6 dipulihkan').toEqual(snap);
+  });
+
+  test('[default] ED-1125 AC-19/AC-20 tambahan: Serahkan "Simpan & Baru" (modal tetap terbuka di scanner, scan -> hanya modal), lalu Terima sukses (modal menutup, scanner halaman menyala); D6 dipulihkan', async ({ app, page, monitor }) => {
+    test.setTimeout(300000);
+    const fx3 = { app, page, monitor };
+    const snap = prop('D6');
+    try {
+      const env = await prepare(fx3, 'handover');
+      const hoD = DOC.handover;
+
+      // AC-18 d (browser): Terima D6 yang masih di folder (status 1) = langkah hasil; Batal menutup modal, scanner halaman menyala
+      await resultThenBatal(env, 'receive', P + 'D6', ['Gagal Menerima', 'Dokumen belum diserahkan'], 'Terima D6 belum diserahkan');
+
+      const modal = await openPlus(app, page, hoD.item);
+      await scan(page, P + 'D6', modal.locator('.ant-modal-title'));
+      await expect(activePane(visibleModal(page)), 'Serahkan: review memuat D6').toContainText(P + 'D6', { timeout: 15000 });
+      await app.screenshot('AC19t-01-review-D6');
+
+      // Simpan & Baru: caret Dropdown.Button -> item "Simpan & Baru"
+      const post = page.waitForResponse((r) => r.request().method() === 'POST' && /hand-over|handover|give/i.test(r.url()), { timeout: 45000 });
+      await visibleModal(page).locator('.ant-dropdown-trigger').first().click();
+      const menu = page.locator('.ant-dropdown:not(.ant-dropdown-hidden)').last();
+      await menu.waitFor({ state: 'visible', timeout: 10000 });
+      await menu.locator('li.ant-dropdown-menu-item', { hasText: /Simpan & Baru|Save & New/ }).first().click();
+      const pr = await post;
+      expect(pr.status(), 'POST hand-over D6 (Simpan & Baru)').toBe(200);
+      expect(JSON.parse(pr.request().postData() || '{}').name, 'body hand-over: name').toBe(P + 'D6');
+      expect(prop('D6').status, 'DB: D6 status 2 (diserahkan)').toBe(2);
+      await page.waitForTimeout(1500);
+      await expect(activePane(visibleModal(page)), 'Simpan & Baru: modal kembali ke langkah scanner').toContainText('Scan Code', { timeout: 10000 });
+      await expect(visibleModal(page), 'Simpan & Baru: modal tetap terbuka').toBeVisible();
+      await app.screenshot('AC19t-02-simpan-baru-kembali-scanner');
+
+      // scan berikutnya (kode tak dikenal): hanya modal yang menerima; scanner halaman tetap mati
+      env.before = await pageState(page); // refresh() sesudah sukses memuat ulang daftar halaman; bandingkan dengan keadaan SESUDAH sukses
+      await scanInModal(env, hoD, P + 'HO9', [P + 'D6'], 'scan sesudah Simpan & Baru');
+      await app.screenshot('AC19t-03-scan-sesudah-simpan-baru');
+      await backToScanner(page, hoD, 'kembali', 'Kembali sebelum Batal');
+      await closeModalBatal(page, visibleModal(page));
+      await app.settle();
+      await scanPageAfterClose(env, P + 'T', 'Serahkan sesudah Batal');
+      await pageReset(page);
+
+      // AC-18 d (browser): Serahkan D6 yang sudah diserahkan (status 2) = langkah hasil; Batal menutup modal, scanner halaman menyala
+      await resultThenBatal(env, 'handover', P + 'D6', ['Gagal Menyerahkan', 'Dokumen sudah diserahkan'], 'Serahkan D6 sudah diserahkan');
+
+      // Terima D6 (status 2): sukses
+      const rcD = DOC.receive;
+      const modal2 = await openPlus(app, page, rcD.item);
+      await scan(page, P + 'D6', modal2.locator('.ant-modal-title'));
+      await expect(activePane(visibleModal(page)), 'Terima: review memuat D6').toContainText(P + 'D6', { timeout: 15000 });
+      const post2 = page.waitForResponse((r) => r.request().method() === 'POST' && /receive/i.test(r.url()), { timeout: 45000 });
+      await visibleModal(page).locator('button.ant-btn-primary', { hasText: SAVE_BTN.receive }).first().click();
+      const pr2 = await post2;
+      expect(pr2.status(), 'POST receive D6').toBe(200);
+      expect(prop('D6').status, 'DB: D6 status 3 (diterima)').toBe(3);
+      await scanPageAfterClose(env, P + 'T', 'Terima sesudah sukses');
+      await app.screenshot('AC20t-01-sesudah-terima-scan-halaman');
+      await pageReset(page);
+
+      await env.nav.expectNone('Serahkan/Terima sukses');
+      await noErrorToast(page, 'Serahkan/Terima sukses');
+      noServerError(monitor);
+      monitor.check();
+    } finally {
+      fx('restore');
+    }
+    expect(prop('D6'), 'D6 dipulihkan').toEqual(snap);
   });
 });
