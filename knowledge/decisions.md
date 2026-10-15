@@ -38,8 +38,9 @@ mengubah kode tersebut boleh mengusulkan perbaikan lewat *Keputusan untuk develo
 |---|---|---|
 | A-1 | `PUT api/v5/setting/display-columns/{modul}` dengan isi sama di detik yang sama = 500 `FAILED` (`ColumnDisplaySettingService::update` mendapat 0 baris berubah); jeda 1 detik = 200 | ED-1122 |
 | A-2 | Route `api/v4/setting/display-columns*` tanpa saringan permission Opname Document (`documentArchive`, `documentArchiveOpnameHistory`); route v4 tidak dipakai FE | ED-1123 |
-| A-3 | `scopeSearchAll` (trait `CustomizeBuilder`, semua list v5): key `search` berakhiran `()` memanggil method query builder apa pun. Developer 2026-10-14: ikut dibahas di ED-1070 (ditunda, diskusi tim) | ED-1144 |
+| A-3 | `scopeSearchAll` (trait `CustomizeBuilder`, semua list v5): key `search` berakhiran `()` memanggil method query builder apa pun. Developer 2026-10-15: V5 ditutup di ED-1070 (guard, hanya scope terdaftar); modul V4 dimatikan (ED-1070). Sampai ED-1070 Done, perilaku lama masih ada | ED-1144 |
 | A-4 | Input di luar latin1 = 500 di modul v5 selain Archive (Archive menolak dengan 422 `GE0748`, ED-1071); search Opname berisi U+FFFD = 500 | ED-1145 |
 | A-5 | Route BE `archives/add-document` selalu 500 (method service tidak ada); FE memakai `document-archive/documents/put-in` | ED-1023 |
 | A-6 | FE `useBarcodeScanner` (`src/hooks/appHook.js`, dipasang `QRScanSearch` di komponen `Search`, ±136 layar): saat fokus di luar INPUT/TEXTAREA setiap keydown di-`preventDefault` - Enter/Spasi pada tombol terfokus, Tab dan panah tidak bekerja; mouse dan Enter di kotak isian normal. Developer 2026-10-14 (Gate 1 ED-1022 ronde 5, K-1 e): diterima | ED-1126 (ditunda, tidak diperbaiki) |
 | A-7 | `DocumentService::movement` (hand-over/receive lewat `name`, termasuk otomatis dari Pengiriman/Penagihan) pada dokumen yang sudah dihapus (`is_active=0`): tanpa history dihidupkan lagi (`is_active=1`), dengan history status berubah tetapi tetap terhapus. Developer 2026-10-14 (review ED-1022 ronde 5): dibiarkan | ED-1152 |
+| A-8 | `pagination` V5 tanpa batas atas (mis. `pagination=1000000` memuat seluruh tabel). Developer 2026-10-15 (ED-1070, keputusan 4 b): diterima | - |
