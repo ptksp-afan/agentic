@@ -1,0 +1,2321 @@
+{
+    "key": "ED-1070",
+    "be": {
+        "head": "0b8417778",
+        "dirty_files": 86,
+        "branch": "v5-opname-archive"
+    },
+    "be_end": {
+        "head": "0b8417778",
+        "dirty_files": 86,
+        "branch": "v5-opname-archive"
+    },
+    "db": "api_sidomaju",
+    "user": "QA_USER",
+    "mode": "both",
+    "repeat": 1,
+    "started_at": "2026-10-15 22:04:39",
+    "captured_at": "2026-10-15 22:29:55",
+    "seconds": 1515,
+    "requests_file": "qa/golden/requests.json",
+    "summary": {
+        "lists": 234,
+        "requests": 5622,
+        "status": {
+            "200": 5589,
+            "500": 33
+        },
+        "http_mismatch": 34,
+        "unstable": 0,
+        "writes": 46,
+        "unprotected_dml": 0
+    },
+    "guard_start": {
+        "tables": {
+            "archives": {
+                "count": 49152,
+                "max_updated_at": "2026-10-15 08:17:16"
+            },
+            "customers": {
+                "count": 6294,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "purchase_orders": {
+                "count": 1458,
+                "max_updated_at": "2026-10-05 10:31:06"
+            },
+            "items": {
+                "count": 393,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "suppliers": {
+                "count": 31,
+                "max_updated_at": "2026-09-02 08:19:59"
+            },
+            "sales_invoices": {
+                "count": 16960,
+                "max_updated_at": "2026-10-05 11:21:08"
+            },
+            "column_display_settings": {
+                "count": 363,
+                "max_updated_at": "2026-10-15 20:51:31"
+            },
+            "account_types": {
+                "count": 19,
+                "max_updated_at": null
+            },
+            "app_configs": {
+                "count": 88,
+                "max_updated_at": "2026-10-06 16:03:39"
+            },
+            "build_codes": {
+                "count": 1,
+                "max_updated_at": "2026-09-21 22:00:37"
+            },
+            "employees": {
+                "count": 124,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "locations": {
+                "count": 3,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "roles": {
+                "count": 27,
+                "max_updated_at": "2026-10-12 11:03:34"
+            },
+            "user_roles": {
+                "count": 126,
+                "max_updated_at": "2026-10-12 11:03:32"
+            },
+            "users": {
+                "count": 129,
+                "max_updated_at": "2026-10-15 21:16:19",
+                "note": "max tanpa baris QA_USER"
+            },
+            "account_budget_plans": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "customer_devices": {
+                "count": 9,
+                "max_updated_at": "2026-05-26 10:12:08"
+            },
+            "permissions": {
+                "count": 832,
+                "max_updated_at": null
+            },
+            "role_permissions": {
+                "count": 3799,
+                "max_updated_at": null
+            },
+            "cost_allocations": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "asset_fiscals": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "asset_service_types": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "asset_categories": {
+                "count": 9,
+                "max_updated_at": "2026-02-20 13:08:48"
+            },
+            "asset_types": {
+                "count": 2,
+                "max_updated_at": "2026-02-20 13:08:48"
+            },
+            "accounts": {
+                "count": 221,
+                "max_updated_at": "2026-10-05 11:21:08"
+            },
+            "cash_banks": {
+                "count": 22,
+                "max_updated_at": "2026-10-05 11:20:40"
+            },
+            "cash_flow_groups": {
+                "count": 4,
+                "max_updated_at": "2025-02-12 08:02:41"
+            },
+            "cash_flow_types": {
+                "count": 30,
+                "max_updated_at": "2026-10-05 11:20:40"
+            },
+            "petty_cash_types": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "petty_cash_transactions": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "petty_cashes": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "access_locations": {
+                "count": 3,
+                "max_updated_at": "2025-11-09 16:44:20"
+            },
+            "carrier_transactions": {
+                "count": 17968,
+                "max_updated_at": "2026-10-05 11:20:31"
+            },
+            "carriers": {
+                "count": 27,
+                "max_updated_at": "2026-03-05 08:30:27"
+            },
+            "measure_units": {
+                "count": 4,
+                "max_updated_at": "2025-06-17 19:23:59"
+            },
+            "companies": {
+                "count": 1,
+                "max_updated_at": "2025-09-06 13:53:11"
+            },
+            "company_types": {
+                "count": 1,
+                "max_updated_at": "2025-02-24 10:56:20"
+            },
+            "location_types": {
+                "count": 2,
+                "max_updated_at": "2025-02-12 08:02:41"
+            },
+            "sites": {
+                "count": 2,
+                "max_updated_at": "2025-02-14 10:31:47"
+            },
+            "warehouses": {
+                "count": 3,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "currencies": {
+                "count": 1,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "customer_addresses": {
+                "count": 6653,
+                "max_updated_at": "2026-10-05 11:19:34"
+            },
+            "customer_bank_accounts": {
+                "count": 1313,
+                "max_updated_at": "2026-10-03 14:50:20"
+            },
+            "customer_contacts": {
+                "count": 2125,
+                "max_updated_at": "2026-10-05 11:01:31"
+            },
+            "customer_types": {
+                "count": 7,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "approval_configs": {
+                "count": 2,
+                "max_updated_at": "2025-12-06 12:24:51"
+            },
+            "customer_balances": {
+                "count": 7802,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "employee_locations": {
+                "count": 157,
+                "max_updated_at": "2026-10-05 08:43:26"
+            },
+            "approval_level_configs": {
+                "count": 6,
+                "max_updated_at": "2026-09-22 07:52:08"
+            },
+            "archive_documents": {
+                "count": 49126,
+                "max_updated_at": "2026-10-05 11:12:20"
+            },
+            "archive_locations": {
+                "count": 48040,
+                "max_updated_at": null
+            },
+            "archive_permissions": {
+                "count": 9,
+                "max_updated_at": "2026-10-13 15:49:22"
+            },
+            "bg_cheque_details": {
+                "count": 37,
+                "max_updated_at": null
+            },
+            "bg_cheque_transactions": {
+                "count": 34,
+                "max_updated_at": "2026-10-03 13:16:30"
+            },
+            "delivery_orders": {
+                "count": 17968,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "receivable_payment_details": {
+                "count": 17617,
+                "max_updated_at": "2026-10-05 11:17:03"
+            },
+            "receivable_payments": {
+                "count": 17583,
+                "max_updated_at": "2026-10-05 11:20:41"
+            },
+            "sales_invoice_details": {
+                "count": 39783,
+                "max_updated_at": "2026-10-05 11:21:08"
+            },
+            "sales_returns": {
+                "count": 2267,
+                "max_updated_at": "2026-10-05 10:29:20"
+            },
+            "archive_opname_folders": {
+                "count": 4,
+                "max_updated_at": null
+            },
+            "archive_opnames": {
+                "count": 3,
+                "max_updated_at": "2026-10-15 08:24:09"
+            },
+            "departments": {
+                "count": 5,
+                "max_updated_at": "2026-10-05 08:43:28"
+            },
+            "job_titles": {
+                "count": 8,
+                "max_updated_at": "2026-10-05 08:43:28"
+            },
+            "helpers": {
+                "count": 16,
+                "max_updated_at": "2026-01-09 16:24:09"
+            },
+            "salesman_activity_types": {
+                "count": 4,
+                "max_updated_at": "2025-06-17 08:43:27"
+            },
+            "supplier_bank_accounts": {
+                "count": 27,
+                "max_updated_at": "2026-09-02 08:19:59"
+            },
+            "cash_managements": {
+                "count": 25017,
+                "max_updated_at": "2026-10-05 11:20:40"
+            },
+            "interbank_transfers": {
+                "count": 2251,
+                "max_updated_at": "2026-10-05 10:55:51"
+            },
+            "payable_payments": {
+                "count": 1228,
+                "max_updated_at": "2026-10-04 06:31:20"
+            },
+            "debit_memo_refunds": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "debit_memos": {
+                "count": 12,
+                "max_updated_at": "2026-09-28 16:18:10"
+            },
+            "receipt_notes": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "credit_memo_refunds": {
+                "count": 17,
+                "max_updated_at": "2026-09-29 12:06:59"
+            },
+            "credit_memos": {
+                "count": 682,
+                "max_updated_at": "2026-10-03 13:31:26"
+            },
+            "fixed_asset_revaluations": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "fixed_assets": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "fixed_asset_transfers": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "expenses": {
+                "count": 1,
+                "max_updated_at": "2026-09-25 12:49:54"
+            },
+            "periods": {
+                "count": 24,
+                "max_updated_at": "2026-06-15 15:53:43"
+            },
+            "import_histories": {
+                "count": 37,
+                "max_updated_at": "2026-10-05 09:30:35"
+            },
+            "adjustment_types": {
+                "count": 3,
+                "max_updated_at": "2026-10-05 09:40:24"
+            },
+            "issue_receipts": {
+                "count": 218,
+                "max_updated_at": "2026-10-05 09:40:24"
+            },
+            "item_requests": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_transfers": {
+                "count": 473,
+                "max_updated_at": "2026-10-05 11:02:46"
+            },
+            "warehouse_transfers": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "job_cost_rollovers": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "job_costings": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "productions": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "recipe_simulations": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "stock_opnames": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "allowances": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_categories": {
+                "count": 52,
+                "max_updated_at": "2026-09-25 11:30:53"
+            },
+            "item_locations": {
+                "count": 1179,
+                "max_updated_at": "2026-09-29 09:41:55"
+            },
+            "catalogues": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "colors": {
+                "count": 86,
+                "max_updated_at": null
+            },
+            "default_recipes": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "recipes": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_group_revisions": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_photos": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_visibilities": {
+                "count": 393,
+                "max_updated_at": "2026-09-25 11:30:53"
+            },
+            "units": {
+                "count": 12,
+                "max_updated_at": "2026-09-25 11:30:53"
+            },
+            "return_reasons": {
+                "count": 9,
+                "max_updated_at": "2026-02-03 15:39:21"
+            },
+            "sales_analysis_categories": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "sales_analysis_items": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "sizes": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "journals": {
+                "count": 212,
+                "max_updated_at": "2026-10-01 17:11:01"
+            },
+            "transaction_notifications": {
+                "count": 14613,
+                "max_updated_at": "2026-10-05 11:20:44"
+            },
+            "user_notifications": {
+                "count": 28743,
+                "max_updated_at": "2026-10-05 11:20:44"
+            },
+            "payment_categories": {
+                "count": 9,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "payment_terms": {
+                "count": 11,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "customer_pricelists": {
+                "count": 139,
+                "max_updated_at": "2026-10-04 06:53:47"
+            },
+            "supplier_pricelists": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "purchase_invoice_details": {
+                "count": 6742,
+                "max_updated_at": "2026-10-03 13:28:35"
+            },
+            "purchase_invoices": {
+                "count": 1451,
+                "max_updated_at": "2026-10-04 06:31:20"
+            },
+            "supplier_survey_prices": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "purchase_receipts": {
+                "count": 1460,
+                "max_updated_at": "2026-10-05 10:31:07"
+            },
+            "purchase_returns": {
+                "count": 13,
+                "max_updated_at": "2026-09-28 16:18:10"
+            },
+            "raptor_deposits": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "transaction_queues": {
+                "count": 2,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "raptor_invoices": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "raptor_connections": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "billing_transactions": {
+                "count": 25249,
+                "max_updated_at": null
+            },
+            "billings": {
+                "count": 2477,
+                "max_updated_at": "2026-10-05 11:01:40"
+            },
+            "cities": {
+                "count": 498,
+                "max_updated_at": null
+            },
+            "countries": {
+                "count": 246,
+                "max_updated_at": null
+            },
+            "districts": {
+                "count": 6912,
+                "max_updated_at": null
+            },
+            "provinces": {
+                "count": 34,
+                "max_updated_at": "2025-02-12 08:02:41"
+            },
+            "sales_orders": {
+                "count": 19826,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "villages": {
+                "count": 83320,
+                "max_updated_at": "2025-01-22 12:31:49"
+            },
+            "shipment_acceptance_transactions": {
+                "count": 17891,
+                "max_updated_at": "2026-10-05 11:17:04"
+            },
+            "shipment_acceptances": {
+                "count": 17176,
+                "max_updated_at": "2026-10-05 11:17:05"
+            },
+            "shipment_transactions": {
+                "count": 18002,
+                "max_updated_at": "2026-10-05 11:16:27"
+            },
+            "shipments": {
+                "count": 2051,
+                "max_updated_at": "2026-10-05 11:20:31"
+            },
+            "attendances": {
+                "count": 80869,
+                "max_updated_at": "2026-10-05 11:21:00"
+            },
+            "salesman_activities": {
+                "count": 80941,
+                "max_updated_at": "2026-10-05 11:21:00"
+            },
+            "type_of_salesman_activities": {
+                "count": 17323,
+                "max_updated_at": null
+            },
+            "customer_pricelist_details": {
+                "count": 1950,
+                "max_updated_at": "2026-10-04 06:53:32"
+            },
+            "employee_parents": {
+                "count": 146,
+                "max_updated_at": "2026-10-05 08:43:28"
+            },
+            "receipt_note_details": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "clearing_detail_transactions": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "clearings": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_request_details": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "photo_types": {
+                "count": 10,
+                "max_updated_at": "2026-04-17 12:30:47"
+            },
+            "label_settings": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "printer_settings": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "app_master_codes": {
+                "count": 36,
+                "max_updated_at": "2026-10-05 11:01:31"
+            },
+            "app_trans_codes": {
+                "count": 40,
+                "max_updated_at": "2026-09-21 22:00:27"
+            },
+            "supplier_addresses": {
+                "count": 29,
+                "max_updated_at": "2026-09-02 08:19:59"
+            },
+            "supplier_contacts": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "couriers": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "supplier_types": {
+                "count": 2,
+                "max_updated_at": "2026-09-02 08:20:00"
+            },
+            "supplier_locations": {
+                "count": 93,
+                "max_updated_at": "2026-09-02 08:19:59"
+            },
+            "taxes": {
+                "count": 1,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "view_to_do_lists": {
+                "count": 1064,
+                "max_updated_at": null
+            }
+        },
+        "cds_modules": {
+            "accountType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "accountBudgetPlan": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "costAllocation": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "assetFiscal": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "assetServiceType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "assetType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "account": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "cashBank": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "cashFlowType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "pettyCashType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "pettyCash": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "accessLocation": {
+                "count": 1,
+                "max_updated_at": "2025-12-10 08:31:28"
+            },
+            "carrier": {
+                "count": 1,
+                "max_updated_at": "2025-11-28 11:20:54"
+            },
+            "company": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "locationType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "location": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "site": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "warehouse": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "currency": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "customerType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "salesmanActivity.customer": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 08:56:35"
+            },
+            "salesmanActivity.customerDevice": {
+                "count": 1,
+                "max_updated_at": "2026-02-04 22:50:50"
+            },
+            "documentArchive": {
+                "count": 1,
+                "max_updated_at": "2026-10-08 09:49:08"
+            },
+            "documentArchiveOpnameHistory": {
+                "count": 1,
+                "max_updated_at": "2026-10-07 20:10:46"
+            },
+            "salesmanActivity.employee": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 08:54:41"
+            },
+            "helper": {
+                "count": 1,
+                "max_updated_at": "2025-12-03 15:19:20"
+            },
+            "jobTitle": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "role": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "salesmanActivityType": {
+                "count": 1,
+                "max_updated_at": "2026-03-14 10:17:52"
+            },
+            "user": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "bilyetGiroCheque": {
+                "count": 1,
+                "max_updated_at": "2026-07-08 23:13:58"
+            },
+            "cashManagement": {
+                "count": 1,
+                "max_updated_at": "2026-04-01 14:58:38"
+            },
+            "interbankTransfer": {
+                "count": 1,
+                "max_updated_at": "2026-06-18 15:51:09"
+            },
+            "payablePayment": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "pettyCashTransaction": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "refundPurchaseVariant": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "purchaseVariant": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "receiptNote": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "receivablePayment": {
+                "count": 1,
+                "max_updated_at": "2026-03-16 08:48:52"
+            },
+            "refundSalesVariant": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "salesVariant": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "fixedAssetDisposal": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "fixedAssetTransfer": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "fixedAsset": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "expense": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "period": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "importLog": {
+                "count": 1,
+                "max_updated_at": "2025-11-28 17:16:55"
+            },
+            "issueReceipt": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemRequest": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemTransferLocation": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemTransferWarehouse": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "jobCostRollover": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "jobCosting": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "production": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "recipePriceSimulation": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:25"
+            },
+            "stockOpname": {
+                "count": 1,
+                "max_updated_at": "2026-09-21 22:00:27"
+            },
+            "adjustmentType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "allowance": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemLocation": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "catalogue": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "color": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "defaultRecipeProductionRequest": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemGrouping": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemPhoto": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:25"
+            },
+            "itemVisibility": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "item": {
+                "count": 1,
+                "max_updated_at": "2026-09-21 22:00:26"
+            },
+            "measureUnit": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "recipe": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "returnReason": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "salesAnalysisCategory": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "size": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "unit": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "journal": {
+                "count": 1,
+                "max_updated_at": "2026-03-31 16:24:24"
+            },
+            "paymentCategory": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "paymentTerm": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "customerPricelist": {
+                "count": 1,
+                "max_updated_at": "2026-03-31 11:51:37"
+            },
+            "supplierPricelist": {
+                "count": 1,
+                "max_updated_at": "2025-12-13 10:35:59"
+            },
+            "supplierSurveyPrice": {
+                "count": 1,
+                "max_updated_at": "2026-02-04 22:17:21"
+            },
+            "purchaseInvoice": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "purchaseOrder": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "purchaseReceipt": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "purchaseReturn": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "raptorDeposit": {
+                "count": 1,
+                "max_updated_at": "2026-10-15 20:51:30"
+            },
+            "raptorInvoice": {
+                "count": 1,
+                "max_updated_at": "2026-10-15 20:51:31"
+            },
+            "raptorSetup": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "billing": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 09:11:00"
+            },
+            "deliveryOrder": {
+                "count": 1,
+                "max_updated_at": "2026-03-12 08:05:40"
+            },
+            "custom.000000000017403685369459646148.salesInvoice": {
+                "count": 1,
+                "max_updated_at": "2026-06-15 09:29:35"
+            },
+            "custom.000000000017403685369459646148.salesOrder": {
+                "count": 1,
+                "max_updated_at": "2026-08-07 07:41:17"
+            },
+            "salesReturn": {
+                "count": 1,
+                "max_updated_at": "2026-06-19 09:54:15"
+            },
+            "shipmentAcceptance": {
+                "count": 1,
+                "max_updated_at": "2025-11-29 19:57:52"
+            },
+            "shipment": {
+                "count": 1,
+                "max_updated_at": "2026-06-10 10:24:17"
+            },
+            "salesmanActivity.attendance": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "salesmanActivity.attendanceNeedApprove": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "salesmanActivity.customerOnSalesman": {
+                "count": 1,
+                "max_updated_at": "2026-02-09 16:18:44"
+            },
+            "salesmanActivity.item": {
+                "count": 1,
+                "max_updated_at": "2026-04-05 00:05:20"
+            },
+            "salesmanActivity.salesOrder": {
+                "count": 1,
+                "max_updated_at": "2026-06-17 09:59:07"
+            },
+            "salesmanActivity.salesmanActivity": {
+                "count": 1,
+                "max_updated_at": "2026-05-23 10:27:36"
+            },
+            "salesmanActivity.showCalendar": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 09:06:11"
+            },
+            "salesmanActivity.customerActivity": {
+                "count": 1,
+                "max_updated_at": "2026-05-11 11:08:59"
+            },
+            "salesmanActivity.effectiveCall": {
+                "count": 1,
+                "max_updated_at": "2026-05-07 20:52:31"
+            },
+            "selectDeliveryOrderInCustomer": {
+                "count": 1,
+                "max_updated_at": "2025-12-23 22:25:28"
+            },
+            "selectReceivablePaymentInCustomer": {
+                "count": 1,
+                "max_updated_at": "2025-12-23 22:25:28"
+            },
+            "selectSalesInvoiceInCustomer": {
+                "count": 1,
+                "max_updated_at": "2025-12-23 22:25:28"
+            },
+            "selectSalesOrderInCustomer": {
+                "count": 1,
+                "max_updated_at": "2025-12-23 22:25:28"
+            },
+            "selectReceiptNoteInBgCheque": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectSalesInvoiceInBgCheque": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectOldCashMan": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectPurchaseInvoiceInPayablePayment": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectReceiptNoteInPayablePayment": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectPurchaseInvoiceInReceiptNote": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "advanceItem": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "unreceivedList": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:25"
+            },
+            "itemRequestDetail": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectSalesInvoiceInBilling": {
+                "count": 1,
+                "max_updated_at": "2026-05-07 20:52:31"
+            },
+            "referenceSalesInvoice": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 09:29:02"
+            },
+            "referenceSalesReturn": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 11:59:14"
+            },
+            "referenceDeliveryOrder": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 16:07:40"
+            },
+            "selectSalesOrderInShipment": {
+                "count": 1,
+                "max_updated_at": "2025-11-29 23:11:44"
+            },
+            "photoType": {
+                "count": 1,
+                "max_updated_at": "2025-12-08 14:45:30"
+            },
+            "printLabelFixedAsset": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "printer": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "setupCode": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "transactionCode": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "courier": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "supplierType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "supplier": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "defaultTax": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "tax": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "toDoList": {
+                "count": 1,
+                "max_updated_at": "2026-06-09 23:01:36"
+            }
+        }
+    },
+    "guard": {
+        "tables": {
+            "archives": {
+                "count": 49152,
+                "max_updated_at": "2026-10-15 08:17:16"
+            },
+            "customers": {
+                "count": 6294,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "purchase_orders": {
+                "count": 1458,
+                "max_updated_at": "2026-10-05 10:31:06"
+            },
+            "items": {
+                "count": 393,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "suppliers": {
+                "count": 31,
+                "max_updated_at": "2026-09-02 08:19:59"
+            },
+            "sales_invoices": {
+                "count": 16960,
+                "max_updated_at": "2026-10-05 11:21:08"
+            },
+            "column_display_settings": {
+                "count": 363,
+                "max_updated_at": "2026-10-15 20:51:31"
+            },
+            "account_types": {
+                "count": 19,
+                "max_updated_at": null
+            },
+            "app_configs": {
+                "count": 88,
+                "max_updated_at": "2026-10-06 16:03:39"
+            },
+            "build_codes": {
+                "count": 1,
+                "max_updated_at": "2026-09-21 22:00:37"
+            },
+            "employees": {
+                "count": 124,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "locations": {
+                "count": 3,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "roles": {
+                "count": 27,
+                "max_updated_at": "2026-10-12 11:03:34"
+            },
+            "user_roles": {
+                "count": 126,
+                "max_updated_at": "2026-10-12 11:03:32"
+            },
+            "users": {
+                "count": 129,
+                "max_updated_at": "2026-10-15 21:16:19",
+                "note": "max tanpa baris QA_USER"
+            },
+            "account_budget_plans": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "customer_devices": {
+                "count": 9,
+                "max_updated_at": "2026-05-26 10:12:08"
+            },
+            "permissions": {
+                "count": 832,
+                "max_updated_at": null
+            },
+            "role_permissions": {
+                "count": 3799,
+                "max_updated_at": null
+            },
+            "cost_allocations": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "asset_fiscals": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "asset_service_types": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "asset_categories": {
+                "count": 9,
+                "max_updated_at": "2026-02-20 13:08:48"
+            },
+            "asset_types": {
+                "count": 2,
+                "max_updated_at": "2026-02-20 13:08:48"
+            },
+            "accounts": {
+                "count": 221,
+                "max_updated_at": "2026-10-05 11:21:08"
+            },
+            "cash_banks": {
+                "count": 22,
+                "max_updated_at": "2026-10-05 11:20:40"
+            },
+            "cash_flow_groups": {
+                "count": 4,
+                "max_updated_at": "2025-02-12 08:02:41"
+            },
+            "cash_flow_types": {
+                "count": 30,
+                "max_updated_at": "2026-10-05 11:20:40"
+            },
+            "petty_cash_types": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "petty_cash_transactions": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "petty_cashes": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "access_locations": {
+                "count": 3,
+                "max_updated_at": "2025-11-09 16:44:20"
+            },
+            "carrier_transactions": {
+                "count": 17968,
+                "max_updated_at": "2026-10-05 11:20:31"
+            },
+            "carriers": {
+                "count": 27,
+                "max_updated_at": "2026-03-05 08:30:27"
+            },
+            "measure_units": {
+                "count": 4,
+                "max_updated_at": "2025-06-17 19:23:59"
+            },
+            "companies": {
+                "count": 1,
+                "max_updated_at": "2025-09-06 13:53:11"
+            },
+            "company_types": {
+                "count": 1,
+                "max_updated_at": "2025-02-24 10:56:20"
+            },
+            "location_types": {
+                "count": 2,
+                "max_updated_at": "2025-02-12 08:02:41"
+            },
+            "sites": {
+                "count": 2,
+                "max_updated_at": "2025-02-14 10:31:47"
+            },
+            "warehouses": {
+                "count": 3,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "currencies": {
+                "count": 1,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "customer_addresses": {
+                "count": 6653,
+                "max_updated_at": "2026-10-05 11:19:34"
+            },
+            "customer_bank_accounts": {
+                "count": 1313,
+                "max_updated_at": "2026-10-03 14:50:20"
+            },
+            "customer_contacts": {
+                "count": 2125,
+                "max_updated_at": "2026-10-05 11:01:31"
+            },
+            "customer_types": {
+                "count": 7,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "approval_configs": {
+                "count": 2,
+                "max_updated_at": "2025-12-06 12:24:51"
+            },
+            "customer_balances": {
+                "count": 7802,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "employee_locations": {
+                "count": 157,
+                "max_updated_at": "2026-10-05 08:43:26"
+            },
+            "approval_level_configs": {
+                "count": 6,
+                "max_updated_at": "2026-09-22 07:52:08"
+            },
+            "archive_documents": {
+                "count": 49126,
+                "max_updated_at": "2026-10-05 11:12:20"
+            },
+            "archive_locations": {
+                "count": 48040,
+                "max_updated_at": null
+            },
+            "archive_permissions": {
+                "count": 9,
+                "max_updated_at": "2026-10-13 15:49:22"
+            },
+            "bg_cheque_details": {
+                "count": 37,
+                "max_updated_at": null
+            },
+            "bg_cheque_transactions": {
+                "count": 34,
+                "max_updated_at": "2026-10-03 13:16:30"
+            },
+            "delivery_orders": {
+                "count": 17968,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "receivable_payment_details": {
+                "count": 17617,
+                "max_updated_at": "2026-10-05 11:17:03"
+            },
+            "receivable_payments": {
+                "count": 17583,
+                "max_updated_at": "2026-10-05 11:20:41"
+            },
+            "sales_invoice_details": {
+                "count": 39783,
+                "max_updated_at": "2026-10-05 11:21:08"
+            },
+            "sales_returns": {
+                "count": 2267,
+                "max_updated_at": "2026-10-05 10:29:20"
+            },
+            "archive_opname_folders": {
+                "count": 4,
+                "max_updated_at": null
+            },
+            "archive_opnames": {
+                "count": 3,
+                "max_updated_at": "2026-10-15 08:24:09"
+            },
+            "departments": {
+                "count": 5,
+                "max_updated_at": "2026-10-05 08:43:28"
+            },
+            "job_titles": {
+                "count": 8,
+                "max_updated_at": "2026-10-05 08:43:28"
+            },
+            "helpers": {
+                "count": 16,
+                "max_updated_at": "2026-01-09 16:24:09"
+            },
+            "salesman_activity_types": {
+                "count": 4,
+                "max_updated_at": "2025-06-17 08:43:27"
+            },
+            "supplier_bank_accounts": {
+                "count": 27,
+                "max_updated_at": "2026-09-02 08:19:59"
+            },
+            "cash_managements": {
+                "count": 25017,
+                "max_updated_at": "2026-10-05 11:20:40"
+            },
+            "interbank_transfers": {
+                "count": 2251,
+                "max_updated_at": "2026-10-05 10:55:51"
+            },
+            "payable_payments": {
+                "count": 1228,
+                "max_updated_at": "2026-10-04 06:31:20"
+            },
+            "debit_memo_refunds": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "debit_memos": {
+                "count": 12,
+                "max_updated_at": "2026-09-28 16:18:10"
+            },
+            "receipt_notes": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "credit_memo_refunds": {
+                "count": 17,
+                "max_updated_at": "2026-09-29 12:06:59"
+            },
+            "credit_memos": {
+                "count": 682,
+                "max_updated_at": "2026-10-03 13:31:26"
+            },
+            "fixed_asset_revaluations": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "fixed_assets": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "fixed_asset_transfers": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "expenses": {
+                "count": 1,
+                "max_updated_at": "2026-09-25 12:49:54"
+            },
+            "periods": {
+                "count": 24,
+                "max_updated_at": "2026-06-15 15:53:43"
+            },
+            "import_histories": {
+                "count": 37,
+                "max_updated_at": "2026-10-05 09:30:35"
+            },
+            "adjustment_types": {
+                "count": 3,
+                "max_updated_at": "2026-10-05 09:40:24"
+            },
+            "issue_receipts": {
+                "count": 218,
+                "max_updated_at": "2026-10-05 09:40:24"
+            },
+            "item_requests": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_transfers": {
+                "count": 473,
+                "max_updated_at": "2026-10-05 11:02:46"
+            },
+            "warehouse_transfers": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "job_cost_rollovers": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "job_costings": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "productions": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "recipe_simulations": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "stock_opnames": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "allowances": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_categories": {
+                "count": 52,
+                "max_updated_at": "2026-09-25 11:30:53"
+            },
+            "item_locations": {
+                "count": 1179,
+                "max_updated_at": "2026-09-29 09:41:55"
+            },
+            "catalogues": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "colors": {
+                "count": 86,
+                "max_updated_at": null
+            },
+            "default_recipes": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "recipes": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_group_revisions": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_photos": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_visibilities": {
+                "count": 393,
+                "max_updated_at": "2026-09-25 11:30:53"
+            },
+            "units": {
+                "count": 12,
+                "max_updated_at": "2026-09-25 11:30:53"
+            },
+            "return_reasons": {
+                "count": 9,
+                "max_updated_at": "2026-02-03 15:39:21"
+            },
+            "sales_analysis_categories": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "sales_analysis_items": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "sizes": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "journals": {
+                "count": 212,
+                "max_updated_at": "2026-10-01 17:11:01"
+            },
+            "transaction_notifications": {
+                "count": 14613,
+                "max_updated_at": "2026-10-05 11:20:44"
+            },
+            "user_notifications": {
+                "count": 28743,
+                "max_updated_at": "2026-10-05 11:20:44"
+            },
+            "payment_categories": {
+                "count": 9,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "payment_terms": {
+                "count": 11,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "customer_pricelists": {
+                "count": 139,
+                "max_updated_at": "2026-10-04 06:53:47"
+            },
+            "supplier_pricelists": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "purchase_invoice_details": {
+                "count": 6742,
+                "max_updated_at": "2026-10-03 13:28:35"
+            },
+            "purchase_invoices": {
+                "count": 1451,
+                "max_updated_at": "2026-10-04 06:31:20"
+            },
+            "supplier_survey_prices": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "purchase_receipts": {
+                "count": 1460,
+                "max_updated_at": "2026-10-05 10:31:07"
+            },
+            "purchase_returns": {
+                "count": 13,
+                "max_updated_at": "2026-09-28 16:18:10"
+            },
+            "raptor_deposits": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "transaction_queues": {
+                "count": 2,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "raptor_invoices": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "raptor_connections": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "billing_transactions": {
+                "count": 25249,
+                "max_updated_at": null
+            },
+            "billings": {
+                "count": 2477,
+                "max_updated_at": "2026-10-05 11:01:40"
+            },
+            "cities": {
+                "count": 498,
+                "max_updated_at": null
+            },
+            "countries": {
+                "count": 246,
+                "max_updated_at": null
+            },
+            "districts": {
+                "count": 6912,
+                "max_updated_at": null
+            },
+            "provinces": {
+                "count": 34,
+                "max_updated_at": "2025-02-12 08:02:41"
+            },
+            "sales_orders": {
+                "count": 19826,
+                "max_updated_at": "2026-10-05 11:21:07"
+            },
+            "villages": {
+                "count": 83320,
+                "max_updated_at": "2025-01-22 12:31:49"
+            },
+            "shipment_acceptance_transactions": {
+                "count": 17891,
+                "max_updated_at": "2026-10-05 11:17:04"
+            },
+            "shipment_acceptances": {
+                "count": 17176,
+                "max_updated_at": "2026-10-05 11:17:05"
+            },
+            "shipment_transactions": {
+                "count": 18002,
+                "max_updated_at": "2026-10-05 11:16:27"
+            },
+            "shipments": {
+                "count": 2051,
+                "max_updated_at": "2026-10-05 11:20:31"
+            },
+            "attendances": {
+                "count": 80869,
+                "max_updated_at": "2026-10-05 11:21:00"
+            },
+            "salesman_activities": {
+                "count": 80941,
+                "max_updated_at": "2026-10-05 11:21:00"
+            },
+            "type_of_salesman_activities": {
+                "count": 17323,
+                "max_updated_at": null
+            },
+            "customer_pricelist_details": {
+                "count": 1950,
+                "max_updated_at": "2026-10-04 06:53:32"
+            },
+            "employee_parents": {
+                "count": 146,
+                "max_updated_at": "2026-10-05 08:43:28"
+            },
+            "receipt_note_details": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "clearing_detail_transactions": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "clearings": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "item_request_details": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "photo_types": {
+                "count": 10,
+                "max_updated_at": "2026-04-17 12:30:47"
+            },
+            "label_settings": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "printer_settings": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "app_master_codes": {
+                "count": 36,
+                "max_updated_at": "2026-10-05 11:01:31"
+            },
+            "app_trans_codes": {
+                "count": 40,
+                "max_updated_at": "2026-09-21 22:00:27"
+            },
+            "supplier_addresses": {
+                "count": 29,
+                "max_updated_at": "2026-09-02 08:19:59"
+            },
+            "supplier_contacts": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "couriers": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "supplier_types": {
+                "count": 2,
+                "max_updated_at": "2026-09-02 08:20:00"
+            },
+            "supplier_locations": {
+                "count": 93,
+                "max_updated_at": "2026-09-02 08:19:59"
+            },
+            "taxes": {
+                "count": 1,
+                "max_updated_at": "2026-10-05 11:19:36"
+            },
+            "view_to_do_lists": {
+                "count": 1064,
+                "max_updated_at": null
+            }
+        },
+        "cds_modules": {
+            "accountType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "accountBudgetPlan": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "costAllocation": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "assetFiscal": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "assetServiceType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "assetType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "account": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "cashBank": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "cashFlowType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "pettyCashType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "pettyCash": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "accessLocation": {
+                "count": 1,
+                "max_updated_at": "2025-12-10 08:31:28"
+            },
+            "carrier": {
+                "count": 1,
+                "max_updated_at": "2025-11-28 11:20:54"
+            },
+            "company": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "locationType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "location": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "site": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "warehouse": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "currency": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "customerType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "salesmanActivity.customer": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 08:56:35"
+            },
+            "salesmanActivity.customerDevice": {
+                "count": 1,
+                "max_updated_at": "2026-02-04 22:50:50"
+            },
+            "documentArchive": {
+                "count": 1,
+                "max_updated_at": "2026-10-08 09:49:08"
+            },
+            "documentArchiveOpnameHistory": {
+                "count": 1,
+                "max_updated_at": "2026-10-07 20:10:46"
+            },
+            "salesmanActivity.employee": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 08:54:41"
+            },
+            "helper": {
+                "count": 1,
+                "max_updated_at": "2025-12-03 15:19:20"
+            },
+            "jobTitle": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "role": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "salesmanActivityType": {
+                "count": 1,
+                "max_updated_at": "2026-03-14 10:17:52"
+            },
+            "user": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "bilyetGiroCheque": {
+                "count": 1,
+                "max_updated_at": "2026-07-08 23:13:58"
+            },
+            "cashManagement": {
+                "count": 1,
+                "max_updated_at": "2026-04-01 14:58:38"
+            },
+            "interbankTransfer": {
+                "count": 1,
+                "max_updated_at": "2026-06-18 15:51:09"
+            },
+            "payablePayment": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "pettyCashTransaction": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "refundPurchaseVariant": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "purchaseVariant": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "receiptNote": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "receivablePayment": {
+                "count": 1,
+                "max_updated_at": "2026-03-16 08:48:52"
+            },
+            "refundSalesVariant": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "salesVariant": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "fixedAssetDisposal": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "fixedAssetTransfer": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "fixedAsset": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "expense": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "period": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "importLog": {
+                "count": 1,
+                "max_updated_at": "2025-11-28 17:16:55"
+            },
+            "issueReceipt": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemRequest": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemTransferLocation": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemTransferWarehouse": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "jobCostRollover": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "jobCosting": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "production": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "recipePriceSimulation": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:25"
+            },
+            "stockOpname": {
+                "count": 1,
+                "max_updated_at": "2026-09-21 22:00:27"
+            },
+            "adjustmentType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "allowance": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemLocation": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "catalogue": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "color": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "defaultRecipeProductionRequest": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemGrouping": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "itemPhoto": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:25"
+            },
+            "itemVisibility": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "item": {
+                "count": 1,
+                "max_updated_at": "2026-09-21 22:00:26"
+            },
+            "measureUnit": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "recipe": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "returnReason": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "salesAnalysisCategory": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "size": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "unit": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "journal": {
+                "count": 1,
+                "max_updated_at": "2026-03-31 16:24:24"
+            },
+            "paymentCategory": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "paymentTerm": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "customerPricelist": {
+                "count": 1,
+                "max_updated_at": "2026-03-31 11:51:37"
+            },
+            "supplierPricelist": {
+                "count": 1,
+                "max_updated_at": "2025-12-13 10:35:59"
+            },
+            "supplierSurveyPrice": {
+                "count": 1,
+                "max_updated_at": "2026-02-04 22:17:21"
+            },
+            "purchaseInvoice": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "purchaseOrder": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "purchaseReceipt": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "purchaseReturn": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "raptorDeposit": {
+                "count": 1,
+                "max_updated_at": "2026-10-15 20:51:30"
+            },
+            "raptorInvoice": {
+                "count": 1,
+                "max_updated_at": "2026-10-15 20:51:31"
+            },
+            "raptorSetup": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "billing": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 09:11:00"
+            },
+            "deliveryOrder": {
+                "count": 1,
+                "max_updated_at": "2026-03-12 08:05:40"
+            },
+            "custom.000000000017403685369459646148.salesInvoice": {
+                "count": 1,
+                "max_updated_at": "2026-06-15 09:29:35"
+            },
+            "custom.000000000017403685369459646148.salesOrder": {
+                "count": 1,
+                "max_updated_at": "2026-08-07 07:41:17"
+            },
+            "salesReturn": {
+                "count": 1,
+                "max_updated_at": "2026-06-19 09:54:15"
+            },
+            "shipmentAcceptance": {
+                "count": 1,
+                "max_updated_at": "2025-11-29 19:57:52"
+            },
+            "shipment": {
+                "count": 1,
+                "max_updated_at": "2026-06-10 10:24:17"
+            },
+            "salesmanActivity.attendance": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "salesmanActivity.attendanceNeedApprove": {
+                "count": 0,
+                "max_updated_at": null
+            },
+            "salesmanActivity.customerOnSalesman": {
+                "count": 1,
+                "max_updated_at": "2026-02-09 16:18:44"
+            },
+            "salesmanActivity.item": {
+                "count": 1,
+                "max_updated_at": "2026-04-05 00:05:20"
+            },
+            "salesmanActivity.salesOrder": {
+                "count": 1,
+                "max_updated_at": "2026-06-17 09:59:07"
+            },
+            "salesmanActivity.salesmanActivity": {
+                "count": 1,
+                "max_updated_at": "2026-05-23 10:27:36"
+            },
+            "salesmanActivity.showCalendar": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 09:06:11"
+            },
+            "salesmanActivity.customerActivity": {
+                "count": 1,
+                "max_updated_at": "2026-05-11 11:08:59"
+            },
+            "salesmanActivity.effectiveCall": {
+                "count": 1,
+                "max_updated_at": "2026-05-07 20:52:31"
+            },
+            "selectDeliveryOrderInCustomer": {
+                "count": 1,
+                "max_updated_at": "2025-12-23 22:25:28"
+            },
+            "selectReceivablePaymentInCustomer": {
+                "count": 1,
+                "max_updated_at": "2025-12-23 22:25:28"
+            },
+            "selectSalesInvoiceInCustomer": {
+                "count": 1,
+                "max_updated_at": "2025-12-23 22:25:28"
+            },
+            "selectSalesOrderInCustomer": {
+                "count": 1,
+                "max_updated_at": "2025-12-23 22:25:28"
+            },
+            "selectReceiptNoteInBgCheque": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectSalesInvoiceInBgCheque": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectOldCashMan": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectPurchaseInvoiceInPayablePayment": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectReceiptNoteInPayablePayment": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectPurchaseInvoiceInReceiptNote": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "advanceItem": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "unreceivedList": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:25"
+            },
+            "itemRequestDetail": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "selectSalesInvoiceInBilling": {
+                "count": 1,
+                "max_updated_at": "2026-05-07 20:52:31"
+            },
+            "referenceSalesInvoice": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 09:29:02"
+            },
+            "referenceSalesReturn": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 11:59:14"
+            },
+            "referenceDeliveryOrder": {
+                "count": 1,
+                "max_updated_at": "2025-11-25 16:07:40"
+            },
+            "selectSalesOrderInShipment": {
+                "count": 1,
+                "max_updated_at": "2025-11-29 23:11:44"
+            },
+            "photoType": {
+                "count": 1,
+                "max_updated_at": "2025-12-08 14:45:30"
+            },
+            "printLabelFixedAsset": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "printer": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "setupCode": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "transactionCode": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "courier": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "supplierType": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "supplier": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "defaultTax": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "tax": {
+                "count": 1,
+                "max_updated_at": "2025-12-04 08:46:24"
+            },
+            "toDoList": {
+                "count": 1,
+                "max_updated_at": "2026-06-09 23:01:36"
+            }
+        }
+    },
+    "guard_changed_during_capture": [],
+    "run_dir": "work/golden/ED-1070/capture-20261015-150438"
+}

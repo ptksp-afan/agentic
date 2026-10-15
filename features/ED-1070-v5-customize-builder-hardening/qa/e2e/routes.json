@@ -1,0 +1,9 @@
+{
+  "feature": "ED-1070",
+  "routes": [
+    { "name": "Archive (root)", "path": "/archives", "waitFor": ".archive-page .ant-table", "ref": "AC-12" },
+    { "name": "Pelanggan", "path": "/setups/customers/customers", "waitFor": ".ant-table", "ref": "AC-12" },
+    { "name": "Pesanan Pembelian", "path": "/purchases/purchase-orders", "waitFor": ".ant-table", "ref": "AC-12" },
+    { "name": "Faktur Penjualan", "path": "/sales/sales-invoices", "waitFor": ".ant-table", "ref": "AC-12" }
+  ]
+}

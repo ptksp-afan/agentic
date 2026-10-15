@@ -235,11 +235,12 @@ return [
                     $rm = q27_list($t, $s, ['id_archive' => $x['F'], 'sorts' => [json_encode(['sortBy' => 'isVerified', 'sortType' => 'desc']), json_encode(['sortBy' => 'name', 'sortType' => 'desc'])]]);
                     $t->status($rm, 200, 'tanpa OD sorts isVerified+name');
                     $t->eq($q27_idseq($rm), $q27_idseq($rn), 'tanpa OD sorts isVerified+name: sama dengan sort name saja');
-                    // bentuk array sorts[0][sortBy]=... (FE tidak memakainya; req_snake mengubah kunci jadi sort_by): 500 LAMA untuk kolom apa pun
-                    // (CustomizeBuilder::scopeSortAll, keluarga ED-1070) -> dicatat, dibandingkan dengan kolom biasa, bukan defect ED-1027
+                    // bentuk array sorts[0][sortBy]=... (FE tidak memakainya; req_snake mengubah kunci jadi sort_by): dulu 500 untuk kolom apa pun;
+                    // sejak ED-1070 = 200, entri dilewati + log [CustomizeBuilder][malformed] (CustomizeBuilder::scopeSortAll) -> dibandingkan dengan kolom biasa
                     $ra = $t->call($s, 'GET', q27_url(Q27_BASE . '/archives', ['pagination' => 1000, 'id_archive' => $x['F'], 'sorts' => [['sortBy' => 'isVerified', 'sortType' => 'desc']]]));
                     $rb = $t->call($s, 'GET', q27_url(Q27_BASE . '/archives', ['pagination' => 1000, 'id_archive' => $x['F'], 'sorts' => [['sortBy' => 'name', 'sortType' => 'desc']]]));
-                    $t->note('CATATAN (500 lama, ED-1070): tanpa OD sorts bentuk array isVerified = HTTP ' . $ra[0] . ', name = HTTP ' . $rb[0]);
+                    $t->note('CATATAN (ED-1070: dulu 500, kini 200 + log malformed): tanpa OD sorts bentuk array isVerified = HTTP ' . $ra[0] . ', name = HTTP ' . $rb[0]);
+                    $t->eq($rb[0], 200, 'tanpa OD sorts bentuk array name: 200 (ED-1070)');
                     $t->eq($ra[0], $rb[0], 'tanpa OD sorts bentuk array: kolom verifikasi berperilaku sama dengan kolom biasa (name) - tidak ada jalur baru');
 
                     // --- pemegang Opname Document: search/sort kolom verifikasi berfungsi.

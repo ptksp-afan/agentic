@@ -1,0 +1,590 @@
+{
+    "before": "features/ED-1070-v5-customize-builder-hardening/qa/golden/before",
+    "after": "features/ED-1070-v5-customize-builder-hardening/qa/golden/after-r2",
+    "totals": {
+        "PASS": 3,
+        "DIFF": 0,
+        "SKIPPED-guard": 228,
+        "MISSING": 0
+    },
+    "known500": [
+        {
+            "id": "company.carriers#010",
+            "url": "api/v5/company/carriers?sorts[]=%7B%22sortBy%22%3A%22measureUnitCode%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "company.carriers#011",
+            "url": "api/v5/company/carriers?sorts[]=%7B%22sortBy%22%3A%22measureUnitCode%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "customer.customers#009",
+            "url": "api/v5/customer/customers?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "customer.customers#010",
+            "url": "api/v5/customer/customers?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "document-archive.archives@folder#009",
+            "url": "api/v5/document-archive/archives?id_archive=250224000117709896682704327481&sorts[]=%7B%22sortBy%22%3A%22relatedEmployeeName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "document-archive.archives@folder#010",
+            "url": "api/v5/document-archive/archives?id_archive=250224000117709896682704327481&sorts[]=%7B%22sortBy%22%3A%22relatedEmployeeName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "employee.employees#013",
+            "url": "api/v5/employee/employees?sorts[]=%7B%22sortBy%22%3A%22locationName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "employee.employees#014",
+            "url": "api/v5/employee/employees?sorts[]=%7B%22sortBy%22%3A%22locationName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "employee.users#007",
+            "url": "api/v5/employee/users?sorts[]=%7B%22sortBy%22%3A%22idRole%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "employee.users#008",
+            "url": "api/v5/employee/users?sorts[]=%7B%22sortBy%22%3A%22idRole%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "employee.users#011",
+            "url": "api/v5/employee/users?sorts[]=%7B%22sortBy%22%3A%22username%22%2C%22sortType%22%3A%22asc%22%7D&sorts[]=%7B%22sortBy%22%3A%22idRole%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "financial.interbank-transfers#009",
+            "url": "api/v5/financial/interbank-transfers?sorts[]=%7B%22sortBy%22%3A%22cashBankName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "financial.interbank-transfers#010",
+            "url": "api/v5/financial/interbank-transfers?sorts[]=%7B%22sortBy%22%3A%22cashBankName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "general-ledger.periods#014",
+            "url": "api/v5/general-ledger/periods?search=%7B%22periodYear%22%3A%222025-12-31T17%3A00%3A00.000Z%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "item.adjustment-types#005",
+            "url": "api/v5/item/adjustment-types?sorts[]=%7B%22sortBy%22%3A%22accountCode%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "item.adjustment-types#006",
+            "url": "api/v5/item/adjustment-types?sorts[]=%7B%22sortBy%22%3A%22accountCode%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "item.adjustment-types#007",
+            "url": "api/v5/item/adjustment-types?sorts[]=%7B%22sortBy%22%3A%22accountName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "item.adjustment-types#017",
+            "url": "api/v5/item/adjustment-types?sorts[]=%7B%22sortBy%22%3A%22accountCode%22%2C%22sortType%22%3A%22asc%22%7D&sorts[]=%7B%22sortBy%22%3A%22accountName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "item.adjustment-types#024",
+            "url": "api/v5/item/adjustment-types?search=%7B%22query%22%3A%22a%22%7D&sorts[]=%7B%22sortBy%22%3A%22accountCode%22%2C%22sortType%22%3A%22desc%22%7D&pagination=10&page=2",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "promotion.supplier-pricelists#004",
+            "url": "api/v5/promotion/supplier-pricelists?search=%7B%22query%22%3A%22a%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#005",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22surveyDate%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#006",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22surveyDate%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#007",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22itemName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#008",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22supplierName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#009",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22surveyPrice%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#010",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22unitName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#011",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22isActive%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#012",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22transactionDate%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#013",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22itemCode%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#014",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22supplierCode%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#015",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22unitCode%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#016",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22createdBy%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#017",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22updatedBy%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#018",
+            "url": "api/v5/promotion/supplier-pricelists?sorts[]=%7B%22sortBy%22%3A%22surveyDate%22%2C%22sortType%22%3A%22asc%22%7D&sorts[]=%7B%22sortBy%22%3A%22itemName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "promotion.supplier-pricelists#024",
+            "url": "api/v5/promotion/supplier-pricelists?search=%7B%22query%22%3A%22a%22%7D&sorts[]=%7B%22sortBy%22%3A%22surveyDate%22%2C%22sortType%22%3A%22desc%22%7D&pagination=10&page=2",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "sales.sales-orders#015",
+            "url": "api/v5/sales/sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "sales.sales-orders#016",
+            "url": "api/v5/sales/sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "sales.shipments#016",
+            "url": "api/v5/sales/shipments?sorts[]=%7B%22sortBy%22%3A%22measureUnitCode%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "sales.shipments#017",
+            "url": "api/v5/sales/shipments?sorts[]=%7B%22sortBy%22%3A%22measureUnitCode%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "sales.shipments#022",
+            "url": "api/v5/sales/shipments?search=%7B%22idCarrier%22%3A%22250224000117679510315905097721%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "salesman-activity.customers#010",
+            "url": "api/v5/salesman-activity/customers?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.customers#011",
+            "url": "api/v5/salesman-activity/customers?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.sales-orders.index#011",
+            "url": "api/v5/salesman-activity/sales-orders/index?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.sales-orders.index#012",
+            "url": "api/v5/salesman-activity/sales-orders/index?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.sales-orders.need-approval.customer#011",
+            "url": "api/v5/salesman-activity/sales-orders/need-approval/customer?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.sales-orders.need-approval.customer#012",
+            "url": "api/v5/salesman-activity/sales-orders/need-approval/customer?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.salesman-activities#012",
+            "url": "api/v5/salesman-activity/salesman-activities?sorts[]=%7B%22sortBy%22%3A%22checkIn%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.salesman-activities#013",
+            "url": "api/v5/salesman-activity/salesman-activities?sorts[]=%7B%22sortBy%22%3A%22checkIn%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.salesman-activities#014",
+            "url": "api/v5/salesman-activity/salesman-activities?sorts[]=%7B%22sortBy%22%3A%22checkOut%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.salesman-activities#015",
+            "url": "api/v5/salesman-activity/salesman-activities?sorts[]=%7B%22sortBy%22%3A%22checkOut%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.salesman-activities#017",
+            "url": "api/v5/salesman-activity/salesman-activities?sorts[]=%7B%22sortBy%22%3A%22noteCheckOut%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.salesman-activities#018",
+            "url": "api/v5/salesman-activity/salesman-activities?sorts[]=%7B%22sortBy%22%3A%22noteCheckOut%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.setup.customers#000",
+            "url": "api/v5/salesman-activity/setup/customers",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "salesman-activity.setup.employees#013",
+            "url": "api/v5/salesman-activity/setup/employees?sorts[]=%7B%22sortBy%22%3A%22locationName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "salesman-activity.setup.employees#014",
+            "url": "api/v5/salesman-activity/setup/employees?sorts[]=%7B%22sortBy%22%3A%22locationName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.customer.customer.sales-orders#014",
+            "url": "api/v5/select/customer/customer/sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.customer.customer.sales-orders#015",
+            "url": "api/v5/select/customer/customer/sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.customer.device.sales-orders#014",
+            "url": "api/v5/select/customer/device/sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.customer.device.sales-orders#015",
+            "url": "api/v5/select/customer/device/sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.financial.interbank-transfer.old-interbank-transfers#009",
+            "url": "api/v5/select/financial/interbank-transfer/old-interbank-transfers?sorts[]=%7B%22sortBy%22%3A%22cashBankName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.financial.interbank-transfer.old-interbank-transfers#010",
+            "url": "api/v5/select/financial/interbank-transfer/old-interbank-transfers?sorts[]=%7B%22sortBy%22%3A%22cashBankName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.inventory.item-transfer-location.unreceive-transactions#008",
+            "url": "api/v5/select/inventory/item-transfer-location/unreceive-transactions?sorts[]=%7B%22sortBy%22%3A%22locationName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.inventory.item-transfer-location.unreceive-transactions#009",
+            "url": "api/v5/select/inventory/item-transfer-location/unreceive-transactions?sorts[]=%7B%22sortBy%22%3A%22locationName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.inventory.production.old-production-requests.recipes#000",
+            "url": "api/v5/select/inventory/production/old-production-requests/recipes",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "select.sales.billing.old-sales-invoices#012",
+            "url": "api/v5/select/sales/billing/old-sales-invoices?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.billing.old-sales-invoices#013",
+            "url": "api/v5/select/sales/billing/old-sales-invoices?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.delivery-order.old-sales-orders#015",
+            "url": "api/v5/select/sales/delivery-order/old-sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.delivery-order.old-sales-orders#016",
+            "url": "api/v5/select/sales/delivery-order/old-sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.delivery-order.sales-invoices#007",
+            "url": "api/v5/select/sales/delivery-order/sales-invoices?sorts[]=%7B%22sortBy%22%3A%22deliveryOrderNo%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.delivery-order.sales-invoices#008",
+            "url": "api/v5/select/sales/delivery-order/sales-invoices?sorts[]=%7B%22sortBy%22%3A%22deliveryOrderNo%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.delivery-order.sales-invoices#015",
+            "url": "api/v5/select/sales/delivery-order/sales-invoices?sorts[]=%7B%22sortBy%22%3A%22salesInvoiceNo%22%2C%22sortType%22%3A%22asc%22%7D&sorts[]=%7B%22sortBy%22%3A%22deliveryOrderNo%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.sales-order.old-sales-orders#015",
+            "url": "api/v5/select/sales/sales-order/old-sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.sales-order.old-sales-orders#016",
+            "url": "api/v5/select/sales/sales-order/old-sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.sales-order.sales-invoices#007",
+            "url": "api/v5/select/sales/sales-order/sales-invoices?sorts[]=%7B%22sortBy%22%3A%22deliveryOrderNo%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.sales-order.sales-invoices#008",
+            "url": "api/v5/select/sales/sales-order/sales-invoices?sorts[]=%7B%22sortBy%22%3A%22deliveryOrderNo%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.sales.sales-order.sales-invoices#015",
+            "url": "api/v5/select/sales/sales-order/sales-invoices?sorts[]=%7B%22sortBy%22%3A%22salesInvoiceNo%22%2C%22sortType%22%3A%22asc%22%7D&sorts[]=%7B%22sortBy%22%3A%22deliveryOrderNo%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.salesman-activity.salesman-activity.sales-orders#015",
+            "url": "api/v5/select/salesman-activity/salesman-activity/sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "select.salesman-activity.salesman-activity.sales-orders#016",
+            "url": "api/v5/select/salesman-activity/salesman-activity/sales-orders?sorts[]=%7B%22sortBy%22%3A%22firstName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "tax.default-tax.default-raptor-tax#000",
+            "url": "api/v5/tax/default-tax/default-raptor-tax",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "tax.taxes#005",
+            "url": "api/v5/tax/taxes?sorts[]=%7B%22sortBy%22%3A%22accountCode%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "tax.taxes#006",
+            "url": "api/v5/tax/taxes?sorts[]=%7B%22sortBy%22%3A%22accountCode%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "tax.taxes#007",
+            "url": "api/v5/tax/taxes?sorts[]=%7B%22sortBy%22%3A%22accountName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "tax.taxes#015",
+            "url": "api/v5/tax/taxes?sorts[]=%7B%22sortBy%22%3A%22accountCode%22%2C%22sortType%22%3A%22asc%22%7D&sorts[]=%7B%22sortBy%22%3A%22accountName%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "tax.taxes#025",
+            "url": "api/v5/tax/taxes?search=%7B%22query%22%3A%22a%22%7D&sorts[]=%7B%22sortBy%22%3A%22accountCode%22%2C%22sortType%22%3A%22desc%22%7D&pagination=10&page=2",
+            "before": 500,
+            "after": 200
+        },
+        {
+            "id": "to-do-list#005",
+            "url": "api/v5/to-do-list?sorts[]=%7B%22sortBy%22%3A%22transactionNo%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#006",
+            "url": "api/v5/to-do-list?sorts[]=%7B%22sortBy%22%3A%22transactionNo%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#007",
+            "url": "api/v5/to-do-list?sorts[]=%7B%22sortBy%22%3A%22type%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#008",
+            "url": "api/v5/to-do-list?sorts[]=%7B%22sortBy%22%3A%22dueDate%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#009",
+            "url": "api/v5/to-do-list?sorts[]=%7B%22sortBy%22%3A%22customerSupplierName%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#010",
+            "url": "api/v5/to-do-list?sorts[]=%7B%22sortBy%22%3A%22totalAmount%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#011",
+            "url": "api/v5/to-do-list?sorts[]=%7B%22sortBy%22%3A%22paidAmount%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#012",
+            "url": "api/v5/to-do-list?sorts[]=%7B%22sortBy%22%3A%22transactionDate%22%2C%22sortType%22%3A%22asc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#013",
+            "url": "api/v5/to-do-list?sorts[]=%7B%22sortBy%22%3A%22transactionNo%22%2C%22sortType%22%3A%22asc%22%7D&sorts[]=%7B%22sortBy%22%3A%22type%22%2C%22sortType%22%3A%22desc%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#014",
+            "url": "api/v5/to-do-list?search=%7B%22type%22%3A%22items%22%7D",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#019",
+            "url": "api/v5/to-do-list?search=%7B%22query%22%3A%22a%22%7D&sorts[]=%7B%22sortBy%22%3A%22transactionNo%22%2C%22sortType%22%3A%22desc%22%7D&pagination=10&page=2",
+            "before": 500,
+            "after": 500
+        },
+        {
+            "id": "to-do-list#020",
+            "url": "api/v5/to-do-list?search=%7B%22query%22%3A%22a%22%2C%22type%22%3A%22items%22%2C%22dueDate%22%3A%5B%222025-01-01%22%2C%222026-12-31%22%5D%7D",
+            "before": 500,
+            "after": 500
+        }
+    ],
+    "time_info": [],
+    "diffs": []
+}

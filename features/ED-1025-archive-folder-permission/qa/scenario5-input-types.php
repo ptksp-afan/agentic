@@ -462,7 +462,7 @@ return [
 
     [
         'id'    => 'X-13',
-        'title' => 'ED-1070 (karakterisasi bug pra-ada parameter list generik v5, BUKAN perilaku yang benar): pagination, sorts, search bertipe/bentuk salah pada GET archives = 500',
+        'title' => 'ED-1070 (diperbaiki, dibalik oleh QA ED-1070 AC-9): pagination, sorts, search bertipe/bentuk salah pada GET archives = 200 + log [CustomizeBuilder][malformed] (tepat 1 per entri salah; sortType hilang/null = desc tanpa log)',
         'run'   => function ($t) {
             q2_recover($t);
             $s = $t->session();
@@ -475,28 +475,33 @@ return [
                 $sort = function ($v) {
                     return 'sorts[0]=' . urlencode(json_encode($v));
                 };
+                // query => jumlah log [CustomizeBuilder][malformed] yang diharapkan (ED-1070 AC-4/5/6: dilewati + log, respons 200)
                 $qs = [
-                    'pagination=abc', 'pagination[]=1', 'pagination[a]=1', 'pagination=-1',
-                    'sorts=bukan-json', 'sorts=' . urlencode('{"name":"asc"}'),
-                    $sort(['sortBy' => 'name']), $sort(['sortBy' => 'name', 'sortType' => null]), $sort(['sortBy' => ['a'], 'sortType' => 'asc']),
-                    'sorts[0]=' . urlencode('["x"]'),
-                    'search[]=x', 'search[a]=b',
-                    'search=' . urlencode('{"showRelatedTransaction":["a"]}'),
+                    'pagination=abc' => 1, 'pagination[]=1' => 1, 'pagination[a]=1' => 1, 'pagination=-1' => 1,
+                    'sorts=bukan-json' => 1, 'sorts=' . urlencode('{"name":"asc"}') => 1,
+                    $sort(['sortBy' => 'name']) => 0, $sort(['sortBy' => 'name', 'sortType' => null]) => 0, $sort(['sortBy' => ['a'], 'sortType' => 'asc']) => 1,
+                    'sorts[0]=' . urlencode('["x"]') => 1,
+                    'search[]=x' => 1, 'search[a]=b' => 1,
+                    'search=' . urlencode('{"showRelatedTransaction":["a"]}') => 1,
                 ];
-                // ED-1070 (karakterisasi): D-5 ditambahkan ke ED-1070 (keluarga D-1: CustomizeBuilder scopeSortAll/scopeSearchAll, ArchiveService
-                // memakai $request->pagination langsung; sama di HEAD, baris di luar diff ED-1025). Bila ED-1070 mengubah salah satu (500 menjadi 4xx),
-                // skenario ini GAGAL dengan sengaja: perbarui karakterisasi menjadi asersi 4xx dan hapus tag.
-                $drift = [];
+                // ED-1070 (diperbaiki; dulu karakterisasi "500" D-5): kini ASERSI 200 + log malformed per entri salah, tanpa blocked/error.
+                // Log dibaca dari storage/logs BE (bagian baru sesudah request; developer tidak memakai server selama run QA).
+                $logFile = rtrim(str_replace('\\', '/', (string) $t->conf('BE_DIR')), '/') . '/storage/logs/laravel-' . (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d') . '.log';
                 $seen = [];
-                foreach ($qs as $q) {
+                foreach ($qs as $q => $nMal) {
+                    clearstatcache();
+                    $pos = is_file($logFile) ? filesize($logFile) : 0;
                     $r = $t->call($s, 'GET', $api . '?' . $q);
-                    $seen[] = $q . '=' . $r[0];
-                    if ($r[0] !== 500) {
-                        $drift[] = 'ED-1070 berubah: GET archives?' . $q . ' kini HTTP ' . $r[0] . ' (sebelumnya 500)';
-                    }
+                    usleep(50000);
+                    clearstatcache();
+                    $log = is_file($logFile) ? (string) file_get_contents($logFile, false, null, min($pos, filesize($logFile))) : '';
+                    $seen[] = $q . '=' . $r[0] . '/m' . substr_count($log, '[CustomizeBuilder][malformed]');
+                    $t->status($r, 200, 'GET archives?' . $q);
+                    $t->eq(substr_count($log, '[CustomizeBuilder][malformed]'), $nMal, 'GET archives?' . $q . ': jumlah log malformed');
+                    $t->eq(substr_count($log, '[CustomizeBuilder][blocked]'), 0, 'GET archives?' . $q . ': tanpa log blocked');
+                    $t->eq(preg_match_all('/^\[\d{4}-\d{2}-\d{2} [^\]]+\] \w+\.(ERROR|CRITICAL):/m', $log), 0, 'GET archives?' . $q . ': tanpa log error');
                 }
                 $t->note(implode(' ; ', $seen));
-                $t->eq($drift, [], 'karakterisasi ED-1070 sama dengan perilaku pra-ada (bila gagal: ED-1070 telah mengubah perilaku, perbarui skenario)');
             } finally {
                 q2_purge($t);
             }

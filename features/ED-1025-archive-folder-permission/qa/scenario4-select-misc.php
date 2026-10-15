@@ -3,7 +3,7 @@
  * ED-1025 - AC-16 (select user Archive), AC-23 (bagian BE/http: modul permission wajib bersama hak folder; 403 GE0114),
  * X-4 (tanpa state basi antar request, role nonaktif bukan bypass), X-5 (tidak ada 5xx untuk input aneh di endpoint yang
  * diubah/baru), X-6 (ArchivePermissionService::viewableFolderIds untuk item 03-06, lewat probe), X-8 (D-2 diperbaiki;
- * karakterisasi perilaku pra-ada yang dilacak di ED-1070). Ketahanan input FormRequest lainnya: scenario5-input-types.php.
+ * bagian search ED-1070 diperbaiki = asersi 200 + log). Ketahanan input FormRequest lainnya: scenario5-input-types.php.
  *
  * Isolasi tenant: tidak berlaku (QA_DBS hanya api_sidomaju); tidak adanya state basi dibuktikan di X-4 (php-fpm).
  */
@@ -483,7 +483,7 @@ return [
 
     [
         'id'    => 'X-8',
-        'title' => 'D-2 diperbaiki: name bertipe array pada PUT archives/{id}, rename, create-folder = 422 (data tidak berubah). ED-1069 (diperbaiki, dibalik oleh QA ED-1069 AC-12): PUT id_archive_parent = diri sendiri = 400 ARCHIVE404, induk tetap. ED-1070 (karakterisasi perilaku pra-ada): search list bukan JSON objek = 500',
+        'title' => 'D-2 diperbaiki: name bertipe array pada PUT archives/{id}, rename, create-folder = 422 (data tidak berubah). ED-1069 (diperbaiki, dibalik oleh QA ED-1069 AC-12): PUT id_archive_parent = diri sendiri = 400 ARCHIVE404, induk tetap. ED-1070 (diperbaiki, dibalik oleh QA ED-1070 AC-9): search list bukan JSON objek / query bukan skalar = 200 + 1 log malformed',
         'run'   => function ($t) {
             q2_recover($t);
             $s = $t->session();
@@ -509,25 +509,36 @@ return [
                 $t->eq(q2_row($t, $P)['name'], $pName, 'nama P tidak berubah');
                 $t->eq($t->db()->table('archives')->count(), $archivesBefore + 1, 'create-folder yang ditolak tidak membuat baris (hanya P uji)');
 
-                // --- ED-1070 (karakterisasi, BUKAN asersi perilaku yang benar): perilaku pra-ada yang dilacak di Jira ED-1070.
-                // Bila salah satu berubah (mis. 500 menjadi 4xx), skenario ini GAGAL dengan sengaja: perbarui karakterisasi
-                // ini mengikuti ED-1070 (ubah menjadi asersi 4xx / tanpa siklus) dan hapus tag.
-                $drift = [];
+                // --- ED-1070 (diperbaiki, dibalik oleh QA ED-1070 AC-9; dulu karakterisasi "500"): search bukan JSON objek / query
+                // bukan skalar = 200, search (atau entri itu) diabaikan, tepat 1 log [CustomizeBuilder][malformed], tanpa blocked/error.
+                $logFile = rtrim(str_replace('\\', '/', (string) $t->conf('BE_DIR')), '/') . '/storage/logs/laravel-' . (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d') . '.log';
+                $getLog = function ($uri) use ($t, $s, $logFile) {
+                    clearstatcache();
+                    $pos = is_file($logFile) ? filesize($logFile) : 0;
+                    $r = $t->call($s, 'GET', $uri);
+                    usleep(50000);
+                    clearstatcache();
+                    $log = is_file($logFile) ? (string) file_get_contents($logFile, false, null, min($pos, filesize($logFile))) : '';
+
+                    return [$r, $log];
+                };
                 $search = [
-                    'GET search bukan JSON'           => 'bukan-json',
-                    'GET search angka'                => '123',
-                    'GET search string JSON'          => '"str"',
-                    'GET search query array'          => '{"query":["a"]}',
+                    'GET search bukan JSON'           => ['bukan-json', 'search is not a JSON object'],
+                    'GET search angka'                => ['123', 'search is not a JSON object'],
+                    'GET search string JSON'          => ['"str"', 'search is not a JSON object'],
+                    'GET search query array'          => ['{"query":["a"]}', 'query must be a scalar'],
                 ];
-                foreach ($search as $label => $q) {
-                    $r = $t->call($s, 'GET', $api . 'archives?search=' . urlencode($q));
-                    if ($r[0] !== 500) {
-                        $drift[] = 'ED-1070 berubah: ' . $label . ' kini HTTP ' . $r[0] . ' (sebelumnya 500)';
-                    }
+                $search70 = [];
+                foreach ($search as $label => $c) {
+                    $search70[$label] = [$api . 'archives?search=' . urlencode($c[0]), $c[1]];
                 }
-                $r = $t->call($s, 'GET', $api . 'archives?id_archive=' . $P . '&search=bukan-json');
-                if ($r[0] !== 500) {
-                    $drift[] = 'ED-1070 berubah: GET search + id_archive bukan JSON kini HTTP ' . $r[0] . ' (sebelumnya 500)';
+                $search70['GET search + id_archive bukan JSON'] = [$api . 'archives?id_archive=' . $P . '&search=bukan-json', 'search is not a JSON object'];
+                foreach ($search70 as $label => $c) {
+                    list($r, $log) = $getLog($c[0]);
+                    $t->status($r, 200, 'ED-1070: ' . $label);
+                    $t->eq(substr_count($log, '[CustomizeBuilder][malformed] ' . $c[1]), 1, 'ED-1070: ' . $label . ': tepat 1 log malformed "' . $c[1] . '"');
+                    $t->eq(substr_count($log, '[CustomizeBuilder]['), 1, 'ED-1070: ' . $label . ': tidak ada log CustomizeBuilder lain');
+                    $t->eq(preg_match_all('/^\[\d{4}-\d{2}-\d{2} [^\]]+\] \w+\.(ERROR|CRITICAL):/m', $log), 0, 'ED-1070: ' . $label . ': tanpa log error');
                 }
 
                 // PUT id_archive_parent = diri sendiri (O-3): DIPERBAIKI oleh ED-1069 (K-3 a; AC-4/AC-12). Dulu karakterisasi
@@ -539,7 +550,6 @@ return [
                 $t->status($r, 400, 'PUT id_archive_parent = diri sendiri (ED-1069 AC-12)');
                 $t->code($r, 'ARCHIVE404', 'PUT id_archive_parent = diri sendiri (ED-1069 AC-12)');
                 $t->eq($parentAfter, null, 'induk P tetap root (tidak menjadi induk dirinya)');
-                $t->eq($drift, [], 'karakterisasi ED-1070 sama dengan perilaku pra-ada (bila gagal: ED-1070 telah mengubah perilaku, perbarui skenario)');
             } finally {
                 q2_purge($t);
             }
