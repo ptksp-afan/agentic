@@ -3,7 +3,7 @@ key: ED-1125
 epic: ED-1022
 title: Archive FE - modal Pindahkan / Pilih Folder pindah massal - Cari memuat ulang aplikasi (form bersarang) dan scan barcode mencari di tabel halaman
 slug: archive-fe-cari-modal-pindah
-phase: gate2
+phase: done
 qa_round: 2
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -44,3 +44,5 @@ Long run ED-1022, ronde perbaikan (bug C / ED-1153) selesai: QA FE r2 PASS 19 / 
 - 2026-10-14 22:13 fe-review (perbaikan C): convention-reviewer (a956643d74eb3ee5f, sonnet, fallback general-purpose) Harus diperbaiki 0; Perlu dikonfirmasi 0; catatan 4 (onCloseAdd identik di 3 modal = usulan hook bersama; mock kamera saja; teks 'Scan Code' hardcode pra-ada; 'Simpan & Baru' tanpa unit). Berikutnya: QA FE r2 (seluruh spec)
 - 2026-10-14 23:46 qa-fe r2 (a1919e171614cfb04, sonnet): PASS 19 / MANUAL 1 (AC-13) / FAIL 0, seluruh spec. e2e ED-1125 18 OK (AC-17 ditulis ulang, AC-19, AC-20, + 2 jalur sukses) --workers 1; kontrol negatif vs build 800e42faf: AC-17/19/20 + Simpan & Baru GAGAL di asersi bug; unit AC-18 vs kode lama 8/15 gagal. Jest Archive runInBand 17 suite 491/491. AC-12: ED-1025 5, ED-1027 1, ED-1072 2, ED-1026 GAMMA 1, ED-1028 AC-22 1, ED-1069 5 (AC-11); ED-1150 sam asli 3 SKIP BLOCKED-by-data (guard root 3 baris; developer menambah Folder X/Y/Z sebelum ronde ini), salinan guard longgar `qa/ed1150-sam-longgar/` 3 OK dua kali -> diterima runner sebagai PASS dengan catatan untuk review. Regresi BE 240 PASS / 0 FAIL / 2 SKIP. Data: fixture 0QA125- dibuat/dibuang persis di 8 run, dokumen uji D6 dipulihkan per baris; CLEAN-1/CLEAN-2/SESI-1 PASS; bahasa QA_USER = ID; token aktif QA_USER/QA_USER2/sam = 0; tanpa role preset (QA_USER role 3 sudah punya Handover/Receive Document). Galeri work/e2e/ED-1125-archive-fe-cari-modal-pindah-20261014-233211/ (kontrol negatif -222823/). Pengamatan: O-1 selesai di item ini; O-2 tetap (Perlu dikonfirmasi); O-3 pra-ada; O-4 guard ED-1150 (usulan, tanpa tiket); O-5 Simpan & Baru dicoba di browser, sesuai BR-8/BR-9
 - 2026-10-14 23:46 commit: FE b916ab99f (8 berkas NEW: 3 kode + 3 test + task 026 + _module.md; di atas 800e42faf, tanpa amend), BE tidak ada perubahan; Jira ED-1125 label ai-review + komentar siap review (ED-1153 disebut, tidak ditransisikan); phase: gate2 (menunggu review batch)
+- 2026-10-14 23:46 commit agentic: c122a0b (features/ED-1125-*: spec, qa-fe r2, e2e, ed1150-sam-longgar, run log)
+- 2026-10-15 05:00 review batch ED-1022 (lanjutan): disetujui developer (termasuk ED-1153) -> Jira ED-1125 Done (transisi 71) + label ai-review dilepas + komentar serah terima; ED-1153 Start Progress -> Done, assignee + sprint 46 + komentar 'diperbaiki di ED-1125'; phase done

@@ -3,7 +3,7 @@ key: ED-1124
 epic: ED-1022
 title: Archive - transaksi terkait 500 bila ada folder senama nomor transaksi; put-in mengaktifkan lagi sumber nonaktif
 slug: archive-transaksi-terkait-put-in
-phase: gate2
+phase: done
 qa_round: 2
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -46,3 +46,6 @@ Long run ED-1022, siap review developer. BE commit lokal 0b8417778 (3 berkas Mod
 - 2026-10-14 16:37 fe/qa-fe: dilewati (spec fe_modules [], FE tidak berubah)
 - 2026-10-14 16:37 cek kebocoran rahasia (folder fitur + 5 skrip lama): nilai QA_PASS* 0 berkas
 - 2026-10-14 16:37 commit: BE 0b8417778 (3 berkas NEW, path eksplisit), FE tidak ada perubahan; Gate 2 long run = auto-commit lokal; phase: gate2 (menunggu review batch)
+- 2026-10-14 16:38 commit agentic: a654b1c (features/ED-1124-*, ED-1025 scenario3-enforce/scenario7-rev-hak, ED-1069 scenario1-putin/scenario4-select-related/scenario5-extra)
+- 2026-10-14 16:38 Jira: ED-1124 tetap In Progress, label ai-review, komentar siap review (tanpa hash)
+- 2026-10-15 04:58 review batch ED-1022 ronde 5 (lanjutan): disetujui developer -> Jira Done (transisi 71), label ai-review dilepas, komentar serah terima; phase done
