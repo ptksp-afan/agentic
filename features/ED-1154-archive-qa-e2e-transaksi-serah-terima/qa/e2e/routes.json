@@ -1,0 +1,20 @@
+{
+  "feature": "ED-1154",
+  "routes": [
+    {"name": "i Pelanggan", "path": "/setups/customers/customers", "profiles": ["default"], "waitFor": ".ant-table", "ref": "AC-2 (A.0)"},
+    {"name": "i Sales Order", "path": "/sales/sales-orders", "profiles": ["default"], "waitFor": ".ant-table", "ref": "AC-2 (A.1)"},
+    {"name": "i Shipment", "path": "/sales/shipments", "profiles": ["default"], "waitFor": ".ant-table", "ref": "AC-2 (A.2, A.8)"},
+    {"name": "i Sales Invoice", "path": "/sales/sales-invoices", "profiles": ["default"], "waitFor": ".ant-table", "ref": "AC-2 (A.9)"},
+    {"name": "i Billing", "path": "/sales/billings", "profiles": ["default"], "waitFor": ".ant-table", "ref": "AC-2 (A.10, A.15)"},
+    {"name": "i Shipment Acceptance butuh persetujuan admin", "path": "/sales/shipment-acceptances/need-approvals/admin", "profiles": ["default"], "waitFor": ".ant-table", "ref": "AC-2 (A.6)"},
+    {"name": "i Receivable Payment", "path": "/financials/receivable-payments", "profiles": ["default"], "waitFor": ".ant-table", "ref": "AC-2 (A.13, K-2)"},
+    {"name": "i Archive", "path": "/archives", "profiles": ["default"], "waitFor": ".archive-page .ant-table", "ref": "AC-2 (B, C)"},
+    {"name": "w Driver Shipment", "path": "/sales/driver/shipments", "profiles": ["wawan"], "waitFor": ".ant-table", "ref": "AC-2 (A.3)"},
+    {"name": "w Attendance", "path": "/attendance", "profiles": ["wawan"], "waitFor": "button.btn-attendance", "ref": "AC-2 (A.4, A.7)"},
+    {"name": "w Tambah Shipment Acceptance", "path": "/sales/shipment-acceptances/add", "profiles": ["wawan"], "waitFor": ".ant-collapse", "ref": "AC-2 (A.5)"},
+    {"name": "a Attendance", "path": "/attendance", "profiles": ["user2"], "waitFor": "button.btn-attendance", "ref": "AC-2 (A.12, A.14)"},
+    {"name": "a Billing", "path": "/sales/billings", "profiles": ["user2"], "waitFor": ".ant-table", "ref": "AC-2 (A.11, A.14)"},
+    {"name": "a Receivable Payment salesman", "path": "/salesman/financials/receivable-payments/all", "profiles": ["user2"], "waitFor": ".ant-table", "ref": "AC-2 (A.13)"},
+    {"name": "a Archive", "path": "/archives", "profiles": ["user2"], "waitFor": ".archive-page .ant-table", "ref": "AC-2 (C.4, C.5)"}
+  ]
+}
