@@ -3,7 +3,7 @@ key: ED-1154
 epic: ED-1022
 title: [QA] Archive - tes end-to-end pembentukan dokumen archive dan serah-terima lewat transaksi nyata
 slug: archive-qa-e2e-transaksi-serah-terima
-phase: gate2
+phase: done
 blocked_from: null
 qa_round: 5
 be_branch: v5-opname-archive
@@ -101,3 +101,6 @@ Done hanya lewat `/v5-epic review ED-1022` sesudah developer menyetujui.
   Defect baru 0; temuan ED-1070 0 (log BE: 3 OAuthServerException dari verifikasi log-out saja); `--leftover` 0 sebelum/sesudah; token 3/3 dicabut, tanpa force_login; penolakan izin 0; build staging tidak diulang (FE tidak berubah, `stale: false`); yarn test + regresi BE n/a
 - 2026-10-16 cek kebocoran rahasia (195 berkas: folder fitur + work/ED-1154): nilai rahasia 0 berkas; spec e2e 0 ref ED-1166/1168/1169/KNOWN_5XX
 - 2026-10-16 BE 5c4c69bcd / FE 41146943c bersih (0 berkas berubah, changed.txt 0 baris) → tanpa commit BE/FE
+- 2026-10-16 commit agentic: a174c56 (4 berkas: qa-fe.md, qa/e2e/ED-1154-archive-transaksi.spec.js, run.md, spec.md; changed.txt sama dengan HEAD); BE/FE tanpa commit (tidak berubah)
+- 2026-10-16 jira: ED-1154 label ai-review + komentar siap review 11549 (tanpa hash); ED-1154/ED-1155 tetap In Progress; tiket baru 0
+- 2026-10-16 09:23 review batch ED-1022: disetujui developer -> Jira ED-1154 + subtask ED-1155 Done (transisi 71), label ai-review dilepas, komentar serah terima; phase done

@@ -3,7 +3,7 @@ key: ED-1165
 epic: ED-1022
 title: V5 Setup Customer - route address / contacts / bank-accounts tanpa auth:api (bisa dibaca tanpa login)
 slug: v5-customer-route-tanpa-auth
-phase: gate2
+phase: done
 qa_round: 1
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -38,3 +38,4 @@ BE 13014964d. Batch review: BR-1 "12 statement" = 16 statement / 12 method+URI (
 - 2026-10-16 08:11 qa-be r1 mulai (v5-qa sonnet, scope be + AC-6 e2e)
 - 2026-10-16 08:38 qa-be r1: PASS 6/0/0 (qa-be.md); e2e 7/7 work/e2e/ED-1165-v5-customer-route-tanpa-auth-20261016-083308/; POST/PUT customers diintersep (1+1), 0 request ke R1-R12; COUNT tabel sama; 500 select/files/download foto = ED-1166 (sudah bertiket, di luar item)
 - 2026-10-16 08:40 commit: BE 13014964d ([FIX] Customer ... (ED-1165)); agentic: commit folder fitur ini; Jira In Progress + ai-review + komentar siap review; menunggu /v5-epic review
+- 2026-10-16 09:23 review batch ED-1022: disetujui developer -> Jira ED-1165 Done (transisi 71), label ai-review dilepas, komentar serah terima; phase done

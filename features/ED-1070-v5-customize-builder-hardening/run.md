@@ -54,3 +54,4 @@ agents:
 - 2026-10-15 16:30 qa/golden/after (r1, usang) dipindah ke work/golden/ED-1070/after-r1/ (ukuran commit)
 - 2026-10-15 16:32 commit (long run, auto sesudah QA PASS, review 0 Harus diperbaiki): BE 5c4c69bcd (86 berkas NEW) dengan trailer Co-Authored-By (K-2 diubah 08:51), FE tidak berubah, agentic = commit ini (+ karakterisasi AC-9 ED-1025 scenario4/5, ED-1027 scenario9); Jira label ai-review + komentar siap review; phase: gate2 (menunggu review batch)
 - 2026-10-16 06:02 review batch ED-1022: disetujui developer -> Jira Done (transisi 71), label ai-review dilepas, komentar serah terima (perilaku berubah + pantau log [blocked] seminggu); phase done. cds 2199/2200: belum diputuskan developer
+- 2026-10-16 07:38 developer: baris column_display_settings 2199/2200 dibiarkan (tidak dihapus)
