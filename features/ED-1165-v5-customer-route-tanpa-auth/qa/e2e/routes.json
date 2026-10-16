@@ -1,0 +1,13 @@
+{
+  "feature": "ED-1165 Setup > Pelanggan (regresi sesudah route address/contacts/bank-accounts dinonaktifkan)",
+  "routes": [
+    {
+      "name": "Setup > Pelanggan (daftar)",
+      "path": "/setups/customers/customers",
+      "waitFor": ".ant-table",
+      "forbidApi": "/api/v5/customer/(address|contacts|bank-accounts)(/|\\?|$)",
+      "ref": "AC-6"
+    }
+  ],
+  "allow": []
+}
