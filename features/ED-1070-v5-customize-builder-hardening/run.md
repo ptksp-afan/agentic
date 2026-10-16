@@ -3,7 +3,7 @@ key: ED-1070
 epic: ED-1022
 title: V5 CustomizeBuilder - tutup celah keamanan + input salah bentuk di searchAll/sortAll/pagination (V4 dimatikan)
 slug: v5-customize-builder-hardening
-phase: gate2
+phase: done
 qa_round: 2
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -53,3 +53,4 @@ agents:
 - 2026-10-15 16:24 jira: bug di luar item ED-1166 (files/download 500 bukan 404, Low) dan ED-1167 (33 request list 500 pra-ada, Medium), ai-found; QA: allow-list ED-1166 di spec e2e D-3 (1 OK, work/e2e/...-162348/); hapus cds 2199/2200 (milik QA, dicek read-only) DITOLAK classifier -> dibiarkan, keputusan developer di review
 - 2026-10-15 16:30 qa/golden/after (r1, usang) dipindah ke work/golden/ED-1070/after-r1/ (ukuran commit)
 - 2026-10-15 16:32 commit (long run, auto sesudah QA PASS, review 0 Harus diperbaiki): BE 5c4c69bcd (86 berkas NEW) dengan trailer Co-Authored-By (K-2 diubah 08:51), FE tidak berubah, agentic = commit ini (+ karakterisasi AC-9 ED-1025 scenario4/5, ED-1027 scenario9); Jira label ai-review + komentar siap review; phase: gate2 (menunggu review batch)
+- 2026-10-16 06:02 review batch ED-1022: disetujui developer -> Jira Done (transisi 71), label ai-review dilepas, komentar serah terima (perilaku berubah + pantau log [blocked] seminggu); phase done. cds 2199/2200: belum diputuskan developer
