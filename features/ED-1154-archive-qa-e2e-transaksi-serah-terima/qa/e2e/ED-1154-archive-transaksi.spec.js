@@ -15,11 +15,14 @@
  * "Setujui" sebagai customer + approve L2 -> SO terkonfirmasi otomatis (BR-13, tanpa PIN), Pengiriman Simpan lalu Konfirmasi
  * (BR-14), SI lewat Tambah -> Action -> Impor Pengantaran Pesanan (BR-14).
  *
- * STATUS (ED-1155 r2, 2026-10-16): rantai A -> B -> C lengkap di 3 run (261016092317 debug/resume, 261016100813 1x resume,
- * 261016102000 bersih). Defect aplikasi yang direproduksi tiap run dan dicatat di jurnal (`defects`) + allow-list sempit:
- * D-1 = ED-1168 Konfirmasi SA oleh driver = 500 GE0114 (i menyelesaikan di A.6), D-2 = ED-1169 Simpan & Konfirmasi SI hasil
- * impor DO = 500 Unknown column sales_invoice_serials (lanjut Simpan + Konfirmasi drawer); E-1 = ED-1166 foto customer lokal.
- * r3: 5xx bertiket (KNOWN_5XX) dicatat di jurnal + laporan, tidak dihitung di AC-15 "0 5xx"; 5xx lain = AC-15 gagal. Lihat qa-fe.md.
+ * Spec r5 (2026-10-16, R4-K1; knowledge/decisions.md A-9, A-10): jalur layar yang jalan saja.
+ *   A.5: w membuat + Simpan SA (status 4), TIDAK menekan Konfirmasi (A-9: BE menolak driver). A.6: i membuka drawer SA dan
+ *        menekan "Konfirmasi Transaksi" -> SA 6, confirmed_by i, is_pay 0, carrier 7 (can_done); DO tetap (3, w).
+ *   A.9: Tambah SI -> Impor Pengantaran Pesanan (DO run) -> Simpan -> Konfirmasi di drawer SI (Q); bukan "Simpan & Konfirmasi"
+ *        (A-10).
+ *   AC-15: 0 respons 5xx TANPA allow-list apa pun (ALLOW = [], tanpa daftar 5xx dikenal); jurnal `forbidden_paths` mencatat
+ *        setiap panggilan jalur A-9/A-10 (PUT shipment-acceptances/{id}/confirm oleh w, POST sales-invoices/save-and-confirm)
+ *        dan AC-15 mensyaratkan 0.
  *
  * Alat debug (bukan bukti AC): ED1154_RESUME=<runId> melanjutkan run yang gagal dari jurnalnya (langkah yang sudah `ok` dilewati,
  * keadaan dibaca ulang dari DB). Run bukti = run tanpa ED1154_RESUME. Langkah gagal: dump kontrol layar ke work/ED-1154/debug/.
@@ -45,110 +48,32 @@ const QUEUE_TIMEOUT = 180000; // BR-11
 const ARCHIVE = { IN_FOLDER: 1, GIVEN: 2, RECEIVED: 3 };
 const RESUME = process.env.ED1154_RESUME || '';
 
-/**
- * E-1 (lingkungan, qa-fe r2; tiket ED-1166): foto customer nyata (attachments/customerPhotos/*) tidak ada di storage BE lokal ->
- * `select/files/download` menjawab NOT_FOUND_ATTACHMENT (JSON) untuk <img> -> Chrome memblokir (ERR_BLOCKED_BY_ORB).
- * Hanya di layar Pelanggan (drawer A.0), bukan buatan tes/fitur archive.
- */
-const ALLOW = [
-  {
-    id: 'ED1154-E1-foto-customer-lokal',
-    kind: 'requestfailed',
-    match: '^GET \\S*/api/v5/select/files/download\\?idAttachment=\\S+ net::ERR_BLOCKED_BY_ORB$',
-    paths: ['/setups/customers/customers'],
-    reason: 'berkas foto customer DB salinan tidak ada di storage lokal BE (NOT_FOUND_ATTACHMENT); lingkungan, bukan fitur',
-    ref: 'ED-1166',
-    since: '2026-10-16',
-  },
-  {
-    id: 'ED1154-D1-sa-confirm-driver-500',
-    kind: 'response',
-    status: 500,
-    match: '^PUT \\S*/api/v5/sales/shipment-acceptances/[^/ ]+/confirm(\\?\\S*)? 500$',
-    profiles: ['wawan'],
-    reason: 'D-1 (qa-fe r2): Confirm SA oleh driver ditolak ConfirmRequest GE0114 tanpa kode HTTP -> 500; dicatat di jurnal + laporan; di AC-15 = 5xx bertiket (KNOWN_5XX), dicatat, tidak dihitung di "0 5xx"',
-    ref: 'ED-1168',
-    since: '2026-10-16',
-  },
-  {
-    id: 'ED1154-D2-si-save-and-confirm-500',
-    kind: 'response',
-    status: 500,
-    match: '^POST \\S*/api/v5/sales/sales-invoices/save-and-confirm(\\?\\S*)? 500$',
-    profiles: ['default'],
-    reason: 'D-2 (qa-fe r2): Simpan & Konfirmasi SI hasil impor DO -> 500 Unknown column sales_invoice_serials (QueueService::persistDraftForConfirm memakai request mentah); dicatat; di AC-15 = 5xx bertiket (KNOWN_5XX), dicatat, tidak dihitung di "0 5xx"',
-    ref: 'ED-1169',
-    since: '2026-10-16',
-  },
-  {
-    id: 'ED1154-D2-si-unhandled-rejection',
-    kind: 'pageerror',
-    match: '^Error: Object$',
-    profiles: ['default'],
-    paths: ['/sales/sales-invoices'],
-    reason: 'D-2 (qa-fe r2): FE melempar penolakan promise tak tertangani ("Error: Object") sesudah 500 save-and-confirm SI',
-    ref: 'ED-1169',
-    since: '2026-10-16',
-  },
-  {
-    id: 'ED1154-D1-sa-unhandled-rejection',
-    kind: 'pageerror',
-    match: '^Error: Object$',
-    profiles: ['wawan'],
-    paths: ['/sales/shipment-acceptances'],
-    reason: 'D-1 (qa-fe r2): FE melempar penolakan promise tak tertangani ("Error: Object") sesudah 500 Konfirmasi SA oleh driver',
-    ref: 'ED-1168',
-    since: '2026-10-16',
-  },
-];
-/**
- * 5xx dari defect aplikasi bertiket di luar task ini (qa-fe r3, preseden ED-1149): tidak menghentikan rantai, dicatat di jurnal
- * (`http5xx_list` semua, `http5xx_known` dengan tiket) dan laporan, TIDAK dihitung di AC-15 "0 5xx". Sempit: aktor + method +
- * path + status, dan langkahnya sudah menangkap badan respons yang sama (RUN.defects: URL sama + kode/pesan defect).
- * Setiap 5xx lain (`http5xx_unknown`) = AC-15 gagal.
- */
-const KNOWN_5XX = [
-  {
-    id: 'D-1',
-    ref: 'ED-1168',
-    who: 'w',
-    method: 'PUT',
-    status: 500,
-    re: /\/api\/v5\/sales\/shipment-acceptances\/[^/?]+\/confirm(\?|$)/,
-    sig: (d) => d.code === 'GE0114',
-  },
-  {
-    id: 'D-2',
-    ref: 'ED-1169',
-    who: 'i',
-    method: 'POST',
-    status: 500,
-    re: /\/api\/v5\/sales\/sales-invoices\/save-and-confirm(\?|$)/,
-    sig: (d) => /sales_invoice_serials/.test(String(d.message || '')),
-  },
+/** r5 (AC-15): tanpa allow-list apa pun - setiap error monitor dan setiap 5xx = gagal */
+const ALLOW = [];
+
+/** jalur yang TIDAK boleh dilalui (A-9, A-10): dicatat di jurnal `forbidden_paths`, AC-15 mensyaratkan 0 */
+const FORBIDDEN = [
+  { id: 'A-9', who: 'w', method: 'PUT', re: /\/api\/v5\/sales\/shipment-acceptances\/[^/?]+\/confirm(\?|$)/, what: 'Konfirmasi SA oleh driver' },
+  { id: 'A-10', who: '*', method: 'POST', re: /\/api\/v5\/sales\/sales-invoices\/save-and-confirm(\?|$)/, what: 'Simpan & Konfirmasi SI' },
 ];
 
-/** hitung 5xx satu monitor sekali (bertiket vs lain) ke jurnal; kembalikan baris 5xx yang tidak bertiket */
+/** hitung 5xx + jalur terlarang satu monitor sekali ke jurnal; kembalikan baris 5xx (r5: semua 5xx = gagal) */
 function count5xx(who, mon) {
   if (!mon || mon.ed1154Counted) return [];
   mon.ed1154Counted = true;
-  const unknown = [];
-  for (const r of mon.responses.filter((x) => x.status >= 500)) {
+  const bad = [];
+  for (const r of mon.responses) {
     const url = config.safeUrl(r.url);
     const line = `${who} ${r.status} ${r.method} ${url}`;
-    const k = KNOWN_5XX.find(
-      (e) => e.who === who && e.method === r.method && e.status === r.status && e.re.test(url)
-        && (RUN.defects || []).some((d) => d.id === e.id && d.api === `${r.method} ${url}` && d.status === r.status && e.sig(d)),
-    );
-    RUN.http5xx_list = [...(RUN.http5xx_list || []), line];
-    RUN.http5xx = (RUN.http5xx || 0) + 1;
-    if (k) RUN.http5xx_known = [...(RUN.http5xx_known || []), { id: k.id, ref: k.ref, line }];
-    else {
-      RUN.http5xx_unknown = [...(RUN.http5xx_unknown || []), line];
-      unknown.push(line);
+    const f = FORBIDDEN.find((e) => (e.who === '*' || e.who === who) && e.method === r.method && e.re.test(url));
+    if (f) RUN.forbidden_paths = [...(RUN.forbidden_paths || []), { id: f.id, what: f.what, line }];
+    if (r.status >= 500) {
+      RUN.http5xx_list = [...(RUN.http5xx_list || []), line];
+      RUN.http5xx = (RUN.http5xx || 0) + 1;
+      bad.push(line);
     }
   }
-  return unknown;
+  return bad;
 }
 
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -252,6 +177,24 @@ function recordApproval(step, module, idTransaction, transactionNo, rows) {
   writeJournal();
 }
 
+/** keadaan SA + carrier (jurnal A.5/A.6) */
+function saState() {
+  const x = inspect();
+  const sa = (x.shipment_acceptances || [])[0] || {};
+  return {
+    sa_no: sa.shipment_acceptance_no, status: sa.status, acceptance_status: sa.acceptance_status, is_pay: sa.is_pay,
+    created_by: sa.created_by || null, confirmed_by: sa.confirmed_by || null,
+    carrier_transactions: ((x.shipment && x.shipment.carrier_transactions) || []).map((c) => c.status), can_done: x.shipment && x.shipment.can_done,
+  };
+}
+
+/** panggilan jalur terlarang (A-9/A-10) yang sudah terlihat di monitor ini (sebelum count5xx) */
+function forbiddenSeen(who, mon, id) {
+  const f = FORBIDDEN.find((e) => e.id === id);
+  return mon.responses.filter((r) => (f.who === '*' || f.who === who) && r.method === f.method && f.re.test(config.safeUrl(r.url)))
+    .map((r) => `${who} ${r.status} ${r.method} ${config.safeUrl(r.url)}`);
+}
+
 // ------------------------------------------------------------------------------------------------------ aktor (konteks per profil)
 const PROFILE_OF = { i: 'default', a: 'user2', w: 'wawan' };
 
@@ -286,7 +229,7 @@ class Actors {
     return this.list[who];
   }
 
-  /** 0 respons 5xx di luar defect bertiket (KNOWN_5XX) + monitor bersih di semua konteks; catat ringkasan ke monitor utama */
+  /** r5: 0 respons 5xx (tanpa allow-list) + monitor bersih di semua konteks; catat ringkasan ke monitor utama */
   async finish() {
     const main = this.list.i.monitor;
     const bad = [];
@@ -297,7 +240,7 @@ class Actors {
     }
     writeJournal();
     await this.close();
-    expect(bad, 'tidak ada respons 5xx di luar defect bertiket (ED-1168, ED-1169) di semua konteks').toEqual([]);
+    expect(bad, 'r5: tidak ada respons 5xx sama sekali di semua konteks (tanpa allow-list)').toEqual([]);
     for (const a of Object.values(this.list)) if (a.own) a.monitor.check();
   }
 
@@ -943,7 +886,7 @@ test.describe.serial(`${KEY} archive lewat transaksi nyata (A -> B -> C)`, () =>
   });
 
   // ------------------------------------------------------------------------------------------------ A.4-A.7
-  test('[default] ED-1154 AC-5 A.4-A.7 w check-in, Shipment Acceptance penuh tanpa bayar/retur, admin, check-out', async ({ browser, baseURL, app, page, monitor }, testInfo) => {
+  test('[default] ED-1154 AC-5 A.4-A.7 w check-in, w Simpan SA (tanpa Konfirmasi driver, A-9), i Konfirmasi Transaksi, w check-out', async ({ browser, baseURL, app, page, monitor }, testInfo) => {
     test.setTimeout(900000);
     const actors = new Actors({ browser, baseURL, testInfo, app, page, monitor, geo: RUN.geo });
     const w = await actors.get('w');
@@ -963,7 +906,7 @@ test.describe.serial(`${KEY} archive lewat transaksi nyata (A -> B -> C)`, () =>
       stepLog('A.4', true, RUN.created.attendance.w.id_attendance);
     }
 
-    // A.5 SA (w): impor DO, diterima penuh, tanpa bayar, foto; Simpan (+Konfirmasi bila tampil)
+    // A.5 SA (w): impor DO, diterima penuh, tanpa bayar, foto; Simpan SAJA -> status 4. w TIDAK menekan Konfirmasi (A-9, BR-8)
     if (!done('A.5')) {
       if (!RUN.created.sa) {
         await w.app.open('/sales/shipment-acceptances/add', { waitFor: '.ant-collapse' });
@@ -983,83 +926,58 @@ test.describe.serial(`${KEY} archive lewat transaksi nyata (A -> B -> C)`, () =>
         await w.app.screenshot('A5-sa-form');
         const saResp = waitApi(w.page, 'POST', /sales\/shipment-acceptances$/, 120000);
         await clickReady(w.page.locator('.page-container button.ant-btn-primary:visible', { hasText: /^Simpan$|^Save$/ }).last());
-        expectOk(await saResp, 'A.5 POST shipment-acceptances');
+        expectOk(await saResp, 'A.5 POST shipment-acceptances (Simpan w)');
         s = await waitDb('A.5 SA tersimpan', (x) => (x.shipment_acceptances || []).length > 0, { timeout: 60000 });
         const SA = s.shipment_acceptances[0];
         RUN.created.sa = { id: SA.id_shipment_acceptance, no: SA.shipment_acceptance_no };
-        RUN.sa_after_save = { status: SA.status, acceptance_status: SA.acceptance_status };
         writeJournal();
+        await w.app.settle();
+        await w.app.screenshot('A5-sa-saved-w');
       }
-      const dw = await openRow(w.app, w.page, '/sales/shipment-acceptances', { id: RUN.created.sa.id, search: RUN.created.sa.no }).catch((e) => {
-        monitor.note(`A.5: drawer SA w tidak terbuka (${String(e.message).slice(0, 120)})`);
-        return null;
-      });
-      if (dw) {
-        await w.app.screenshot('A5-sa-drawer-w');
-        // status 4 (No Customer Approval Shipment Acceptance) + Confirm Shipment Acceptance: dropdown "Konfirmasi Transaksi"
-        const trigger = dw.locator('.ant-dropdown-trigger').last();
-        let items = [];
-        const dd = openDropdown(w.page);
-        if (await trigger.count()) {
-          await trigger.click();
-          await dd.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
-          items = (await dd.locator('li.ant-dropdown-menu-item').allInnerTexts().catch(() => [])).map(trim);
-        }
-        RUN.sa_drawer_menu_w = items;
-        writeJournal();
-        if (items.some((t) => /Konfirmasi Transaksi|Confirm Transaction/.test(t))) {
-          const r = waitApi(w.page, 'PUT', /sales\/shipment-acceptances\/[^/]+\/confirm$/, 120000);
-          await dd.locator('li.ant-dropdown-menu-item', { hasText: /Konfirmasi Transaksi|Confirm Transaction/ }).first().click();
-          await popOk(w.page);
-          const rr = await r;
-          await w.app.settle();
-          await w.app.screenshot('A5-sa-confirm-w-result');
-          RUN.sa_confirm_w = { status: rr.status, code: rr.json && rr.json.code, message: rr.json && rr.json.message };
-          if (rr.status >= 500 && rr.json && rr.json.code === 'GE0114') {
-            // D-1: FE menawarkan Konfirmasi ke driver (permission Confirm Shipment Acceptance), BE menolak semua driver
-            // (Http/Requests/Sale/ShipmentAcceptance/ConfirmRequest.php:26-32) dengan ErrorMessageException tanpa kode HTTP -> 500
-            RUN.defects = [...(RUN.defects || []).filter((d) => d.id !== 'D-1'), { id: 'D-1', step: 'A.5', api: `PUT ${config.safeUrl(rr.url)}`, status: rr.status, code: rr.json.code, message: rr.json.message }];
-            monitor.note(`D-1: PUT shipment-acceptances/{id}/confirm (w) -> HTTP ${rr.status} ${rr.json.code} "${rr.json.message}"; konfirmasi diselesaikan i (A.6)`);
-          } else {
-            expectOk(rr, 'A.5 PUT shipment-acceptances/{id}/confirm (w)');
-          }
-          writeJournal();
-        } else {
-          RUN.sa_confirm_w = false;
-          monitor.note('A.5: drawer SA w tanpa tombol Konfirmasi');
-        }
-      }
-      stepLog('A.5', true, RUN.created.sa.no);
+      RUN.sa_after_save = saState();
+      RUN.a5_w_sa_confirm_calls = forbiddenSeen('w', w.monitor, 'A-9');
+      writeJournal();
+      stepLog('A.5', true, `${RUN.created.sa.no} status ${RUN.sa_after_save.status} (Simpan w, tanpa Konfirmasi driver)`);
     }
+    s = snapOf('A.5');
+    if (s) {
+      const sa = s.shipment_acceptances[0] || {};
+      // AC-5 (A-9): SA dibuat w, status 4 sesudah Simpan, belum dikonfirmasi
+      expect(s.shipment_acceptances.length, 'A.5: satu SA dari DO run').toBe(1);
+      expect([sa.status, sa.created_by, sa.confirmed_by || null], 'AC-5 A.5: SA oleh w status 4, belum dikonfirmasi').toEqual([4, config.get('QA_WAWAN_USER'), null]);
+      expect(Number(sa.is_pay || 0), 'BR-8: SA tanpa bayar').toBe(0);
+    } else monitor.note('asersi A.5 dilewati: langkah selesai di percobaan sebelumnya tanpa snapshot (resume)');
+    expect(RUN.a5_w_sa_confirm_calls || [], 'AC-5/A-9: w tidak memanggil PUT shipment-acceptances/{id}/confirm').toEqual([]);
 
-    // A.6 admin (i): sisa aksi di "Butuh Persetujuan Admin"
+    // A.6 i: drawer SA (Butuh Persetujuan Admin) -> "Konfirmasi Transaksi" (+ popconfirm) -> SA 6, carrier 7 (BR-8)
     if (!done('A.6')) {
-      s = inspect();
-      const sa1 = s.shipment_acceptances[0];
-      RUN.sa_before_admin = { status: sa1.status, acceptance_status: sa1.acceptance_status };
-      if (sa1.status !== 6) {
+      RUN.sa_before_admin = saState();
+      writeJournal();
+      if (!(RUN.sa_before_admin.status === 6 && RUN.sa_admin_api)) {
+        expect(RUN.sa_before_admin.status, 'A.6: SA masih 4 sebelum Konfirmasi i').toBe(4);
         const da = await openRow(i.app, i.page, '/sales/shipment-acceptances/need-approvals/admin', { id: RUN.created.sa.id, search: RUN.created.sa.no });
-        await i.app.screenshot('A6-sa-admin');
-        // status 4 (diterima pelanggan): ShipmentAcceptanceDrawerAction -> dropdown "Konfirmasi Transaksi" (+ popconfirm)
+        await i.app.screenshot('A6-sa-drawer-i');
         const trigger = da.locator('.ant-dropdown-trigger').last();
         await trigger.click();
         const dd = openDropdown(i.page);
         await dd.waitFor({ state: 'visible', timeout: 10000 });
         RUN.sa_admin_menu = (await dd.locator('li.ant-dropdown-menu-item').allInnerTexts()).map(trim);
+        await i.app.screenshot('A6-sa-menu-i');
         RUN.sa_admin_action = 'Konfirmasi Transaksi';
         const r = waitApi(i.page, 'PUT', /sales\/shipment-acceptances\/[^/]+\/confirm$/, 120000);
         await dd.locator('li.ant-dropdown-menu-item', { hasText: /Konfirmasi Transaksi|Confirm Transaction/ }).first().click();
         await popOk(i.page);
         const rr = await r;
         RUN.sa_admin_api = `PUT ${config.safeUrl(rr.url)} ${rr.status}`;
-        expectOk(rr, 'A.6 PUT shipment-acceptances/{id}/confirm (admin i)');
-      } else {
-        RUN.sa_admin_action = null;
-        monitor.note('A.6: SA sudah 6 sesudah A.5 - tidak ada sisa aksi admin');
-      }
-      writeJournal();
+        writeJournal();
+        expectOk(rr, 'A.6 PUT shipment-acceptances/{id}/confirm (i)');
+        await i.app.settle();
+        await i.app.screenshot('A6-sa-confirmed-i');
+      } else monitor.note('A.6: Konfirmasi i sudah terkirim di percobaan sebelumnya (resume)');
       await waitDb('A.6 SA 6 + carrier 7', (x) => x.shipment_acceptances[0].status === 6 && x.shipment.can_done, { timeout: 120000 });
-      stepLog('A.6', true, RUN.sa_admin_action || 'tanpa aksi admin');
+      RUN.sa_after_admin = saState();
+      writeJournal();
+      stepLog('A.6', true, RUN.sa_admin_action);
     }
 
     // A.7 check-out w
@@ -1072,18 +990,25 @@ test.describe.serial(`${KEY} archive lewat transaksi nyata (A -> B -> C)`, () =>
     // AC-5
     s = snapOf('A.7');
     if (s) {
+      const sa = s.shipment_acceptances[0] || {};
       expect(s.attendance.w.length, 'A.4/A.7: satu attendance w').toBe(1);
       expect(Number(s.attendance.w[0].store_status), 'A.4: toko Buka').toBe(1);
       expect(s.attendance.w[0].check_out, 'A.7: attendance w check-out').toBeTruthy();
       expect(s.shipment_acceptances.length, 'A.5: satu SA').toBe(1);
-      expect(s.shipment_acceptances[0].status, 'A.5-A.6: SA 6').toBe(6);
-      expect(Number(s.shipment_acceptances[0].is_pay || 0), 'BR-8: SA tanpa bayar').toBe(0);
+      expect(sa.status, 'AC-5 A.6: SA 6 sesudah Konfirmasi i').toBe(6);
+      expect(sa.created_by, 'AC-5: SA dibuat w').toBe(config.get('QA_WAWAN_USER'));
+      expect(sa.confirmed_by, 'AC-5 A.6: confirmed_by i').toBe(config.get('QA_USER'));
+      expect(Number(sa.is_pay || 0), 'BR-8: SA tanpa bayar (is_pay 0)').toBe(0);
       expect(s.shipment.carrier_transactions.map((c) => c.status), 'A.6: carrier_transactions 7').toEqual([7]);
       expect(s.shipment.can_done, 'A.6: can_done').toBe(true);
       expect(s.sales_returns_since, 'BR-8: tidak ada Sales Return dari SA').toBe(0);
       expect(s.sales_invoices_since_not_i, 'BR-8: tidak ada SI dari SA').toBe(0);
-      expect([s.archive_do.status, s.archive_do.updated_by, s.archive_do.history_len], 'AC-5: DO tidak berubah').toEqual([RUN.do_before_a4.status, RUN.do_before_a4.updated_by, RUN.do_before_a4.history_len]);
+      expect([s.archive_do.status, s.archive_do.updated_by, s.archive_do.history_len], 'AC-5: DO tetap (3, w, len 2)').toEqual([ARCHIVE.RECEIVED, config.get('QA_WAWAN_USER'), 2]);
+      expect([s.archive_do.status, s.archive_do.updated_by, s.archive_do.history_len], 'AC-5: DO tidak berubah sejak A.3').toEqual([RUN.do_before_a4.status, RUN.do_before_a4.updated_by, RUN.do_before_a4.history_len]);
     } else monitor.note(`asersi A.7 dilewati: langkah selesai di percobaan sebelumnya tanpa snapshot (resume)`);
+    RUN.a5_w_sa_confirm_calls = [...new Set([...(RUN.a5_w_sa_confirm_calls || []), ...forbiddenSeen('w', w.monitor, 'A-9')])];
+    writeJournal();
+    expect(RUN.a5_w_sa_confirm_calls, 'AC-5/A-9: w tidak memanggil Konfirmasi SA selama A.4-A.7').toEqual([]);
     await actors.finish();
   });
 
@@ -1112,7 +1037,7 @@ test.describe.serial(`${KEY} archive lewat transaksi nyata (A -> B -> C)`, () =>
   });
 
   // ------------------------------------------------------------------------------------------------ A.9-A.10
-  test('[default] ED-1154 AC-7 A.9-A.10 SI dari DO (Impor Pengantaran Pesanan) + Billing hanya SI itu -> SI lahir (karakterisasi K-3)', async ({ browser, baseURL, app, page, monitor }, testInfo) => {
+  test('[default] ED-1154 AC-7 A.9-A.10 SI Impor Pengantaran Pesanan -> Simpan -> Konfirmasi drawer (A-10) + Billing hanya SI itu -> SI lahir (K-3)', async ({ browser, baseURL, app, page, monitor }, testInfo) => {
     test.setTimeout(900000);
     const actors = new Actors({ browser, baseURL, testInfo, app, page, monitor, geo: RUN.geo });
     const i = await actors.get('i');
@@ -1122,8 +1047,9 @@ test.describe.serial(`${KEY} archive lewat transaksi nyata (A -> B -> C)`, () =>
     })();
     let s;
 
-    // A.9 SI (i): Tambah -> Action -> Impor Pengantaran Pesanan (DO run ini; customer + salesman dari SO) -> Simpan & Konfirmasi (Q)
-    if (!done('A.9')) {
+    // A.9a SI (i): Tambah -> Action -> Impor Pengantaran Pesanan (DO run ini; customer + salesman dari SO) -> Simpan (BR-14)
+    // bukan "Simpan & Konfirmasi" (A-10)
+    if (!done('A.9a')) {
       await i.app.open('/sales/sales-invoices', { waitFor: '.ant-table' });
       await addBtn(i.page).click();
       await i.page.locator('.page-container input#idLocation').first().waitFor({ state: 'visible', timeout: 45000 });
@@ -1152,50 +1078,54 @@ test.describe.serial(`${KEY} archive lewat transaksi nyata (A -> B -> C)`, () =>
       RUN.si_form_customer = cust;
       expect(cust, 'A.9: Pelanggan SI terisi dari SO').toMatch(/BERKAT/);
       writeJournal();
-      const siResp = waitApi(i.page, 'POST', /sales\/sales-invoices\/save-and-confirm$/, 120000);
-      await menuPick(i.page, i.page.locator('.page-container .ant-dropdown-trigger').last(), /Simpan & Konfirmasi|Save & Confirm/);
-      await popOk(i.page, 5000).catch(() => null);
-      const sr = await siResp;
-      RUN.si_save_and_confirm = { status: sr.status, code: sr.json && sr.json.code, message: config.redact(String((sr.json && sr.json.message) || '')).slice(0, 240) };
+      const stResp = waitApi(i.page, 'POST', /sales\/sales-invoices$/, 120000);
+      await clickReady(i.page.locator('.page-container:visible button.ant-btn-primary', { hasText: /^Simpan$|^Save$/ }).last());
+      const st = expectOk(await stResp, 'A.9 POST sales-invoices (Simpan)');
+      const idSi = st && (st.idSalesInvoice || st.id_sales_invoice);
+      expect(idSi, 'A.9: id SI dari respons Simpan').toBeTruthy();
+      RUN.created.si = { id: idSi };
+      RUN.si_path = 'Impor Pengantaran Pesanan -> Simpan -> Konfirmasi drawer (BR-14, A-10)';
       writeJournal();
-      if (sr.status >= 500 && /sales_invoice_serials/.test(String(sr.json && sr.json.message))) {
-        // D-2: QueueService::persistDraftForConfirm (QueueService.php:329) meneruskan request mentah ke SalesInvoiceService::store
-        // (controller store memakai validated()); FE mengirim salesInvoiceDetails[].salesInvoiceSerials -> kolom tak dikenal -> 500.
-        // Lanjut lewat jalur layar lain yang ada: Simpan, lalu Konfirmasi di drawer (Q).
-        RUN.defects = [...(RUN.defects || []).filter((d) => d.id !== 'D-2'), { id: 'D-2', step: 'A.9', api: `POST ${config.safeUrl(sr.url)}`, status: sr.status, message: RUN.si_save_and_confirm.message }];
-        monitor.note(`D-2: POST sales-invoices/save-and-confirm -> HTTP ${sr.status} (Unknown column sales_invoice_serials); lanjut Simpan + Konfirmasi drawer`);
-        await i.app.settle();
-        await i.app.screenshot('A9-si-save-and-confirm-500');
-        const stResp = waitApi(i.page, 'POST', /sales\/sales-invoices$/, 120000);
-        await clickReady(i.page.locator('.page-container:visible button.ant-btn-primary', { hasText: /^Simpan$|^Save$/ }).last());
-        const st = expectOk(await stResp, 'A.9 POST sales-invoices (Simpan, jalur pengganti D-2)');
-        const idSi = st && (st.idSalesInvoice || st.id_sales_invoice);
-        RUN.created.si = { id: idSi };
-        RUN.si_path = 'Simpan + Konfirmasi drawer (D-2)';
-        writeJournal();
-        await i.app.settle();
-        const ds = await openRow(i.app, i.page, '/sales/sales-invoices', { id: idSi });
+      await i.app.settle();
+      await i.app.screenshot('A9-si-saved');
+      const x = inspect();
+      const si0 = (x.sales_invoices || []).find((r) => r.id_sales_invoice === idSi);
+      RUN.si_after_save = si0 ? { status: si0.status, no: si0.sales_invoice_no || null } : { status: null, note: 'belum tertaut ke DO di inspect' };
+      writeJournal();
+      stepLog('A.9a', true, `SI ${idSi} disimpan (status ${RUN.si_after_save.status})`);
+    }
+    // A.9 drawer SI (i): Konfirmasi (Q) -> SI 2
+    if (!done('A.9')) {
+      const x = inspect();
+      const si0 = (x.sales_invoices || []).find((r) => r.id_sales_invoice === RUN.created.si.id);
+      if (!(si0 && si0.status === 2 && RUN.si_confirm_api)) {
+        const ds = await openRow(i.app, i.page, '/sales/sales-invoices', { id: RUN.created.si.id });
         await i.app.screenshot('A9-si-drawer');
         const cr = waitApi(i.page, 'PUT', /sales\/sales-invoices\/[^/]+\/confirm$/, 120000);
         await clickReady(ds.locator('button.drawer-confirm-btn').first());
         await popOk(i.page);
-        expectOk(await cr, 'A.9 PUT sales-invoices/{id}/confirm (Q)');
-      } else {
-        expectOk(sr, 'A.9 POST sales-invoices/save-and-confirm');
-        RUN.si_path = 'Simpan & Konfirmasi';
-      }
-      s = await waitDb('A.9 SI processed (Q)', (x) => (x.sales_invoices || []).length > 0 && x.sales_invoices[0].status === 2, { queue: true });
+        const crr = await cr;
+        RUN.si_confirm_api = `PUT ${config.safeUrl(crr.url)} ${crr.status}`;
+        writeJournal();
+        expectOk(crr, 'A.9 PUT sales-invoices/{id}/confirm (drawer, Q)');
+      } else monitor.note('A.9: Konfirmasi SI sudah terkirim di percobaan sebelumnya (resume)');
+      s = await waitDb('A.9 SI processed (Q)', (y) => (y.sales_invoices || []).length > 0 && y.sales_invoices[0].status === 2, { queue: true });
       const SI = s.sales_invoices[0];
       RUN.created.si = { id: SI.id_sales_invoice, no: SI.sales_invoice_no };
+      RUN.a9_si_save_and_confirm_calls = forbiddenSeen('i', i.monitor, 'A-10');
       stepLog('A.9', true, SI.sales_invoice_no);
+      await i.app.screenshot('A9-si-confirmed');
       expect(s.archive_si, 'A.9/BR-3: SI belum punya baris arsip').toBeNull();
     }
     s = snapOf('A.9');
     if (s) {
       expect(s.sales_invoices.length, 'A.9/BR-7: 1 SI dari DO').toBe(1);
+      expect(s.sales_invoices[0].status, 'AC-7 A.9: SI status 2 sesudah Konfirmasi drawer').toBe(2);
+      expect(s.sales_invoices[0].id_sales_invoice, 'A.9: SI = yang disimpan di A.9a').toBe(RUN.created.si.id);
       expect(s.sales_invoices[0].id_salesman, 'A.9 salesman SI = salesman SO (a)').toBe(s.so.id_salesman);
-
+      expect(s.archive_si || null, 'A.9/BR-3: SI belum punya baris arsip').toBeNull();
     } else monitor.note(`asersi A.9 dilewati: langkah selesai di percobaan sebelumnya tanpa snapshot (resume)`);
+    expect(RUN.a9_si_save_and_confirm_calls || [], 'AC-7/A-10: tidak ada POST sales-invoices/save-and-confirm').toEqual([]);
     // A.10 Billing (i): salesman a, impor HANYA SI run ini, Simpan & Konfirmasi
     if (!done('A.10')) {
       await i.app.open('/sales/billings', { waitFor: '.ant-table' });
@@ -1557,11 +1487,14 @@ test.describe.serial(`${KEY} archive lewat transaksi nyata (A -> B -> C)`, () =>
     const mods = (RUN.created.approvals || []).map((x) => `${x.step} ${x.module}`);
     expect.soft(mods, 'AC-15: jurnal memuat approval SO (A.1)').toContain('A.1 SALES_ORDER');
     if (RUN.need_a0) expect.soft(mods, 'AC-15: jurnal memuat approval customer (A.0)').toContain('A.0 CUSTOMER');
-    const known5 = RUN.http5xx_known || [];
-    const unknown5 = RUN.http5xx_unknown || [];
-    monitor.note(`AC-15: 5xx total ${RUN.http5xx || 0}; bertiket ${known5.length} [${known5.map((x) => `${x.ref} ${x.id}: ${x.line}`).join(' ; ') || '-'}]; tidak bertiket ${unknown5.length} [${unknown5.join(' ; ') || '-'}]; defect: ${(RUN.defects || []).map((d) => `${d.id} ${d.status} ${d.api}`).join(' ; ') || '-'}`);
-    expect.soft(unknown5, 'AC-15: 0 respons 5xx di luar defect bertiket (ED-1168 D-1, ED-1169 D-2)').toEqual([]);
-    expect.soft((RUN.http5xx || 0) - known5.length, 'AC-15: setiap 5xx tercatat bertiket atau tidak bertiket').toBe(unknown5.length);
+    // r5 (AC-15): 0 respons 5xx tanpa allow-list; jalur A-9/A-10 tidak dilalui (dicatat count5xx di semua monitor)
+    const all5 = RUN.http5xx_list || [];
+    const forb = RUN.forbidden_paths || [];
+    monitor.note(`AC-15: 5xx total ${RUN.http5xx || 0} [${all5.join(' ; ') || '-'}]; jalur A-9/A-10 ${forb.length} [${forb.map((f) => `${f.id}: ${f.line}`).join(' ; ') || '-'}]; allow-list: tidak ada (ALLOW = [])`);
+    expect.soft(all5, 'AC-15 (r5): 0 respons 5xx, tanpa allow-list').toEqual([]);
+    expect.soft(RUN.http5xx || 0, 'AC-15 (r5): hitungan 5xx = 0').toBe(0);
+    expect.soft(forb, 'AC-15 (r5): jalur A-9 (Konfirmasi SA driver) / A-10 (Simpan & Konfirmasi SI) tidak dilalui').toEqual([]);
+    expect.soft(ALLOW, 'AC-15 (r5): allow-list kosong').toEqual([]);
     const after = fx('previous', RUN.runId).previous;
     RUN.previous_after = after;
     writeJournal();
