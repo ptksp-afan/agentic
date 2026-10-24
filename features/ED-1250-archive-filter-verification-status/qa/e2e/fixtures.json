@@ -1,0 +1,11 @@
+{
+  "fixtures": [
+    {
+      "name": "verification-status-filter-data",
+      "reason": "AC-13..AC-22 butuh pohon folder/dokumen uji berawalan QA50- (folder kosong, semua verified, campuran, tanpa verified, Izin On tanpa View, 2 halaman, tujuan pindah, dokumen Letakkan/Serahkan/Terima) dengan is_verified di-set langsung (K-4 a, tanpa sesi opname); dibuat langsung di DB. QA_USER2 dipasang di preset QA50-ROLE-E2E-NOOD (List Archive tanpa Opname Document) sebelum login dan dipulihkan persis (user_roles dari jurnal, preset dibuang) di teardown. AC-19/AC-20 menyimpan display setting Archive (baris global modul): snapshot di `up`, dipulihkan persis oleh spec (cds-restore) dan oleh teardown (C-8: wajib tetap memuat verificationStatus dan documentVerified). Bahasa QA_USER (AC-13 en) diubah sementara lewat jurnal dan dipulihkan. Teardown membuang HANYA baris berawalan QA50- / tercatat di jurnal; tidak ada tabel dikosongkan. Jalankan dengan --workers 1.",
+      "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" up",
+      "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" down",
+      "timeout_s": 240
+    }
+  ]
+}
