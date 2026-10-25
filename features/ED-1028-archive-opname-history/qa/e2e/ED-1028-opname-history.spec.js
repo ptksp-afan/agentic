@@ -267,7 +267,8 @@ const histRows = async (page) => {
   const rows = histRowsLoc(page);
   const count = await rows.count();
   const out = [];
-  for (let i = 0; i < count; i += 1) out.push(trimAll(await rows.nth(i).locator('td').allInnerTexts()));
+  // ED-1251 (F-2): kolom aksi kanan (Print + Excel, className p-0, tanpa judul) bukan bagian display setting; dibuang dari perbandingan 7 sel
+  for (let i = 0; i < count; i += 1) out.push(trimAll(await rows.nth(i).locator('td:not(.p-0)').allInnerTexts()));
   return out;
 };
 const histHeads = async (page) => trimAll(await histTable(page).locator('thead th').allInnerTexts()).filter(Boolean);

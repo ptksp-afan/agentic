@@ -1,0 +1,12 @@
+{
+  "fixtures": [
+    {
+      "name": "opname-export-data",
+      "reason": "AC-16..AC-22 butuh dua sesi opname terkonfirmasi yang diketahui tangan (S1 = folder 0QA251-F + 2 subfolder: Verified/Not found/Invalid/belum discan; S2 = folder 0QA251-G), dibuat lewat POST opnames oleh QA_USER (gate1 §5) dengan folder/dokumen berawalan 0QA251-. Keadaan awal dicatat dan dipulihkan persis oleh teardown: user_roles/bahasa QA_USER (spec mengubah bahasa sementara lewat fixture.php lang), baris column_display_settings dan transaction_pdf_templates documentArchiveOpnameResult (dibuat aplikasi saat Customize dibuka/disimpan; DU-5 a) dikembalikan ke jurnal, template lain dibuktikan sama persis (C-9), data developer sama persis. Teardown hanya membuang baris berawalan 0QA251- / tercatat di jurnal; tidak ada tabel dikosongkan; tidak ada preset role. Jalankan dengan --workers 1.",
+      "setup": "\"$PHP_BIN\" scripts/qa-http/run.php \"$FEATURE_DIR/qa/e2e/fixrun\" --only=FIX-UP",
+      "teardown": "\"$PHP_BIN\" scripts/qa-http/run.php \"$FEATURE_DIR/qa/e2e/fixrun\" --only=FIX-DOWN",
+      "profiles": ["default"],
+      "timeout_s": 240
+    }
+  ]
+}

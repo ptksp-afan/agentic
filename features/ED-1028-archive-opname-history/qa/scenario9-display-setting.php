@@ -15,6 +15,7 @@ require_once __DIR__ . '/qa_hist.php';
 
 define('Q28_DS', 'api/v5/setting/display-columns');
 define('Q28_DSMOD', 'documentArchiveOpnameHistory');
+define('Q28_DSRES', 'documentArchiveOpnameResult'); // ED-1251 (entri seluruh modul kedua; baris dibuat saat pertama dipakai)
 
 return [
 
@@ -119,15 +120,23 @@ return [
 
                     return [$rows, $total];
                 };
+                // ED-1251 AC-12 / gate1 F-1: modul `documentArchiveOpnameResult` (syarat Opname Document juga) ikut tersaring bagi R0 BILA barisnya ada
+                // (dibuat aplikasi saat pertama dipakai, DU-5 a). Baris tidak ada -> nilai lama (-1, 1 modul, 2 baris); ada -> -2, 2 modul, 3 baris.
+                $resRow = $t->db()->table('column_display_settings')->where('module_name', Q28_DSRES)->count() > 0;
+                $hiddenMods = $resRow ? [Q28_DSMOD, Q28_DSRES] : [Q28_DSMOD];
+                sort($hiddenMods);
+                $t->note('F-1 (ED-1251): baris ' . Q28_DSRES . ($resRow ? ' ADA -> R0 total -2, selisih 2 modul, search 3 baris' : ' tidak ada -> R0 total -1, selisih 1 modul, search 2 baris'));
                 list($rowsHolder, $totalHolder) = $pages($s, ['pagination' => 100]);
                 list($rowsR0, $totalR0) = $pages($s2, ['pagination' => 100]);
                 $t->true(in_array(Q28_DSMOD, $rowsHolder, true), 'index pemegang: baris documentArchiveOpnameHistory tampil');
                 $t->true(!in_array(Q28_DSMOD, $rowsR0, true), 'index R0: baris documentArchiveOpnameHistory tidak ada (semua halaman)');
                 $t->true(in_array('documentArchive', $rowsR0, true), 'index R0: baris documentArchive tetap ada');
-                $t->eq($totalR0, $totalHolder - 1, "index R0: total berkurang 1 ($totalHolder -> $totalR0)");
+                $t->eq($totalR0, $totalHolder - count($hiddenMods), 'index R0: total berkurang ' . count($hiddenMods) . " ($totalHolder -> $totalR0)");
                 $t->eq($totalHolder, $t->db()->table('column_display_settings')->count(), 'index pemegang: total = semua baris tabel');
                 $t->eq(count($rowsR0), $totalR0, 'index R0: jumlah baris semua halaman = total');
-                $t->eq(array_values(array_diff($rowsHolder, $rowsR0)), [Q28_DSMOD], 'index: satu-satunya selisih pemegang vs R0 = documentArchiveOpnameHistory');
+                $diffMods = array_values(array_diff($rowsHolder, $rowsR0));
+                sort($diffMods);
+                $t->eq($diffMods, $hiddenMods, 'index: selisih pemegang vs R0 = ' . implode(' + ', $hiddenMods));
                 // search
                 list($rowsH, $tH) = $pages($s, ['search' => 'documentArchive', 'pagination' => 100]);
                 list($rowsR, $tR) = $pages($s2, ['search' => 'documentArchive', 'pagination' => 100]);
@@ -135,7 +144,9 @@ return [
                 $t->eq($tR, 1, 'search=documentArchive R0: total 1');
                 $hs = $rowsH;
                 sort($hs);
-                $t->eq($hs, ['documentArchive', Q28_DSMOD], 'search=documentArchive pemegang: documentArchive + documentArchiveOpnameHistory');
+                $expHs = array_merge(['documentArchive'], $hiddenMods);
+                sort($expHs);
+                $t->eq($hs, $expHs, 'search=documentArchive pemegang: ' . implode(' + ', $expHs));
                 list($rowsR, $tR) = $pages($s2, ['search' => 'OpnameHistory', 'pagination' => 100]);
                 $t->eq([$rowsR, $tR], [[], 0], 'search=OpnameHistory R0: kosong, total 0');
                 list($rowsR, $tR) = $pages($s2, ['search' => strtoupper(Q28_DSMOD), 'pagination' => 100]);
