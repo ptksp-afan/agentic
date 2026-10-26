@@ -60,7 +60,20 @@ return [
             q251_tpl_save($t);
 
             list($x, $ids) = q251_fixture($t, $s);
-            $out = ['ids' => $ids, 'folders' => ['F' => $x['F'], 'A' => $x['A'], 'B' => $x['B'], 'G' => $x['G'], 'OUT' => $x['OUT']],
+            // QA FE r2 (revisi review 2026-10-26, R-3/R-4): sesi sisipan 247 baris Invalid (id QA251BULKFE*, root, terlihat QA_USER) supaya PDF berhalaman banyak
+            // tampil di browser (footer tiap halaman; kertas Continuous). Dibuang q251_bulk_purge (awalan QA251BULK) di FIX-DOWN (baseline + cleanup).
+            $bn = 247;
+            $bbase = strtotime('2026-10-24 08:00:00');
+            $brows = [];
+            for ($i = 0; $i < $bn; $i++) {
+                $brows[] = [3, null, null, sprintf('QA251BULK-%07d', $i), date('Y-m-d H:i:s', $bbase + intdiv($i, 100)) . '.' . sprintf('%06d', ($i % 100) * 10000)];
+            }
+            $bid = q251_insert_session($t, 'FE', ['scope_folder_count' => 0, 'total_documents' => $bn, 'verified_count' => 0, 'not_found_count' => 0, 'invalid_count' => $bn,
+                'unscanned_count' => 0, 'scanned_count' => $bn, 'confirmed_at' => '2026-10-24 09:30:00']);
+            q251_insert_rows($t, $bid, $brows);
+            $t->eq($c->table('archive_opname_documents')->where('id_archive_opname', $bid)->count(), $bn, "sesi sisipan $bn baris tersisip");
+
+            $out = ['ids' => $ids, 'bulk' => ['id' => $bid, 'rows' => $bn], 'folders' => ['F' => $x['F'], 'A' => $x['A'], 'B' => $x['B'], 'G' => $x['G'], 'OUT' => $x['OUT']],
                 'names' => $x['n'], 'invalid' => $x['invalid'], 'sessions' => []];
             foreach (['F', 'A', 'B', 'G', 'OUT'] as $k) {
                 $out['folder_names'][$k] = $c->table('archives')->where('id_archive', $x[$k])->value('name');

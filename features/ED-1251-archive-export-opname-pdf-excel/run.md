@@ -3,8 +3,8 @@ key: ED-1251
 epic: ED-1022
 title: Archive - export PDF & Excel hasil opname (drawer Opname History & Opname Result)
 slug: archive-export-opname-pdf-excel
-phase: gate2
-qa_round: 1
+phase: commit
+qa_round: 2
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
 agents:
@@ -18,15 +18,25 @@ agents:
   fe_reviewer: {id: a4184f3f9632087ff, at: 2026-10-24 22:27}
   qa_fe_r1: {id: a449a85e373cc6030, at: 2026-10-25 00:03}
   qa_f1: {id: a93e44988f615440b, at: 2026-10-25 00:08}
+  be_dev_rv1: {id: ae43a4338d9875243, at: 2026-10-26 07:35}
+  be_reviewer_rv1: {id: a87ceeda7508ac385, at: 2026-10-26 07:39}
+  qa_be_r3: {id: a92f85ea0df3bcb4f, at: 2026-10-26 08:42}
+  api_digest_rv1: {id: a353b59884b89d3a8, at: 2026-10-26 08:47}
+  fe_dev_rv1: {id: aa13d6c5f220090b8, at: 2026-10-26 09:30}
+  fe_reviewer_rv1: {id: addec13dd89abcdcc, at: 2026-10-26 09:33}
+  qa_fe_r2: {id: a74a8512ade5e39e7, at: 2026-10-26 13:27}
 ---
 ## Status ringkas
-Long run ED-1022: siap review developer (commit lokal BE fba6a5883, FE 7ca714504; Jira In Progress + ai-review, komentar siap review; subtask In Progress).
-QA BE r2 PASS (AC-1..15: 15/15; r1 D-1 xls hang diperbaiki); QA FE r1 PASS (AC-16..22 7/7, AC-23 MANUAL); e2e 11/11, galeri work/e2e/ED-1251-archive-export-opname-pdf-excel-20261024-234609/.
-F-1 (ED-1028 scenario9, dua keadaan) dan F-2 (ED-1028 e2e histRows) diperbarui QA item ini (gate1 §3).
-Batch review: (1) memori produksi sesi besar (128M gagal PDF 10.000; mesin QA 2048M lulus); (2) pdfPreview `$request->all()` tanpa FormRequest, kunci tak dikenal ikut template;
-(3) GET select/pdf/xls membuat baris template/cds bila belum ada, tanpa penjaga race; (4) baris cds documentArchiveOpnameResult di Setup > Display Setting tanpa label FE (§9);
-(5) `Continuous` di Customize = 422 + notifikasi; (6) nama kunci `getSelectArchiveOpnameReportPdf*` (ikut spec §5). Publish FE tidak dijalankan (saat /v5-epic review).
-Temuan luar item: Bug ED-1283 (kode bersama laporan PDF/Excel). Tes UI manual 24 butir (ksp-react docs/specs/Archive/028-*.md).
+Long run ED-1022: perbaikan review 2026-10-26 (R-1..R-5) selesai, siap review developer lagi. Commit item: BE fba6a5883, FE 7ca714504; commit perbaikan: BE e5cd8eadff, FE 004018d12 (lokal, tanpa push).
+QA BE r3 PASS 18/0/0 (AC-1..15, AC-R3/R4/R5); QA FE r2 PASS 9/0/1 (AC-16..22, AC-R1, AC-R2; AC-23 MANUAL), e2e 14/14, galeri work/e2e/ED-1251-archive-export-opname-pdf-excel-20261026-132126/.
+Jira ED-1251 In Progress + ai-review, komentar siap review (perbaikan); 4 subtask In Progress. Publish FE tidak dijalankan (saat /v5-epic review).
+Batch review: R-1 label baru terlihat bila Setup > Display Setting di-route (temuan ED-1250); R-2 baris riwayat +6 px, kolom aksi 96 px (alternatif btn-action primary);
+report-template-6 footer kini tiap halaman di 6 laporan lain; padding header 20px developer (R-5) berlaku semua laporan report-header-1; O-1 A5-P header 5 baris tertutup judul tabel (pra-ada, bersama);
+report-template-1/2 pola footer sama (di luar item). Tes UI manual 27 butir (ksp-react docs/specs/Archive/028-*.md).
+
+## Review 2026-10-26: minta perbaikan
+Developer meminta perbaikan; daftar dan keputusan di spec § "Revisi review 2026-10-26". Selesai 2026-10-26 13:30: commit perbaikan di atas commit item (lihat Log).
+Perubahan developer di 3 berkas BE (spec R-5) sudah ikut commit perbaikan BE e5cd8eadff (keputusan developer 2026-10-26, a).
 
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
@@ -47,22 +57,23 @@ Temuan luar item: Bug ED-1283 (kode bersama laporan PDF/Excel). Tes UI manual 24
 - 2026-10-23 11:38 start: baseline BE 13014964d (0 berkas kotor), FE 41146943c (0 berkas kotor)
 - 2026-10-24 18:52 rebaseline ED-1251 (C-4): be 9d6bc7b4f, fe 63ebc8cc6
 - 2026-10-24 18:54 long run mulai: preflight OK; Story + 4 subtask -> In Progress; agent repo tidak terdaftar per nama -> fallback general-purpose + `<BE_DIR>/.claude/agents/*.md`
-- 2026-10-24 19:20 be: v5-be-dev selesai ED-1258 + ED-1259 (12 berkas PHP, kontrak §1/2/4/5/8 ditandai (BE), Catatan implementasi spec); smoke 200/4xx tanpa 500; data QA251-DEV-* dihapus. 6 usulan kode bersama (PDF404=500, getTemplate id, selected-* 500, Excel '=' sebagai rumus, desimal PDF, footer jam 12) -> dicatat, diputuskan sesudah QA
-- 2026-10-24 19:23 be-review: 0 Harus diperbaiki; Perlu dikonfirmasi (batch review): (1) pdfPreview `$request->all()` tanpa FormRequest, kunci payload tak dikenal ikut ke template; (2) GET select/pdf/xls membuat baris template/cds bila belum ada, tanpa penjaga race; (3) `Opname Document` hanya di permission_salesman.sql (pra-ada)
-- 2026-10-24 19:23 qa-be r1 mulai
-- 2026-10-24 20:43 qa-be r1: FAIL, 14 PASS / 1 FAIL / 0 MANUAL (AC-1..15); D-1 ED-1259 (xls hang, ReportHeader1 kolom 0); komentar ED-1259. Di luar item: 10 butir (qa-be.md § Di luar item), a.l. C-9 terbukti (guard PASS), Excel '=' rumus aktif, memori 128M vs 2048M (AC-10 lulus di mesin ini), ED-1028 scenario9 F-1 perlu diperbarui pemilik. Data QA dihapus, preset QA251-ROLE-* = 0
-- 2026-10-24 20:45 be fix r1 mulai (D-1)
-- 2026-10-24 20:59 be fix r1: D-1 selesai, hanya OpnameExportService.php (fallback template -> display setting -> config untuk PDF/XLS/template); kontrak §2/§5 + Catatan implementasi; suite QA dev-run 29/29 PASS; cds/template row kembali tidak ada
-- 2026-10-24 21:00 qa-be r2 mulai
-- 2026-10-24 21:20 qa-be r2: PASS 15/0/0, D-1 tertutup, regresi qa/ 32/32, ED-1028 4/4, ED-1250 2/2; 500 di kode bersama (#5 template rusak buatan tangan, #6 bahasa tak sah, #7 A-1) digolongkan di luar item oleh orkestrator -> tiket ai-found di akhir. Data QA 0 sisa
-- 2026-10-24 21:21 fe mulai: api-contract-analyst
-- 2026-10-24 21:31 api digest: `docs/specs/Archive/_api.md` #32-#43; Perlu dikonfirmasi 33-39 dijawab dari spec/kode BE di § Jawaban (orkestrator ED-1251): 33 tanpa tindakan FE (§9), 34/35 risiko -> batch review, 36 C-9 Gate 1, 37 diterima, 38/39 kode bersama -> tiket ai-found
-- 2026-10-24 21:33 fe dev mulai (ui-plan Archive, ui-slice, ui-logic)
-- 2026-10-24 22:24 fe dev: task 028 logic-done (13 berkas FE: komponen ArchiveOpnameExport, endpoints 11, DrawerPdf constant, Content/ResultDrawer, 12 test baru PASS); build staging 2x OK; full suite 4 gagal pra-ada + timeout beban (ulang runInBand PASS)
-- 2026-10-24 22:25 convention-reviewer mulai
-- 2026-10-24 22:27 fe review: 0 Harus diperbaiki; Perlu dikonfirmasi (batch review): nama kunci `getSelectArchiveOpnameReportPdf*` (ikut spec §5, beda urutan dari `getSelectReport<Modul>Pdf*`), tanpa entri displaySetting.constant (butir 33), tanpa usePermission (drawer sudah dijaga); catatan: komentar `archive.api.js:47` menyebut nama lama `archiveOpnamePdfEndpoints`
-- 2026-10-24 22:28 qa-fe r1 mulai (qa_round direset ke 1 untuk tahap fe)
-- 2026-10-25 00:03 qa-fe r1: PASS, AC-16..22 7 PASS, AC-23 MANUAL; build OK; unit: 4 gagal pra-ada + timeout beban (lulus sendiri); e2e 11/11 tanpa allow-list; regresi BE 32/32, ED-1028 4/4, ED-1250 2/2; F-2: ED-1028 e2e `histRows` -> `td:not(.p-0)` (13/13). Di luar item baru: DrawerCustomize pageerror Simpan cepat, kolom dicentang ulang ke urutan akhir
-- 2026-10-25 00:08 qa F-1 (addendum, gate1 §3 pemilik 1251 AC-12): ED-1028 `scenario9-display-setting.php` asersi bersyarat baris Result; ED-1028 AC-1/12/13/28 PASS di keadaan tanpa dan dengan baris; cds/template dipulihkan 0/0, C-9 PASS, QA251-ROLE-* 0
-- 2026-10-25 00:09 orkestrator: dok FE 028 § Daftar tes UI + butir 24 (AC-23 hitam-putih) dan catatan urutan kolom di butir 15 (saran QA FE)
+- 2026-10-24 19:20 .. 2026-10-25 00:09 (diringkas): be ED-1258/1259 + review 0 HD; qa-be r1 FAIL D-1 (xls hang) -> fix r1 -> qa-be r2 PASS 15/0/0; api digest #32-#43; fe task 028 + review 0 HD; qa-fe r1 PASS 7/0/1, e2e 11/11; F-1 addendum ED-1028 scenario9; rincian di qa-be.md/qa-fe.md Riwayat ronde dan commit agentic 7cbbd11
 - 2026-10-25 00:10 commit (long run, lokal): BE fba6a5883, FE 7ca714504; publish FE tidak dijalankan (dilakukan saat /v5-epic review); Jira ED-1251 label ai-review + komentar siap review; subtask tetap In Progress; temuan luar item Bug ED-1283 (ai-found)
+- 2026-10-26 07:17 review: minta perbaikan (spec § Revisi review 2026-10-26); rebaseline be 6e27d627b, fe 1bf24cfa8; 3 berkas BE kotor di baseline = perubahan developer yang IKUT commit perbaikan item ini (R-5); commit item: be fba6a5883, fe 7ca714504
+- 2026-10-26 07:18 review-fix r1 mulai (long run): preflight OK; Jira ED-1251 + 4 subtask In Progress, label ai-review sudah dilepas; BE dev (R-3, R-4, R-5) mulai
+- 2026-10-26 07:35 be (review r1): R-3 akar = `<htmlpagefooter>` di potongan `<html-separator/>` terakhir (mPDF pasang footer saat halaman mulai) -> include footer dipindah sebelum `$content` di `report-template-6` (bersama; VAT In ikut terperbaiki 0/51 -> 51/51); R-4 `PAPER_PATTERN` + Continuous, `paperConfig()` mm, `PdfReportService::stream` param opsional `$mpdfConfig` (bersama, 124 pemanggil 2 argumen tak berubah); R-5 `info($paper)` dihapus, `getPaperFormat` public, hunk developer utuh, 2 view report-header-1 tidak diubah. Bukti: sesi dev …033097 3/3, …474864 0/11 -> 11/11 (render in-process baca saja). Kontrak §1/2/4 + Catatan implementasi. Data QA251-DEV-* 0. changed.sh: NEW 3, PRE+ 1 (PdfTemplateService), PRE 2 (view report-header-1) - ketiganya R-5 ikut commit
+- 2026-10-26 07:35 penolakan classifier (BE dev): memberi QA_USER role 1 sementara (Permission Grant) ditolak; tidak diulang/diakali; sesi developer dibuktikan lewat render in-process baca saja. Usulan bersama (tidak dikerjakan): report-template-1/2 footer di akhir pola sama; `PdfReportService::stream` Continuous laporan lain 500
+- 2026-10-26 07:39 be-review (review r1): 0 Harus diperbaiki; Perlu dikonfirmasi (batch review): (1) report-template-6 dipakai 6 laporan lain (VAT In/Out, PBSatu, AP Summary, WHT Purchase/Sales) - footer kini di semua halaman, QA regresi cek footer tidak menimpa baris; (2) report-template-1/2 pola footer sama (di luar item). Catatan: padding header 20px developer (R-5) berlaku semua laporan report-header-1
+- 2026-10-26 07:40 qa-be r3 mulai (review fix)
+- 2026-10-26 08:42 qa-be r3: PASS 18/0/0 (AC-1..15 + AC-R3, AC-R4, AC-R5). R-3 kontrol negatif view lama mereproduksi (…474864 0/11, …422239 5/11) -> kini 3/3, 11/11, 11/11; sesi developer dirender in-process read-only (404 untuk QA_USER, tanpa pemberian role). R-4 MediaBox Continuous-P 612x381,6 / -L 784,8x597,6 pt; scenario3 diperbarui (199-203, 359-377). R-5 regresi VAT In/Out, PB1, WHT, AP Summary, VAT Summary, AP Due, Journal 200 header/footer tiap halaman. qa/ 36/36, ED-1028 4/4, ED-1250 2/2 (folder tak diubah). Pengamatan O-1 (batch review, pra-ada bersama): A5-P header 5 baris tertutup judul tabel (`getHeaderHeight` tanpa A5 report-header-1). Data: QA251 0; template 519 + cds 2585 documentArchiveOpnameResult milik developer dipulihkan byte-identik (1/1)
+- 2026-10-26 08:43 fe mulai (R-1, R-2): api-contract-analyst (digest kontrak review 2026-10-26)
+- 2026-10-26 08:47 api digest (review r1): `docs/specs/Archive/_api.md` #32/#33/#42 (Continuous-P/-L sah, 422 paper_size bentuk lain, footer tiap halaman); butir 35 TERJAWAB; 0 Perlu dikonfirmasi baru; dampak FE: tanpa guard Continuous di `src/`, hanya dok 028 butir 20 (:191-192) dan "Tidak termasuk" (:47) usang
+- 2026-10-26 08:48 fe dev mulai (R-1 label display setting, R-2 gaya tombol Opname History; dok 028)
+- 2026-10-26 09:30 fe dev (review r1): task 028 logic-done (ui_review gate-2). R-1 entri `documentArchiveOpnameResult` di `displaySetting.constant.js` + locale archive (en/id); label hanya dirender di subjudul `DisplaySettingDrawer` yang dibuka dari `DisplaySettingPage` (tidak di-route, temuan ED-1250) -> tidak terlihat di app hari ini, terbukti unit test. R-2 tombol baris Opname History = tombol judul Opname Result (primary, filled, 40 px; varian `compact` dihapus; kolom 76 -> 96 px). Dok 028 (Catatan, tes UI 25-27, butir 20/Tidak termasuk Continuous), `_module.md`. eslint bersih; ArchiveOpnameHistory test 21/21; suite Archive timeout beban (ulang -t 16/16); build staging OK. Perlu dikonfirmasi (batch review): ukuran tombol harfiah sama -> baris riwayat +6 px, kolom +20 px (alternatif `btn-action` primary)
+- 2026-10-26 09:31 convention-reviewer mulai
+- 2026-10-26 09:33 fe review (review r1): 0 Harus diperbaiki, 0 Perlu dikonfirmasi; catatan `_api.md` butir 33 usang -> orkestrator menandai TERJAWAB (R-1, label + tempat render)
+- 2026-10-26 09:34 qa-fe r2 mulai (review fix; qa_round = 2 untuk tahap fe)
+- 2026-10-26 10:04 DIHENTIKAN developer saat qa-fe r2 berjalan (menunggu full suite FE). Perubahan perbaikan belum di-commit (BE 6 berkas termasuk 3 milik developer R-5, FE 8 berkas); QA BE r3 PASS 18/0/0 tetap berlaku. Lanjut: /v5-epic ED-1022 -> resume phase qa-fe (QA FE r2 diulang dari awal).
+- 2026-10-26 12:45 resume (long run, runner baru): preflight OK; tidak ada proses jest/e2e sisa, tidak ada jurnal fixture e2e (.fixture-ids/.journal-*) dari qa-fe r2 yang dihentikan; info($paper) sudah tidak ada. qa-fe r2 diulang dari awal (qa_round 2 tahap fe)
+- 2026-10-26 13:27 qa-fe r2 (review fix): PASS 9/0/1 (AC-16..22, AC-R1, AC-R2; AC-23 MANUAL Gate 2). AC-R1 tidak terjangkau di app (Display Setting tanpa route) -> dibuktikan kode + bundle staging + 3 unit test; AC-R2 di browser desktop + 375 px. Build OK; unit Archive+DisplaySetting 533/533; full suite 4 gagal pra-ada (= r1) + 1 timeout beban (lulus sendiri). e2e 14/14 (footer tiap halaman A4-P/L, Continuous-P/L, 247 baris), galeri work/e2e/ED-1251-archive-export-opname-pdf-excel-20261026-132126/; regresi BE qa/ 36/36, ED-1028 4/4, ED-1250 2/2, e2e ED-1028 13/13 (folder ED-1028/ED-1250 tidak diubah). Data: 0QA251/QA251BULKFE dihapus, QA*-ROLE-* 0, template 519 + cds 2585 developer byte-identik. Skrip QA r2 lama (dihentikan) diambil alih + diperbaiki. Tanpa penolakan classifier
+- 2026-10-26 13:29 commit (long run, lokal, perbaikan review): BE e5cd8eadff (6 berkas: OpnameExportService, PdfReportService, report-template-6 + R-5 milik developer PdfTemplateService, layouts/headers/report-header-1, styles/headers/report-header-1; info($paper) sudah dihapus), FE 004018d12 (8 berkas); Jira ED-1251 label ai-review + komentar siap review; subtask tetap In Progress

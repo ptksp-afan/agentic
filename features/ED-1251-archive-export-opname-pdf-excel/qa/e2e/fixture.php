@@ -49,7 +49,9 @@ if ($cmd === 'pdf') {
         exit(0);
     }
     $p = \q251_pdf($b);
-    out(['ok' => true, 'bytes' => strlen($b), 'pages' => $p['pages'], 'media' => $p['media'], 'text' => $p['text'], 'fills' => $p['fills'], 'colors' => $p['colors']]);
+    out(['ok' => true, 'bytes' => strlen($b), 'pages' => $p['pages'], 'media' => $p['media'], 'text' => $p['text'], 'ptexts' => array_map(function ($a) {
+        return implode(' ', (array) $a);
+    }, $p['texts']), 'fills' => $p['fills'], 'colors' => $p['colors']]);
     exit(0);
 }
 if ($cmd === 'xlsx') {

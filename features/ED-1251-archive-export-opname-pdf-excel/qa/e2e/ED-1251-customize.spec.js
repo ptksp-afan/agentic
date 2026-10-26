@@ -11,7 +11,7 @@ const fs = require('fs');
 const { test, expect } = require('e2e-harness');
 const {
   fixture, lastJson, fx, own, save, norm, pdfOf, xlsxOf, trimAll, LANG, waitOpnames, hist, resDrawer, pdfDrawer, customizeDrawer, histRowsLoc,
-  sessionRow, printBtn, excelBtn, idOf, reUrl, openArchive, openHistoryFromModal, expectRejected, noServerError, pdfReady, clickPrint, expectPdfOf,
+  sessionRow, printBtn, excelBtn, idOf, reUrl, openArchive, openHistoryFromModal, expectRejected, noServerError, pdfReady, clickPrint, expectPdfOf, footerReport,
 } = require('./lib');
 
 const SEL_RE = /\/select\/report\/document-archive\/opname\/([a-z-]+)/;
@@ -153,7 +153,9 @@ test.describe('ED-1251 Customize & jalur error', () => {
     test.setTimeout(480000);
     const L = LANG.id;
     const before = own();
-    expect(before.tpl_count, 'awal: baris template sendiri belum ada').toBe(0);
+    // r1: baris belum ada (0); r2: baris template 519 + cds 2585 sudah ada (dibuat developer, tables kosong = jatuh ke display setting); jurnal FIX-UP memulihkan apa pun keadaan awalnya
+    expect([0, 1], 'awal: tidak ada baris template ganda').toContain(before.tpl_count);
+    expect(before.tables || [], 'awal: baris template belum menyimpan tabel (jatuh ke display setting)').toEqual([]);
     let step = 'awal';
     const t0 = Date.now();
     const trail = [];
@@ -206,7 +208,7 @@ test.describe('ED-1251 Customize & jalur error', () => {
       await app.screenshot('ac19-02-customize-tabel');
       // baris template dibuat BE dari config saat dipakai pertama (DU-5 a)
       const own1 = own();
-      expect(own1.tpl_count, 'baris template documentArchiveOpnameResult dibuat aplikasi').toBe(1);
+      expect(own1.tpl_count, 'baris template documentArchiveOpnameResult ada (dibuat aplikasi, atau sudah ada sejak awal)').toBe(1);
       expect(own1.other, 'C-9: template lain sama persis (count + checksum)').toEqual(before.other);
 
       // --- ubah orientasi -> POST preview A4-L, MediaBox lebar > tinggi
@@ -416,3 +418,224 @@ async function downloadExcelS1ViaTitle(page, rd) {
   x.cells = Object.values(x.rows).flatMap((r) => Object.values(r)).map(norm);
   return x;
 }
+
+// ================================================================================================ revisi review 2026-10-26 (QA FE r2)
+
+/**
+ * viewer PDF di `root` (DrawerPdf atau Customize): toolbar menunjukkan "/ <pages>" (= jumlah halaman berkas), lalu seluruh dokumen digulir dan lapisan teks
+ * tiap halaman (pdf.js merender HANYA halaman di sekitar layar, jadi digulir bertahap) dikumpulkan: SETIAP halaman 1..pages harus memuat footer
+ * "Halaman i dari pages" / "Page i of pages" di viewer sendiri (R-3, bukan hanya di berkas). Kembalikan { pages, withFooter }.
+ */
+async function viewerFooters(page, root, pages, label) {
+  await expect
+    .poll(async () => new RegExp(`/\\s*${pages}(?!\\d)`).test(norm((await root.locator('.rpv-toolbar').first().innerText().catch(() => '')) || '')), {
+      message: `${label}: toolbar viewer menunjukkan "/ ${pages}" halaman`,
+      timeout: 60000,
+    })
+    .toBe(true);
+  const scroller = root.locator('[data-testid="core__inner-pages"]').first();
+  await scroller.waitFor({ state: 'visible', timeout: 30000 });
+  const seen = {};
+  const collect = async () => {
+    const got = await root.locator('[data-testid^="core__text-layer-"]').evaluateAll((els) =>
+      els.map((e) => [Number(e.getAttribute('data-testid').replace('core__text-layer-', '')), e.innerText || '']),
+    );
+    got.forEach(([i, t]) => {
+      if (!seen[i] || t.length > seen[i].length) seen[i] = norm(t);
+    });
+  };
+  const dims = await scroller.evaluate((el) => ({ h: el.scrollHeight, c: el.clientHeight }));
+  const step = Math.max(200, Math.floor(dims.c * 0.5));
+  for (let y = 0; y <= dims.h + step; y += step) {
+    await scroller.evaluate((el, top) => {
+      el.scrollTop = top;
+    }, y);
+    await page.waitForTimeout(450);
+    await collect();
+  }
+  // halaman terakhir: tunggu lapisan teksnya terisi
+  await expect
+    .poll(async () => {
+      await scroller.evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+      });
+      await page.waitForTimeout(500);
+      await collect();
+      return Object.keys(seen).length;
+    }, { message: `${label}: viewer merender ${pages} halaman (digulir bertahap)`, timeout: 60000 })
+    .toBe(pages);
+  const bad = [];
+  let withFooter = 0;
+  for (let i = 0; i < pages; i += 1) {
+    const re = new RegExp(`(Halaman|Page)\\s+${i + 1}\\s+(dari|of)\\s+${pages}(?!\\d)`);
+    if (re.test(seen[i] || '')) withFooter += 1;
+    else bad.push(i + 1);
+  }
+  expect(bad, `${label}: halaman di viewer tanpa footer "Halaman i dari ${pages}" (dari ${pages})`).toEqual([]);
+  return { pages, withFooter };
+}
+
+/** POST pdf/preview yang dipicu `action` dengan paperSize `paper`: { status, info (PDF diurai), notif (jumlah notifikasi error sesudahnya) } */
+async function previewOf(page, paper, action, name) {
+  const reqP = page.waitForRequest((r) => r.method() === 'POST' && /\/pdf\/preview(\?|$)/.test(r.url()) && new RegExp(`"paperSize":"${paper}"`).test(r.postData() || ''), { timeout: 60000 });
+  await action();
+  const req = await reqP;
+  const resp = await req.response();
+  const buf = await resp.body();
+  await page.waitForTimeout(1200);
+  return { status: resp.status(), info: pdfOf(buf, name), notif: await page.locator('.ant-notification-notice-error').count(), body: JSON.parse(req.postData()) };
+}
+
+/** Simpan Customize untuk sesi `id` (DrawerPdf memuat ulang GET pdf sesi itu) */
+async function saveCustomizeFor(page, cz, id) {
+  const updReq = page.waitForRequest((r) => r.method() === 'POST' && /\/setting\/pdf-templates\/update(\?|$)/.test(r.url()), { timeout: 45000 });
+  const reload = page.waitForResponse((r) => r.request().method() === 'GET' && reUrl(id, 'pdf').test(r.url()), { timeout: 120000 });
+  await cz.locator('.ant-drawer-extra button.ant-btn-primary').click();
+  const req = await updReq;
+  const resp = await req.response();
+  expect(resp.status(), 'POST setting/pdf-templates/update 200').toBe(200);
+  const rl = await reload;
+  expect(rl.status(), 'PDF dimuat ulang (GET pdf) 200').toBe(200);
+  await expect(customizeDrawer(page), 'Customize tertutup sesudah Simpan').toHaveCount(0, { timeout: 20000 });
+  await expect(page.locator('.ant-notification-notice-success').first(), 'toast sukses').toBeVisible({ timeout: 15000 });
+  return { body: JSON.parse(req.postData()), pdfBuf: await rl.body() };
+}
+
+const pickPaper = async (page, cz, optionRe) => {
+  await cz.locator('.ant-tabs-tab', { hasText: /^Halaman$/ }).click();
+  const sel = cz.locator('.ant-form-item').filter({ hasText: /Ukuran Kertas|Paper Size/ }).locator('.ant-select').first();
+  await sel.click();
+  const opt = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option').filter({ hasText: optionRe }).first();
+  await opt.waitFor({ state: 'visible', timeout: 20000 });
+  const texts = trimAll(await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option').allInnerTexts());
+  await opt.click();
+  return texts;
+};
+
+test.describe('ED-1251 revisi review 2026-10-26 R-3/R-4 (FE): pratinjau PDF', () => {
+  test('[default] ED-1251 R-3/R-4 sesi 247 baris: footer di SETIAP halaman (DrawerPdf, pratinjau Customize A4-P/A4-L/Continuous-L/-P), pratinjau Continuous = 200 tanpa notifikasi error + ukuran Continuous; Simpan Continuous lalu dipulihkan', async ({ app, page, monitor }) => {
+    test.setTimeout(1200000);
+    const f = fx();
+    expect(f.bulk && f.bulk.id, 'fixture sesi sisipan 247 baris ada (FIX-UP)').toBeTruthy();
+    const BULK = f.bulk.id;
+    const before = own();
+    const rep = {};
+    const trail = [];
+    page.on('pageerror', (err) => {
+      trail.push(`PAGEERROR ${err.message}`);
+      monitor.note(`pageerror: ${String(err.stack || err.message).split('\n').slice(0, 6).join(' <- ')}`);
+    });
+    const checkFooters = (info, label, minPages = 2) => {
+      const fr = footerReport(info, f.user);
+      rep[label] = { pages: info.pages, withFooter: fr.withFooter, media: info.media[0].map((v) => Math.round(v * 10) / 10) };
+      expect(info.pages, `${label}: PDF berhalaman banyak`).toBeGreaterThanOrEqual(minPages);
+      expect(fr.missing, `${label}: halaman tanpa footer`).toEqual([]);
+      expect(fr.wrongNumber, `${label}: nomor "Halaman i dari N" salah`).toEqual([]);
+      expect(fr.noUser, `${label}: footer tanpa "Dicetak oleh ${f.user}"`).toEqual([]);
+      expect(info.text, `${label}: baris pertama sesi ada`).toContain('QA251BULK-0000000');
+      expect(info.text, `${label}: baris terakhir sesi ada`).toContain(`QA251BULK-${String(f.bulk.rows - 1).padStart(7, '0')}`);
+      expect(info.ptexts.filter((t) => /Dicetak oleh|Printed by/.test(t)).length, `${label}: footer tercetak di tiap halaman`).toBe(info.pages);
+    };
+    try {
+      await openArchive(app, page);
+      await openHistoryFromModal(app, page);
+      const rows = histRowsLoc(page).filter({ hasNotText: f.folder_names.F }).filter({ hasNotText: f.folder_names.G });
+      expect(await rows.count(), 'tepat satu baris selain S1/S2 = sesi sisipan (sesi developer tidak terlihat QA_USER)').toBe(1);
+      const row = rows.first();
+
+      // --- 1. DrawerPdf (GET pdf, A4-P bawaan): footer tiap halaman di berkas DAN di viewer
+      const { resp, buf } = await clickPrint(page, BULK, printBtn(row));
+      expect(resp.status(), 'GET pdf sesi sisipan 200').toBe(200);
+      const info0 = pdfOf(buf, 'BULK-drawerpdf-a4p.pdf');
+      checkFooters(info0, 'DrawerPdf GET pdf A4-P', 5);
+      expect(info0.media[0][1], 'A4-P potret').toBeGreaterThan(info0.media[0][0]);
+      const d = await pdfReady(page);
+      await viewerFooters(page, d, info0.pages, 'DrawerPdf');
+      await app.screenshot('r3-01-drawerpdf-halaman-terakhir-footer');
+
+      // --- 2. Customize: pratinjau A4-P bawaan
+      const { cz, posts } = await openCustomize(page, d);
+      const first = await posts[0].response();
+      expect(first.status(), 'POST pdf/preview bawaan 200').toBe(200);
+      const info1 = pdfOf(await first.body(), 'BULK-preview-a4p.pdf');
+      checkFooters(info1, 'Customize pratinjau A4-P', 5);
+      await viewerFooters(page, cz, info1.pages, 'Customize A4-P');
+      await app.screenshot('r3-02-customize-a4p-halaman-terakhir');
+
+      // --- 3. A4-L
+      await cz.locator('.ant-tabs-tab', { hasText: /^Halaman$/ }).click();
+      const pl = await previewOf(page, 'A4-L', () => cz.locator('.ant-radio-button-wrapper', { hasText: 'Landscape' }).click(), 'BULK-preview-a4l.pdf');
+      expect(pl.status, 'pratinjau A4-L 200').toBe(200);
+      expect(pl.notif, 'pratinjau A4-L: tanpa notifikasi error').toBe(0);
+      expect(pl.info.media[0][0], 'A4-L: lebar > tinggi').toBeGreaterThan(pl.info.media[0][1]);
+      checkFooters(pl.info, 'Customize pratinjau A4-L', 5);
+      await viewerFooters(page, cz, pl.info.pages, 'Customize A4-L');
+      await app.screenshot('r3-03-customize-a4l-halaman-terakhir');
+
+      // --- 4. kertas Continuous (orientasi L bawaan dari langkah 3) -> Continuous-L; lalu Portrait -> Continuous-P (R-4: 200, bukan 422/notifikasi)
+      let paperOptions = [];
+      const pcl = await previewOf(page, 'Continuous-L', async () => {
+        paperOptions = await pickPaper(page, cz, /^Continuous$/);
+      }, 'BULK-preview-continuous-l.pdf');
+      monitor.note(`opsi kertas di Customize: ${JSON.stringify(paperOptions)}`);
+      expect(pcl.status, 'pratinjau Continuous-L 200 (bukan 422)').toBe(200);
+      expect(pcl.notif, 'pratinjau Continuous-L: tanpa notifikasi error').toBe(0);
+      expect(pcl.body.paperSize, 'FE mengirim paperSize Continuous-L').toBe('Continuous-L');
+      expect(pcl.info.ok, 'Continuous-L = PDF').toBe(true);
+      expect(pcl.info.media[0].map((v) => Math.round(v * 10) / 10), 'Continuous-L = 784,8 x 597,6 pt (276,86 x 210,82 mm), bukan A4').toEqual([784.8, 597.6]);
+      expect(new Set(pcl.info.media.map((m) => m.map((v) => Math.round(v * 10) / 10).join('x'))).size, 'semua halaman ukuran Continuous-L').toBe(1);
+      checkFooters(pcl.info, 'Customize pratinjau Continuous-L', 5);
+      await viewerFooters(page, cz, pcl.info.pages, 'Customize Continuous-L');
+      await app.screenshot('r3-04-customize-continuous-l');
+
+      const pcp = await previewOf(page, 'Continuous-P', () => cz.locator('.ant-radio-button-wrapper', { hasText: 'Portrait' }).click(), 'BULK-preview-continuous-p.pdf');
+      expect(pcp.status, 'pratinjau Continuous-P 200 (bukan 422)').toBe(200);
+      expect(pcp.notif, 'pratinjau Continuous-P: tanpa notifikasi error').toBe(0);
+      expect(pcp.body.paperSize, 'FE mengirim paperSize Continuous-P').toBe('Continuous-P');
+      expect(pcp.info.media[0].map((v) => Math.round(v * 10) / 10), 'Continuous-P = 612 x 381,6 pt (215,9 x 134,62 mm), bukan A4').toEqual([612, 381.6]);
+      expect(new Set(pcp.info.media.map((m) => m.map((v) => Math.round(v * 10) / 10).join('x'))).size, 'semua halaman ukuran Continuous-P').toBe(1);
+      checkFooters(pcp.info, 'Customize pratinjau Continuous-P', 5);
+      await viewerFooters(page, cz, pcp.info.pages, 'Customize Continuous-P');
+      await app.screenshot('r3-05-customize-continuous-p');
+      expect(own().paper_size, 'pratinjau tidak menyimpan: kertas tersimpan tidak berubah').toBe(before.paper_size || 'A4-P');
+
+      // --- 5. Simpan Continuous-P: GET pdf dimuat ulang berukuran Continuous + footer tiap halaman; DB = Continuous-P
+      const sv = await saveCustomizeFor(page, cz, BULK);
+      expect(sv.body.paperSize, 'Simpan mengirim paperSize Continuous-P').toBe('Continuous-P');
+      expect(sv.body.transactionName, 'Simpan: transactionName').toBe('documentArchiveOpnameResult');
+      const infoS = pdfOf(sv.pdfBuf, 'BULK-tersimpan-continuous-p.pdf');
+      expect(infoS.media[0].map((v) => Math.round(v * 10) / 10), 'GET pdf tersimpan Continuous-P = ukuran Continuous (bukan A4)').toEqual([612, 381.6]);
+      checkFooters(infoS, 'GET pdf tersimpan Continuous-P', 5);
+      const ownS = own();
+      expect(ownS.paper_size, 'DB: kertas tersimpan Continuous-P').toBe('Continuous-P');
+      expect(ownS.other, 'C-9: template lain sama persis').toEqual(before.other);
+      expect(ownS.tpl_count, 'tidak ada baris template baru').toBe(before.tpl_count || 1);
+      await viewerFooters(page, pdfDrawer(page), infoS.pages, 'DrawerPdf tersimpan Continuous-P');
+      await app.screenshot('r3-06-drawerpdf-tersimpan-continuous-p');
+
+      // --- 6. pulihkan lewat UI: A4 + Portrait, Simpan
+      const { cz: cz2 } = await openCustomize(page, pdfDrawer(page));
+      const pa4 = await previewOf(page, 'A4-P', async () => {
+        await pickPaper(page, cz2, /^A4$/);
+      }, 'BULK-preview-a4p-pulih.pdf');
+      expect(pa4.status, 'pratinjau A4-P (pulih) 200').toBe(200);
+      checkFooters(pa4.info, 'Customize pratinjau A4-P (pulih)', 5);
+      await page.waitForTimeout(1500);
+      const sv2 = await saveCustomizeFor(page, cz2, BULK);
+      const infoP = pdfOf(sv2.pdfBuf, 'BULK-tersimpan-a4p-pulih.pdf');
+      expect(infoP.media[0][1], 'PDF pulih: potret A4').toBeGreaterThan(infoP.media[0][0]);
+      checkFooters(infoP, 'GET pdf tersimpan A4-P (pulih)', 5);
+      expect(own().paper_size, 'DB pulih: A4-P').toBe('A4-P');
+      monitor.note(`footer per kondisi (halaman dengan footer / total, MediaBox pt): ${JSON.stringify(rep)}`);
+      noServerError(monitor);
+    } finally {
+      monitor.note(`ringkas footer: ${JSON.stringify(rep)}; jejak: ${trail.join(' || ')}`);
+      const r = lastJson(fixture('own-restore'));
+      const after = own();
+      expect(r.restored, 'own-restore').toBe(true);
+      expect(after.tpl_count, 'baris template sendiri kembali ke awal').toBe(before.tpl_count);
+      expect(after.cds_count, 'baris cds sendiri kembali ke awal').toBe(before.cds_count);
+      expect(after.other, 'C-9 akhir: template lain sama persis').toEqual(before.other);
+    }
+  });
+});

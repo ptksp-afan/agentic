@@ -233,6 +233,23 @@ Jawaban developer 2026-10-24: **c** - laporan lain dibiarkan, tanpa tiket; item 
   (kontrak §5 "Fallback kolom", §2). Berlaku sama untuk `pdf`, `pdf/preview` (payload tanpa kolom → tabel tersimpan/fallback), `xls` dan
   `transaction-templates`. Excel tidak pernah tanpa kolom (sebelumnya `ReportHeader1` kolom akhir `@` → `mergeCells` PHPExcel tak selesai).
   Satu tabel tanpa kolom tidak berubah. Kode bersama (trait, `ReportHeader1`, `PdfReportService`, `PdfTemplateService`) tidak diubah.
+- BE dev revisi review 2026-10-26 (ED-1258/ED-1259; kontrak §1, §2, §4 ditandai **(BE, review 2026-10-26)**):
+  - R-3 akar masalah: `report-template-6.blade.php` menaruh `<htmlpagefooter name="page-footer">` (report-footer-1) **sesudah** `$content`, yang
+    dipecah `<html-separator/>` menjadi satu `WriteHTML` per potongan (Rincian `DETAIL_CHUNK` 200, laporan lain 50). mPDF mendaftarkan footer bernama
+    saat `WriteHTML` yang memuatnya dibaca (`Mpdf.php:13450`) dan memasang footer per halaman saat halaman dimulai (`:10408`, nama belum
+    terdaftar = tanpa footer; halaman 1 saat ditutup, `:13218`). Akibatnya hanya halaman yang dimulai di potongan terakhir punya footer: sesi ≤200 baris
+    (`…033097`, 97 baris) lengkap, sesi 401 baris (`…474864`) 0/11, sesi 398 baris (`…422239`) 5/11. Bukan soal margin/tinggi header/footer.
+    Perbaikan: include footer dipindah ke **sebelum** `$content` (berkas bersama, satu baris; `<htmlpagefooter>` tidak ikut alur isi, jadi tata letak
+    laporan lain tidak berubah selain footer kini ada di semua halaman; VAT In yang memakai template ini juga 0/51 → 51/51).
+    `report-template-1/2.blade.php` (pola footer di akhir yang sama) tidak diubah: usulan.
+  - R-4: `PAPER_PATTERN` `(A4|A5|Letter|Legal|Folio|Continuous)-(P|L)`. Continuous tidak dikenal mPDF sebagai nama, jadi
+    `OpnameExportService::paperConfig()` mengirim ukuran mm `PdfTemplateService::getPaperFormat` (dibuat public) dengan orientasi `P` (ukuran apa
+    adanya, sama dengan PDF transaksi) lewat parameter opsional baru `PdfReportService::stream($data, $fileName, $mpdfConfig = [])` (124 pemanggil lain
+    memakai 2 argumen, perilakunya tidak berubah; laporan lain dengan Continuous tetap 500 seperti sebelumnya: usulan).
+  - R-5: perubahan developer di `PdfTemplateService` (`getHeaderPadding`) dan dua view `report-header-1` dipertahankan; hanya `info($paper)` dihapus.
+  - Berkas: `Http/Services/DocumentArchive/OpnameExportService.php`, `Http/Services/Report/Export/PdfReportService.php`,
+    `Http/Services/Setup/Setting/PdfTemplateService.php` (R-5 + `getPaperFormat` public), `Resources/views/pdf-templates/layouts/templates/report-template-6.blade.php`,
+    dua view `report-header-1` (R-5, tidak diubah agent).
 
 ## Tambahan Gate 1 (2026-10-24, disetujui developer; epic-check r6 §8)
 - AC-15 / AC-19 guard (C-9): sesudah skenario, `transaction_pdf_templates` selain baris sendiri sama persis (count + checksum), `transaction_name`
@@ -242,3 +259,23 @@ Jawaban developer 2026-10-24: **c** - laporan lain dibiarkan, tanpa tiket; item 
 - K-11 c: Customize laporan lain tanpa `selected-pdf-templates` (404) dibiarkan; usulan A-13 dicatat di `run.md`, bukan defect.
 - Jawaban Gate 1: `epics/ED-1022-gate1.md` §9 dan §9b (K-1 a, K-2 = template laporan + Customize, K-3 b, K-4 b, K-5 a hanya Excel, K-6 a
   bersyarat, K-7 a, K-8 a, K-9 a, K-10 a + Excel ikut, K-11 c, DU-5 a + `transaction_pdf_templates`, DU-6 a).
+
+## Revisi review 2026-10-26 (developer, `/v5-epic review`; menimpa butir lama yang bertentangan)
+- **R-1 label display setting** (FE): baris `documentArchiveOpnameResult` di Setup > Display Setting berlabel en "Archive Opname Result" / id "Hasil Opname Arsip".
+- **R-2 gaya tombol Opname History** (FE): tombol Print dan Excel di kolom aksi tabel drawer Opname History sama dengan tombol di drawer Opname Result
+  (button `type="primary"`, ikon filled); tetap icon only, tooltip, `aria-label`.
+- **R-3 footer PDF** (BE): footer template (`report-footer-1`: dicetak oleh / nomor halaman) harus muncul di **semua** halaman setiap export. Contoh developer
+  (setting sekarang, tanpa diubah): sesi `id_archive_opname = 250224000117918817485624033097` footer muncul; sesi `250224000117920274494615474864` footer
+  tidak muncul. Cari akar masalah (mis. potongan `WriteHTML` Rincian `DETAIL_CHUNK`, tinggi header/footer, margin `@page`), perbaiki, buktikan dengan kedua sesi
+  itu (baca saja, sesi nyata) dan sesi QA dengan jumlah baris berbeda. Developer sudah mencoba margin-bottom `@page` dan padding/margin footer negatif tanpa hasil.
+- **R-4 kertas Continuous didukung penuh** (BE, keputusan a): `Continuous-P`/`Continuous-L` di pratinjau (`pdf/preview`) dan di template tersimpan dicetak dengan
+  ukuran Continuous yang sudah ada di `PdfTemplateService` (`getPaperFormat`/dimensi), bukan 422 dan bukan jatuh ke A4-P. `PAPER_PATTERN` dan kontrak §2
+  (422 `paper_size`) disesuaikan: kertas sah = `(A4|A5|Letter|Legal|Folio|Continuous)-(P|L)`. AC baru: pratinjau dan GET pdf dengan Continuous-P dan -L = 200,
+  MediaBox sesuai ukuran Continuous.
+- **R-5 perubahan developer ikut** (keputusan a): perubahan developer yang belum di-commit di `Modules/V5/Http/Services/Setup/Setting/PdfTemplateService.php`
+  (`getHeaderPadding`), `Modules/V5/Resources/views/pdf-templates/layouts/headers/report-header-1.blade.php`, dan
+  `Modules/V5/Resources/views/pdf-templates/styles/headers/report-header-1.blade.php` dipertahankan (jangan dibuang/ditimpa), perbaikan dibangun di atasnya, dan
+  ketiganya **ikut commit perbaikan ED-1251**. Hapus baris debug `info($paper)`. Berkas dipakai semua laporan: QA regresi PDF minimal satu laporan lain yang
+  memakai `report-header-1` (mis. VAT In) - terbuka 200, header/footer tampil.
+- Dikonfirmasi tanpa perubahan: memori sesi besar ikut setting produksi; `pdf/preview` `$request->all()` dibiarkan; pembuatan baris template/cds tanpa penjaga
+  race dibiarkan; nama kunci `getSelectArchiveOpnameReportPdf*`.

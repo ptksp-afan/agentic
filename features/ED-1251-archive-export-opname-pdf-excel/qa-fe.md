@@ -1,44 +1,70 @@
 ---
 key: ED-1251
 scope: fe
-round: 1
+round: 2
 verdict: PASS
-counts: {pass: 7, fail: 0, manual: 1, not_verifiable: 0}
+counts: {pass: 9, fail: 0, manual: 1, not_verifiable: 0}
 be_server: fpm
 ---
 ## Ringkasan
 
-Tahap FE ED-1251 (subtask ED-1260; QA ED-1261): tombol Print + Excel di kolom aksi kanan tabel Opname History dan di judul Opname Result, `DrawerPdf` + Customize
-sendiri (`documentArchiveOpnameResult`). AC milik tahap ini: AC-16..AC-22 (FE) dan AC-23 (BE+FE, manual Gate 2) = 8 AC.
+Ronde 2 tahap FE = revisi review 2026-10-26 (spec § "Revisi review 2026-10-26"; subtask ED-1260, QA ED-1261). Yang dinilai = working tree FE apa adanya (8 berkas belum di-commit: `ArchiveOpnameExport/index.js`,
+`ArchiveOpnameHistory/Content.js` + `index.test.js`, `archive.locale.js`, `displaySetting.constant.js`, 3 dok FE) di atas working tree BE (6 berkas, termasuk 3 milik developer R-5). AC milik tahap ini: AC-16..AC-22,
+AC-23 (manual Gate 2) + AC-R1 (R-1) + AC-R2 (R-2) = 10 AC. QA FE r2 yang dihentikan developer pukul 10:04 tidak dijadikan bukti (log `*-r2.txt` lama tidak dikutip); skrip e2e yang ditinggalkannya saya tinjau dan
+perbaiki (lihat "Perubahan skrip QA").
 
-- **Build**: `scripts/fe-build.sh build` lulus ("Compiled successfully", tanpa peringatan; `work/ed1251-fe/build-r1.txt`). Tidak ada berkas `src/` lebih baru dari build staging
-  (22:29), jadi yang diuji = kode FE saat ini. Tidak menyentuh `build/` developer.
-- **Unit**: modul Archive 17 suite, 529 tes. Run paralel pertama 9 suite gagal (28 tes, timeout beban mesin, 4 core). Kesembilannya **lulus saat dijalankan sendiri `--runInBand`**
-  (ArchiveOpnameHistory + `archive.function` 274 tes; 5 suite 43 tes; 3 suite 86 tes). Full suite sekali (85 suite, 2 worker): 72 lulus, 13 gagal = 9 suite Archive/Raptor
-  timeout beban (lulus sendiri, lihat `jest-rerun-*.txt`) + **4 pra-ada** (BatchOut 1 tes, production.function `getRecipeTotals` 2 tes, InterbankTransferForm 1 tes,
-  CustomerPurchaseOrderView gagal dimuat `electronEvent.appBeforeClose`) = sama persis dengan catatan QA ED-1150 dan ED-1250, tanpa kaitan dengan Archive/DrawerPdf.
-- **Browser (e2e)**: 10 flow ED-1251 + 1 smoke `routes.json` = **11 OK, 0 GAGAL** (final, fixture aktif, `--workers 1`). 0 error konsol/pageerror/HTTP >= 400 di luar yang sengaja dicegat,
-  tanpa entri allow-list. Isi berkas dibuktikan dari isi (teks/MediaBox PDF, sel XLSX, kanvas viewer), bukan HTTP 200.
-- **Regresi BE**: 32 skenario `qa/scenario*.php` **PASS=32 FAIL=0** (`work/ed1251-fe/be-regress-r1.txt`); pemilik: ED-1028 AC-1/12/13/28 PASS=4, ED-1250 AC-10/11 PASS=2.
-- **Regresi e2e F-2 (ED-1028 `histRows`)**: tanpa perubahan, e2e ED-1028 AC-15 **gagal** (tiap baris 8 sel, +1 sel kosong kolom aksi); sesudah `histRows` mengabaikan kolom aksi
-  (perubahan minimal, lihat bawah) e2e ED-1028 profil default **13/13 OK**.
-- Tidak ada defect. Satu temuan "Di luar item" baru (kode bersama, rendah) dan satu saran dokumentasi (tidak memblokir).
+- **AC-R1 PASS (tidak terjangkau di aplikasi yang berjalan; dibuktikan lewat kode + unit test + bundle).** Label `documentArchiveOpnameResult` hanya dirender subjudul `DisplaySettingDrawer`
+  (`displaySetting?.[id]?.label || 'common.No data'`, `DisplaySettingDrawer/index.js:38`), dan satu-satunya pembuka baris itu adalah halaman Setup > Display Setting (`DisplaySettingPage`) yang **tidak di-route**
+  (tanpa `displaySetting` di `src/routes/routes.js` dan `paths.js`; `paths.displaySetting` yang dipakai `useSetupSpace` tidak ada). Archive hanya punya Display Setting `documentArchive` dan `documentArchiveOpnameHistory`.
+  Bukti: entri konstanta + 2 locale ada di bundle staging yang saya bangun (grep di `static/js/main.*.js`), dan 3 unit test (`index.test.js`: entri persis `{name, label}`; `DisplaySettingDrawer` benar-benar dirender dengan
+  `moduleName` itu: subjudul "Archive Opname Result" (EN) dan "Hasil Opname Arsip" (ID), bukan "No data").
+- **AC-R2 PASS di browser.** Tombol Print/Excel baris Opname History sama persis dengan tombol judul Opname Result di semua sifat terukur (kelas `ant-btn ant-btn-icon-only ant-btn-primary btn-icon icon`, 40 x 40 px, latar `rgb(0,158,247)`,
+  ikon putih 20 px, radius 7,6 px, bayangan, padding), ikon = path `PrinterFilled`/`FileExcelFilled` (bukan Outlined) dibandingkan dengan paket ikon, tanpa teks/`id`, `aria-label` "Print Preview"/"Excel", tooltip desktop;
+  keadaan loading Excel juga sama (latar `rgb(41,184,255)`, ikon 16 px + spinner); 375 px kolom 96 px menempel kanan.
+- **AC-16..AC-22 PASS lagi** (e2e final 14/14, PDF/Excel dari kedua drawer dibaca isinya), dan R-3/R-4 terlihat di browser: footer "Halaman i dari N" + "Dicetak oleh <user>" di SETIAP halaman, kertas Continuous 200 tanpa
+  notifikasi error dengan ukuran Continuous (sesi 247 baris, 7-19 halaman).
+- **Build**: `scripts/fe-build.sh build` "Compiled successfully", tanpa peringatan (`work/ed1251-fe/build-r2b.txt`, `work/fe-build.log`); tidak ada berkas `src/` lebih baru dari build (peringatan harness "build mungkin usang" = FE kotor, bukan
+  build lama). Tidak menyentuh `build/` developer, tanpa `publish`.
+- **Unit**: Archive + DisplaySetting = **17 suite, 533 tes lulus** (r1: 529; +4 = 1 tes R-2 + 3 tes R-1; `work/ed1251-fe/jest-archive-r2b.txt`). Full suite sekali (2 worker, 448 dtk): 80 suite lulus, 5 gagal = **4 pra-ada** (BatchOut 1 tes,
+  `production.function` `getRecipeTotals` 2 tes, InterbankTransferForm 1 tes "tanggal default hari ini", CustomerPurchaseOrderView gagal dimuat `appBeforeClose`; sama persis dengan r1, ED-1150, ED-1250) + 1 timeout beban
+  (RaptorPendingItemsPanel 1 tes; **lulus sendiri 14/14**, `jest-rerun-raptor-r2b.txt`). Tidak ada yang menyentuh Archive/DisplaySetting/DrawerPdf (`jest-full-r2b.txt`).
+- **Regresi BE**: `qa/scenario*.php` ED-1251 **PASS=36 FAIL=0** (`work/qa-http/ED-1251-20261026200658.json`, 13 mnt); pemilik ED-1028 AC-1/12/13/28 **PASS=4**, ED-1250 AC-10/11 **PASS=2**; folder ED-1028 dan ED-1250 tidak diubah
+  (`git status` bersih sebelum dan sesudah). Regresi e2e ED-1028 (profil default, `histRows` F-2, tabel riwayat sekarang berkolom aksi 96 px): **13/13 OK**.
+- Tidak ada defect. Tidak ada HTTP 500 server nyata (500/404 hanya yang sengaja dicegat `page.route` di AC-22). Satu pengamatan kecil di luar item (visual footer, sudah dikenal BE).
 
 ## Hasil per AC
 
-Semua flow memakai S1 (folder `0QA251-F-…` + 2 subfolder, angka 8/4/1/1/4) dan S2 (folder `0QA251-G-…`), dibuat lewat `POST opnames` oleh QA_USER (bahasa ID bawaan; EN lewat jurnal).
-Galeri final: `work/e2e/ED-1251-archive-export-opname-pdf-excel-20261024-234609/` (`index.html`, `report.json`, `screenshots/default/`).
+Data: S1 (folder `0QA251-F-…` + 2 subfolder, angka 8/4/1/1/4), S2 (folder `0QA251-G-…`), dan sesi sisipan 247 baris Invalid `QA251BULKFE…` (supaya PDF berhalaman banyak) dibuat fixture; semua dibuang di teardown.
+Galeri final: `work/e2e/ED-1251-archive-export-opname-pdf-excel-20261026-132126/` (`index.html`, `report.json`, 51 screenshot). Log: `work/ed1251-fe/e2e-r2-final.txt`.
 
 | AC | Cara cek | Hasil | Bukti |
 |---|---|---|---|
-| AC-16 | Smoke `/archives` (routes.json) + flow: modal 05 -> Opname History, tab Verification drawer folder, modal verifikasi folder, Opname Result dari riwayat folder, DrawerPdf, Customize; desktop dan 375 px. Monitor otomatis: console error, pageerror, respons >= 400, request gagal | PASS | smoke `/archives` OK; `AC-17/AC-16 Opname History (modal 05)` OK; `AC-16 layar lain (desktop)` dan `(375 px)` OK; `AC-19 Customize` (desktop) dan `AC-17/AC-16/AC-21 375 px` (DrawerPdf menu + Customize) OK; ss `ac16-01..04`, `ac16-01..04-375`, `ac19-01`, `ac19-10-customize-375` |
-| AC-17 | Tiap baris tabel terender: sel terakhir `ant-table-cell-fix-right` (sticky), tanpa teks, tepat 2 `button` ber-`aria-label` `["Print Preview","Excel"]`, ikon printer lalu file-excel, 0 atribut `id`; header kolom aksi kosong; hover Print/Excel -> tooltip; id DOM ganda baru; 375 px: kotak sel di dalam viewport, tanpa tooltip. Klik tombol tidak membuka Hasil, klik sel membuka Hasil | PASS | `AC-17/AC-16 Opname History (modal 05)`: tiap baris 2 tombol, geometri `cellRight == wrapRight (1064)`, `position: sticky`, lebar 76 px; id ganda baru hanya `search-bar x2`, `query x2` (komponen Search, pra-ada, bukan tombol export). 375 px: semua sel aksi x+w <= 375. F-2: ED-1028 `histRows` merah tanpa edit, 13/13 hijau sesudah edit (`work/e2e/ED-1028-archive-opname-history-20261024-233608/`). ss `ac17-01..03`, `ac17-10-riwayat-375` |
-| AC-18 | Filter pencarian dulu (nama folder S1), klik Print baris S1: hitung GET `…/{S1}/pdf` (status, tipe, `Content-Disposition`), isi PDF diurai PHP (`fixture.php pdf`), DrawerPdf di atas riwayat, Hasil tidak terbuka, 3 tombol + tooltip, Download, viewer, tutup | PASS | tepat 1 GET `pdf` 200 `application/pdf`, `filename="Opname_Archive_dd-Mon-yyyy_HHmmss.pdf"`; PDF memuat "Opname Arsip", `Folder: 0QA251-F-… + 2 subfolder`, `Diopname Oleh: <user>`, Ringkasan/Rincian, dokumen S1 ada dan dokumen S2 tidak ada, MediaBox potret; kanvas viewer terisi (bukan putih) + teks halaman berisi judul laporan; tombol Print/Download/Customize + tooltip `Unduh`/`Sesuaikan`; Download -> `Opname_Archive_*.pdf` dengan byte sama dengan pratinjau; sesudah tutup: kotak cari = nama folder, jumlah/baris pertama sama, 0 GET `opnames` baru, Hasil tidak terbuka. ss `ac18-01`, `ac18-02` |
-| AC-19 | Customize dari DrawerPdf: GET select modul ini + POST preview saat dibuka; tabel Ringkasan/Rincian; orientasi Landscape; Simpan; Excel; ronde cabut Waktu + Tidak Valid; pulihkan; guard C-9 lewat DB | PASS | 8 GET `select/report/document-archive/opname/*` semua 200 (termasuk 4 yang diwajibkan: `transaction-templates`, `selected-header/pdf/footer-templates`), 0 request `purchase-order`; preview membawa `transactionName: documentArchiveOpnameResult`; Ringkasan = Total Dokumen..Belum Discan, Rincian = No. Dokumen..Hasil (semua tercentang); baris template dibuat aplikasi (1 baris); Landscape -> POST `pdf/preview` `A4-L`, MediaBox lebar > tinggi, kertas tersimpan tetap A4-P (preview tidak menyimpan); Simpan -> `POST setting/pdf-templates/update` 200 dengan `idTransactionPdfTemplate` = id baris sendiri, DB kertas `A4-L`, **template lain tetap 141 baris + checksum sama (C-9)**, PDF dimuat ulang landscape, toast sukses; cabut Waktu + Tidak Valid -> DB kolom `[code, transactionTypeLabel, folderName, resultLabel]` / `[totalDocuments, verified, notFound, unscanned]`, PDF tanpa "Waktu" dan "Tidak Valid" satu kali lebih sedikit, **Excel**: header Ringkasan 4 kolom, Rincian 4 kolom persis; pulihkan lewat UI (Portrait + kolom kembali) lalu `fixture.php own-restore`: baris template 0, cds 0 (= awal). ss `ac19-01..05` |
-| AC-20 | Excel baris S1 lalu S2 (permintaan ditahan 2,5 dtk lewat `page.route`), klik ulang S1 dua kali, status loading semua tombol, nama berkas, isi XLSX diurai PHP | PASS | tepat 2 GET `xls` (S1 sekali walau 3 klik, S2 sekali) 200 `spreadsheetml.sheet`; saat berjalan tombol Excel S1 `ant-btn-loading`, Print S1, Excel S2 dan Print S2 normal; S2 ikut loading sendiri; normal lagi sesudah selesai; unduhan `Opname_Archive_dd-Mon-yyyy_HHmmss.xlsx`; sheet `Report`, isi S1 memuat scope S1 dan dokumen S1 (tanpa S2), isi S2 sebaliknya; Hasil tidak terbuka. ss `ac20-01`, `ac20-02` |
-| AC-21 | Klik sel S2 -> Hasil: wadah `.flex-justify-between` (flex/space-between), judul teks di kiri, 2 tombol rata kanan, subjudul di bawah; Print/Excel memakai sesi yang dibuka (S2); tutup DrawerPdf kembali ke Hasil sama; 375 px | PASS | desktop: judul "Hasil Opname" di wadah, 2 tombol, `btnR >= wrapR-2`, subjudul y >= bawah judul, subjudul memuat `<user> · <folder G>`; Print dari judul -> GET `pdf` **S2** (isi PDF S2), tutup -> Hasil S2; Excel dari judul -> GET `xls` S2 + isi XLSX S2. 375 px: tombol tidak melewati viewport, judul dan tombol tidak bertumpuk, subjudul di bawah. ss `ac21-01`, `ac21-02`, `ac21-10-hasil-375` |
-| AC-22 | `page.route` `/xls` -> 500 dan 404, `/pdf` -> 404 (respons JSON); bahasa EN lewat `fixture.php lang EN` | PASS | notifikasi error tampil di ketiganya, `#root` utuh (tanpa crash), tombol Excel kembali normal (bukan loading), Hasil tidak terbuka, DrawerPdf terbuka tanpa kanvas pada `/pdf` 404; sesudah blokir dibuka Print dan Excel berhasil lagi (isi PDF/XLSX benar). 500/404 yang sengaja dikeluarkan dari monitor lewat `expectRejected` (terjadi dulu); tanpa 5xx server nyata. EN: aria/tooltip `Print Preview`/`Excel`, judul "Opname Result", PDF "Opname Archive"/"Opname By", Customize "Customize Print Template" + subjudul "Opname Result", XLSX "Opname Archive"; bahasa kembali `ID`. Bahasa ID (bawaan QA_USER) dipakai semua test lain: tooltip/aria sama |
-| AC-23 | PDF/Excel rapi, hitam-putih tanpa warna FE, posisi tombol sesuai klien | MANUAL (Gate 2) | Daftar tes UI task 028 butir 1, 5 (posisi tombol), 9-10 (isi PDF), 15-17 (Excel). Warna: AC-6 (BE QA r1/r2, 169 asersi, tanpa warna FE di PDF/XLSX). Lihat saran dokumentasi di bawah |
+| AC-16 | Smoke `/archives` + flow: modal 05 -> Opname History, tab Verification drawer folder, modal verifikasi folder, Opname Result, DrawerPdf, Customize; desktop dan 375 px; monitor otomatis console/pageerror/HTTP >= 400/request gagal | PASS | smoke OK; `AC-17/AC-16 Opname History`, `AC-16 layar lain (desktop)`, `(375 px)`, `AC-19`, `AC-17/AC-16/AC-21 375 px`, `R-3/R-4`, `R-2 desktop/375`: tiap test `errors: 0, allowed: 0, api>=400: 0`; tanpa allow-list. ss `ac16-01..04`, `ac16-01..04-375` |
+| AC-17 | Tiap baris: sel terakhir sticky kanan, tanpa teks, tepat 2 `button` `aria-label` `["Print Preview","Excel"]`, ikon printer/file-excel, 0 `id`; header kolom aksi kosong; tooltip hover; id DOM ganda; 375 px; klik tombol tidak membuka Hasil, klik sel membuka | PASS | 3 baris terender (S1, S2, sisipan), geometri `scrollW 1112 / clientW 688`, `cellRight == wrapRight (1064)`, `position: sticky`, lebar **96 px** (R-2); id ganda baru hanya `search-bar x2`, `query x2` (komponen Search pra-ada). 375 px: sel aksi di dalam viewport. ED-1028 e2e 13/13 (F-2). ss `ac17-01..03`, `ac17-10-riwayat-375` |
+| AC-18 | Print baris S1 sesudah filter nama folder: hitung GET `…/{S1}/pdf`, isi PDF diurai PHP, DrawerPdf di atas riwayat, Hasil tertutup, Download, tutup | PASS | 1 GET `pdf` 200 `application/pdf`, `Opname_Archive_dd-Mon-yyyy_HHmmss.pdf`; PDF dari FE 32.052 byte, 1 halaman, MediaBox 595,28 x 841,89, memuat judul/Folder/Diopname Oleh/Ringkasan/Rincian, dokumen S1 ada dan S2 tidak; kanvas viewer `{w:595,h:841,nonBlank:true}`; tombol Print/Download/Customize; Download = byte sama dengan pratinjau; sesudah tutup: kotak cari/jumlah baris sama, 0 GET `opnames` baru. ss `ac18-01`, `ac18-02` |
+| AC-19 | Customize dari DrawerPdf: GET select modul ini + POST preview; tabel Ringkasan/Rincian; Landscape; Simpan; Excel; cabut Waktu + Tidak Valid; pulihkan lewat UI; guard C-9 lewat DB | PASS | 8 GET `select/report/document-archive/opname/*` semua 200 (4 wajib: `transaction-templates`, `selected-header/pdf/footer-templates`), 0 request `purchase-order`; Ringkasan 5 kolom, Rincian 5 kolom tercentang; Landscape -> POST `pdf/preview` `A4-L`; Simpan -> `POST setting/pdf-templates/update` 200 + PDF dimuat ulang; DB kolom tersimpan `[totalDocuments, verified, notFound, unscanned]` / `[code, transactionTypeLabel, folderName, resultLabel]`; **Excel** Ringkasan 4 kolom, Rincian 4 kolom persis; pulihkan; template lain tetap 142 baris + checksum sama (C-9). Awal ronde ini: baris template 519 dan cds 2585 milik developer sudah ada (`tables` kosong, jatuh ke display setting), test menerima keadaan itu. ss `ac19-01..05` |
+| AC-20 | Excel baris S1 lalu S2 (ditahan `page.route`), klik ulang S1, status loading semua tombol, nama berkas, isi XLSX diurai PHP | PASS | tepat 2 GET `xls` (S1 1x walau 3 klik, S2 1x) 200 `spreadsheetml.sheet`; saat berjalan hanya Excel S1 `ant-btn-loading`; unduhan `Opname_Archive_*.xlsx`; XLSX S1 7.583 byte (20 baris berisi, scope + dokumen S1 tanpa S2), S2 7.229 byte (12 baris); Hasil tidak terbuka. ss `ac20-01`, `ac20-02` |
+| AC-21 | Klik sel -> Hasil: `.flex-justify-between`, judul kiri, 2 tombol kanan, subjudul di bawah; Print/Excel memakai sesi yang dibuka; tutup DrawerPdf kembali ke Hasil sama; 375 px | PASS | desktop `display:flex`, `justify-content:space-between`, tombol `btnR 1064 == wrapR 1064`, `subY 89 >= titleB 78`; Print dari judul -> GET `pdf` sesi S2 (isi PDF S2), Excel -> GET `xls` S2 + isi XLSX S2; 375 px: wadah 303 px, tombol `r=351 <= vw 375`, judul dan tombol tidak bertumpuk, subjudul di bawah. ss `ac21-01`, `ac21-02`, `ac21-10-hasil-375`, `r2-12-hasil-judul-375` |
+| AC-22 | `page.route` `/xls` -> 500 dan 404, `/pdf` -> 404; bahasa EN lewat fixture | PASS | notifikasi error di ketiganya ("Request failed with status code 500"), `#root` utuh, tombol Excel normal lagi, Hasil tidak terbuka, DrawerPdf tanpa kanvas pada `/pdf` 404; sesudah blokir dibuka berhasil lagi. EN: aria/tooltip `Print Preview`/`Excel`, judul "Opname Result", PDF "Opname Archive"/"Opname By", Customize "Customize Print Template" + subjudul "Opname Result", XLSX "Opname Archive"; bahasa kembali `ID` (note: "bahasa QA_USER dipulihkan: ID"). Entri error yang sengaja dicegat dikeluarkan lewat `expectRejected` (500/404 yang dicegat, bukan server) |
+| AC-23 | PDF/Excel rapi, hitam-putih tanpa warna FE, posisi tombol sesuai klien | MANUAL (Gate 2) | `docs/specs/Archive/028-feat-opname-export-pdf-excel.md` § Daftar tes UI butir 24 (+ butir 1, 5, 9-10, 16, 25-26). Warna: AC-6 BE (169 asersi, 36/36 lulus ronde ini). Saya melihat pratinjau PDF di viewer (judul kolom abu-abu muda, teks hitam, tanpa hijau/oranye/merah) di `r3-0*` / `ac18-02` |
+| **AC-R1** | Bundle staging (`grep` konstanta + 2 locale), kode (route/pembuka drawer), unit test `DisplaySettingDrawer` EN dan ID; run scoped Archive + DisplaySetting | PASS (tidak terjangkau di UI, alasan di Ringkasan) | `main.6c38dd82.js`: `documentArchiveOpnameResult:{name:"documentArchiveOpnameResult",label:"archive.Archive Opname Result"}`, `"archive.Archive Opname Result":"Archive Opname Result"`, `…:"Hasil Opname Arsip"`; `jest-r1r2-verbose-r2b.txt` baris "terdaftar dengan nama persis display setting BE…", "subjudul berlabel, bukan 'No data' (EN)" dan (ID) lulus; 17 suite / 533 tes lulus. Daftar tes UI butir 27 mencatat bahwa label belum bisa dilihat manusia |
+| **AC-R2** | e2e `ED-1251-review.spec.js` desktop + 375 px: sifat terhitung (`getComputedStyle`), path svg vs paket ikon, geometri, tooltip, loading; bandingkan tombol baris dengan tombol judul Hasil Opname; unit test | PASS | tombol baris == tombol judul di SEMUA sifat (`diffLooks` = `[]`) pada keadaan diam, loading, desktop dan 375 px: kelas `ant-btn ant-btn-icon-only ant-btn-primary btn-icon icon` (tanpa `light`, `btn-action`, `ant-btn-sm`), 40 x 40, `bg rgb(0,158,247)`, `color rgb(255,255,255)`, radius 7,6, ikon 20 px, tanpa teks, `hasId false`; ikon = `PrinterFilled`/`FileExcelFilled` dan bukan Outlined; jarak 4 px, kolom 96 px, tombol utuh di dalam sel/baris (tinggi baris 57 px, +6 px, sel lain juga 57); tooltip baris "Print Preview"/"Excel"; 375 px: tiga posisi geser, `cellR 363 <= vw`, `b0 [273,313]`, `b1 [317,357]` berdampingan; tanpa tooltip. ss `r2-01..08`, `r2-10..13` |
+
+### R-3 / R-4 di browser (bagian dari AC-16..AC-19, sesi sisipan 247 baris)
+
+| Kondisi (viewer + berkas) | Halaman | Halaman berfooter (berkas = viewer) | MediaBox pt |
+|---|---|---|---|
+| DrawerPdf GET pdf A4-P | 7 | 7/7 | 595,3 x 841,9 |
+| Customize pratinjau A4-P | 7 | 7/7 | 595,3 x 841,9 |
+| Customize pratinjau A4-L | 10 | 10/10 | 841,9 x 595,3 |
+| Customize pratinjau **Continuous-L** (200, tanpa notifikasi error, FE mengirim `Continuous-L`) | 10 | 10/10 | 784,8 x 597,6 |
+| Customize pratinjau **Continuous-P** (200) | 19 | 19/19 | 612 x 381,6 |
+| Simpan Continuous-P -> GET pdf tersimpan (DB `Continuous-P`, template lain sama, tanpa baris baru) | 19 | 19/19 | 612 x 381,6 |
+| Pulihkan A4 Portrait lewat UI -> GET pdf tersimpan (DB `A4-P`) | 7 | 7/7 | 595,3 x 841,9 |
+
+Footer diperiksa di dua tempat: teks PDF tiap halaman (`Dicetak oleh <user>` + `Halaman i dari N`, nomor halaman = urutan halaman) dan lapisan teks pdf.js tiap halaman di viewer (digulir bertahap karena viewer hanya
+merender halaman di sekitar layar). Opsi kertas di Customize: A4, A5, Letter, Legal, Folio, **Continuous**. Batas potongan Rincian 200 baris dilewati (247 baris). Sesi nyata developer (…033097, …474864, …422239) tidak terlihat QA_USER
+(sudah dibuktikan QA BE r3 lewat render dalam proses baca saja); bug footer lama dibuktikan di sana, di sini yang dibuktikan = tampilan FE sesudah perbaikan.
 
 ## Defect
 
@@ -46,63 +72,49 @@ Tidak ada.
 
 ## Galeri e2e & regresi BE
 
-- e2e ED-1251 final: `work/e2e/ED-1251-archive-export-opname-pdf-excel-20261024-234609/` (11 OK: 10 flow + smoke). Log: `work/ed1251-fe/e2e-final.txt`. Berkas unduhan/PDF yang dibaca PHP: `work/ed1251-fe/dl/`.
-- e2e ED-1028 (F-2), profil default, 13 OK: `work/e2e/ED-1028-archive-opname-history-20261024-233608/`; log `work/ed1251-fe/e2e-ed1028-default.txt`. Bukti merah tanpa edit: `work/ed1251-fe/e2e-ed1028-unmodified.txt`.
-  Tes `[user2]` ED-1028 tidak dijalankan (instruksi: profil default saja).
-- Regresi BE ED-1251: `work/qa-http/ED-1251-20261025065551.json` (32/32; C-0 awal dan C-9 akhir termasuk: template lain 141 baris + checksum sama, baris cds/template sendiri 0 -> 0, preset `QA251-ROLE-*` 0).
-  Pemilik: `work/qa-http/ED-1028-20261025065931.json` (AC-1/12/13/28 = 4/4), `work/qa-http/ED-1250-20261025065938.json` (AC-10/11 = 2/2).
-- Server php-fpm (tanpa reload); kode BE tidak berubah sejak QA BE r2.
+- e2e ED-1251 final: `work/e2e/ED-1251-archive-export-opname-pdf-excel-20261026-132126/` (14 OK: 1 smoke + 13 flow; 0 GAGAL, 0 SKIP; `--workers 1`, profil default; fixture setup/teardown OK, log-out 1/1 dicabut).
+  Log `work/ed1251-fe/e2e-r2-final.txt`. Lari pertama (`…-125137`, 11 OK / 3 GAGAL) dan lari ulang (`…-125725`, 3 OK) = perbaikan skrip QA sendiri, lihat bawah.
+- e2e ED-1028 (regresi F-2/`histRows`), profil default: `work/e2e/ED-1028-archive-opname-history-20261026-130847/` 13 OK; log `work/ed1251-fe/e2e-ed1028-r2.txt`; teardown fixture ED-1028 bersih (24 archives + 16 sesi fixture dibuang, preset dibuang, `user_roles` QA_USER2 dipulihkan). Tes `[user2]` tidak dijalankan (instruksi: profil default).
+- Regresi BE ED-1251: `work/ed1251-fe/be-regress-r2.txt`, `work/qa-http/ED-1251-20261026200658.json` = **36/36** (termasuk AC-R3a/R3b/R4/R5, C-0 awal dan C-9 akhir). Pemilik: `work/qa-http/ED-1028-20261026200827.json` (AC-1/12/13/28 = 4/4, keadaan "baris Result ADA"),
+  `work/qa-http/ED-1250-20261026200835.json` (AC-10/11 = 2/2). Server php-fpm (tanpa reload; kode BE tidak diubah QA).
+
+## Perubahan skrip QA (milik item ini; folder ED-1028 dan ED-1250 tidak disentuh)
+
+Skrip yang ditinggalkan QA FE r2 terdahulu saya tinjau dan pakai ulang dengan perbaikan. Lari pertama menemukan **3 kelemahan skrip, bukan defect produk** (bukti: setelah skrip diperbaiki, sifat yang sama identik; catatan tiap sifat ada di `report.json`):
+1. `viewerLastPage` mensyaratkan jumlah `.rpv-core__inner-page` = jumlah halaman; pdf.js memvirtualisasi (4 dari 7 halaman ter-render) -> diganti `viewerFooters` (toolbar "/ N", gulir bertahap, kumpulkan lapisan teks `core__text-layer-i`, asersi footer pada SETIAP halaman).
+2. R-2 desktop: tampilan loading baris vs judul diukur sesaat setelah klik (transisi/gelombang antd belum selesai) -> ukur sesudah 900 ms dengan kursor dijauhkan.
+3. R-2 375 px: kursor masih di tombol Print baris (warna hover) saat tombol baris dibandingkan dengan judul -> kursor dijauhkan sebelum mengukur. Semua perbandingan kini memakai `diffLooks` (daftar sifat yang beda per tombol), bukan diff JSON yang terpotong harness.
+
+Berkas: `qa/e2e/ED-1251-review.spec.js` (baru: 2 test R-2), `qa/e2e/ED-1251-customize.spec.js` (test R-3/R-4 baru, `viewerFooters`; awal AC-19 menerima baris template yang sudah ada), `qa/e2e/lib.js` (`footerReport`, `crop`, `antIconPaths`, `ptexts`),
+`qa/e2e/fixture.php` (`pdf` mengembalikan teks per halaman), `qa/e2e/fixrun/qa/scenario-fix.php` (FIX-UP menambah sesi sisipan 247 baris `QA251BULK-…`, dibuang `q251_bulk_purge` di FIX-DOWN).
 
 ## Yang tidak bisa diverifikasi (dan kenapa)
 
+- **Tampilan label R-1 di layar nyata:** halaman Setup > Display Setting tidak di-route dan Archive tidak punya tombol Display Setting untuk tabel export (spec §9 "menyusul"), jadi label tidak bisa dibuka lewat aplikasi; diganti kode + bundle + unit test (AC-R1). Butir 27 Daftar tes UI sudah mencatatnya.
 - Dialog cetak browser (tombol Print `DrawerPdf`) dan jalur Android/Capacitor: headless, komponen bersama; AC-18 hanya mensyaratkan tombol ada.
-- Butir 22 Daftar tes UI (role tanpa `Opname Document`): tidak dijalankan di run ini (profil `user2`/preset R0 di luar rencana data uji 1251); sudah dicakup e2e ED-1028 AC-27 `[user2]` (suite pemilik, tidak diulang ronde ini). Guard tampilan = riwayat tidak di-mount tanpa `Opname Document` (task 020).
-- Worker pdf.js (`unpkg.com`) dilayani lokal dari `node_modules` FE (versi 3.0.279 sama) lewat `page.route` supaya render viewer tidak bergantung internet; render tetap dibuktikan lewat kanvas + lapisan teks.
-- Tes unit full suite sekali dengan 2 worker memunculkan timeout beban (lihat Ringkasan); kegagalan dianggap defect hanya bila tetap merah saat sendiri (tidak ada).
+- Butir 22 Daftar tes UI (role tanpa `Opname Document`): tidak dijalankan di tahap ini; dicakup e2e ED-1028 AC-27 `[user2]` (suite pemilik, tidak diulang). Sesi nyata developer tidak terlihat QA_USER, sehingga footer pada sesi itu hanya dibuktikan QA BE r3 (render dalam proses, baca saja).
+- Worker pdf.js (`unpkg.com`) dilayani lokal dari `node_modules` FE (versi sama) lewat `page.route`; render tetap dibuktikan lewat kanvas dan lapisan teks.
 
-## Di luar item (bukan defect item ini; kode bersama)
+## Di luar item (bukan defect item ini)
 
-1. **(baru, rendah) `DrawerCustomize`: Simpan kurang dari ±1 dtk sesudah mengubah kolom tabel = `pageerror` `TypeError: undefined is not iterable`** (konsol; Simpan sendiri tetap 200, toast
-   sukses, PDF dimuat ulang). Penyebab (dibuktikan): pratinjau yang tertunda (debounce) berjalan sesudah Customize ditutup/unmount; `formatRequest` (`drawerPdf.function.js`
-   `[...currentColumns, ..._availableColumns]`) menyebar `undefined`. Repro `work/ed1251-fe/debug8.json`: ubah kolom lalu Simpan langsung -> pageerror; ubah kolom, tunggu 3 dtk
-   (pratinjau terkirim), Simpan -> bersih. Kode bersama (semua laporan ber-Customize), bukan perubahan item ini; e2e saya menunggu `POST pdf/preview` selesai sebelum Simpan.
-2. **(info) Mencentang kembali kolom di Customize menaruhnya di urutan pilihan (paling akhir), bukan di posisi semula** (perilaku `DrawerPdfTable` bersama, sama di laporan lain). Dampak ke
-   Daftar tes UI butir 15 ("Pulihkan: kembalikan Time"): Time kembali sebagai kolom terakhir di PDF/Excel; urutan asli hanya pulih dengan drag. Bukan defect.
-3. C-9 (gate1): `POST setting/pdf-templates/update` tanpa cek permission tetap sudah tercatat; di FE terbukti Simpan mengirim id baris template sendiri (`idTransactionPdfTemplate` = baris
-   `documentArchiveOpnameResult`) dan template lain tidak berubah (count + checksum). Tidak ada temuan baru.
-
-Saran dokumentasi (non-blokir): `docs/specs/Archive/028-feat-opname-export-pdf-excel.md` § Daftar tes UI sebaiknya (a) menambah satu butir "buka PDF dan Excel hasil unduhan: rapi, tanpa warna
-hijau/oranye/merah" agar AC-23 tertutup tegas (butir 9/15/16 hanya menyebut isi/kolom), dan (b) di butir 15 menyebut bahwa mencentang Time kembali menaruhnya di urutan terakhir (butir 2 di atas).
+1. (info, sudah dikenal BE r3 #4) Footer PDF di viewer: "Dicetak pada 26 Oct 2026 07:58:09" saat jam WIB 19:58 (`h:i:s` 12 jam tanpa AM/PM) dan bulan Inggris pada template berbahasa id; kode bersama `report-footer-1`.
+2. (info) Tinggi baris tabel Opname History kini 57 px (+6 px menurut catatan developer) karena tombol 40 px (catatan developer R-2, keputusan orkestrator: ukuran harfiah sama dengan judul Opname Result); tidak ada baris terpotong.
+3. Tetap dari r1 (kode bersama, tidak berubah ronde ini): `DrawerCustomize` Simpan <±1 dtk sesudah ubah kolom = `pageerror` `undefined is not iterable` (pratinjau debounce berjalan sesudah unmount); mencentang ulang kolom menaruhnya di urutan terakhir (terlihat lagi di AC-19: Excel sesudah pulihkan = "...Tidak Valid" dan "...Hasil, Waktu"); C-9 `POST setting/pdf-templates/update` tanpa cek permission (Simpan FE mengirim id baris template sendiri, template lain tidak berubah: 142 -> 142 + checksum sama).
 
 ## Data uji, yang dibuat/diubah/dihapus
 
-- Dibuat fixture (berjurnal, prefix `0QA251-`, 2 sesi S1/S2 lewat `POST opnames` + folder/dokumen/izin) lalu **dibuang** persis di teardown `FIX-DOWN` tiap run (21 asersi: data developer 3 sesi/4 baris folder/896
-  baris dokumen opname sama persis, 495 baris verifikasi tidak default sama, `user_roles`/bahasa QA_USER dan `user_roles` QA_USER2 sama, template lain 141 baris + checksum sama (C-9), tanpa preset).
-- Baris `transaction_pdf_templates` dan `column_display_settings` `documentArchiveOpnameResult` dibuat aplikasi saat Customize dipakai (DU-5 a); dipulihkan dari jurnal ke keadaan awal (**0 baris, 0 baris**).
-- Bahasa QA_USER diubah sementara EN lalu dipulihkan (`ID`). Tidak ada preset role dibuat (QA_USER memakai role aslinya), tidak ada login user nyata, QA_USER2 tidak dipakai.
-- Tidak ada baris milik orang lain yang dihapus; tidak ada tabel dikosongkan; tidak ada proses yang dimatikan. Pemeriksaan akhir (read-only, setelah semua run): `roles QA%-ROLE-%` 0, `archives %QA251%` 0,
-  `%QA28%` 0, `archive_opnames` 3 (developer), template sendiri 0, cds sendiri 0, template total 141, token aktif QA_USER/QA_USER2 0.
-- Berkas QA ditambah/diubah: `qa/e2e/{fixtures.json, routes.json, fixture.php, lib.js, ED-1251-export-opname.spec.js, ED-1251-customize.spec.js, fixrun/qa/scenario-fix.php}`; **diubah di luar folder ini**:
-  `features/ED-1028-archive-opname-history/qa/e2e/ED-1028-opname-history.spec.js` `histRows` (`td` -> `td:not(.p-0)`, 3 baris; F-2 gate1 milik ED-1251 AC-17). Folder ED-1250 tidak disentuh.
-
-## F-1 (addendum, 2026-10-25): ED-1028 AC-28 dibalik ke nilai baru
-
-Gate1 §3 F-1 (pemilik 1251 AC-12; aturan (2) gate1-r2 "karakterisasi di folder lain dibalik QA item"): `features/ED-1028-archive-opname-history/qa/scenario9-display-setting.php` diperbarui
-supaya benar di DUA keadaan (konstanta `Q28_DSRES`; `$resRow` = baris cds `documentArchiveOpnameResult` ada, dibaca dari DB; `$hiddenMods` = `[History]` atau `[History, Result]`, dibandingkan urut):
-(1) R0 total = pemegang - `count($hiddenMods)` (baris lama `:127`: -1 -> -1 / -2), (2) selisih pemegang vs R0 = `$hiddenMods` (`:130`), (3) `search=documentArchive` pemegang = `documentArchive` + `$hiddenMods`
-(`:138`: 2 -> 2 / 3 baris), plus komentar yang menyebut ED-1251 AC-12 / gate1 F-1 dan satu `note` keadaan. Tidak ada perubahan lain di folder ED-1028 (edit `histRows` e2e F-2 dari ronde ini tetap).
-
-| Keadaan | Cara | Hasil | Bukti |
-|---|---|---|---|
-| A: baris `documentArchiveOpnameResult` TIDAK ada (cds 0, template 0) | `run.php ED-1028 --only=AC-1,AC-12,AC-13,AC-28` | AC-1 159, AC-13 141, AC-12 421, AC-28 219 asersi = PASS=4; note "baris ... tidak ada -> R0 total -1, selisih 1 modul, search 2 baris" | `work/qa-http/ED-1028-20261025070518.json`; `work/ed1251-f1/stateA.txt` |
-| B: baris ADA (dibuat aplikasi: satu `GET select/report/document-archive/opname/transaction-templates` oleh QA_USER, 200; cds 1 + template 1) | perintah sama | PASS=4 (jumlah asersi sama); note "baris ... ADA -> R0 total -2, selisih 2 modul, search 3 baris" | `work/qa-http/ED-1028-20261025070656.json`; `work/ed1251-f1/stateB.txt`, `up.txt` |
-| Pemulihan | `qa/.journal-config-q251.json` (keadaan awal dicatat sebelum GET) lalu `q251_tpl_recover` | cds 0, template 0 (= awal); template lain 141 baris + checksum 279886701241 sama (C-9); daftar `transaction_name` sama; preset `QA%-ROLE-%` 0, `QA251-ROLE-*` 0; jurnal dibuang | `work/qa-http/f1run-20261025070701.json` (8 asersi); `work/ed1251-f1/down.txt` |
-
-Yang dihapus: tepat dua baris buatan aplikasi di keadaan B (1 `column_display_settings` + 1 `transaction_pdf_templates`, keduanya `documentArchiveOpnameResult`, id template 518) = keadaan awal 0/0 (DU-5 a). Tidak ada data lain
-dihapus/diubah. Pemeriksaan akhir read-only: cds Result 0, template Result 0, template total 141, `archives` `%QA251%` 0, `archive_opnames` 3 (developer), `updater_logs` 99 (= awal), token aktif QA_USER/QA_USER2 0.
-Skenario sementara `UP/DOWN` hanya di scratchpad (bukan regresi permanen); folder ED-1250 dan kode aplikasi tidak disentuh. Verdict tetap PASS.
+- Fixture berjurnal (prefix `0QA251-`, S1/S2 lewat `POST opnames` oleh QA_USER, folder/dokumen/izin; sesi sisipan `QA251BULKFE…` 247 baris) dibuat lalu **dibuang** di teardown `FIX-DOWN` tiap run (3 lari e2e ED-1251 + 1 ED-1028; asersi teardown: data developer 3 sesi/4 baris folder/896 baris dokumen sama persis, `user_roles`/bahasa QA_USER dan
+  `user_roles` QA_USER2 sama, template lain 142 baris + checksum sama, tanpa preset `QA*-ROLE-*`). Bahasa QA_USER diubah sementara EN lalu dipulihkan (`ID`).
+- **Baris developer `documentArchiveOpnameResult` (template 519, cds 2585): byte-identik.** Snapshot sebelum (`work/ed1251-fe/r2-snap-before.json`) vs sesudah semua run (`r2-snap-after.json`): `cmp` seluruh kolom kedua baris, total `transaction_pdf_templates` 142 (checksum `280946114098`),
+  `column_display_settings` 364, `updater_logs` 99, `archive_opnames` 3, `archive_opname_documents` 896, `users` QA bahasa sama = **IDENTIK** (juga identik di titik tengah sesudah regresi BE). Catatan jujur: Simpan Customize dan skenario BE lama (AC-8/13/15, E-1…) memulihkan
+  baris itu dengan hapus + sisip ulang isi yang sama dari jurnal (pola DU-5 a, berjurnal); ini yang membuat byte-identik terbukti, bukan diasumsikan.
+- Tidak ada yang dihapus milik orang lain; tidak ada tabel dikosongkan; sesi developer `…033097` dan `…474864` tidak disentuh (hanya dibaca QA BE r3). Pemeriksaan akhir read-only: `archives` `%QA251%` 0, `%QA28%` 0, `%QA50%` 0, `roles QA%` 0, opname `QA%` 0, token aktif QA_USER/QA_USER2 0,
+  tanpa `.fixture-ids`/`.journal-*` tersisa di folder ED-1251 dan ED-1028; semua token e2e/runner dilog-out (e2e: "dicabut=ya"; runner: "masih aktif: 0"). Tidak ada proses yang dimatikan; tidak ada penolakan izin/classifier ronde ini.
 
 ## Riwayat ronde
 
-- r1 (2026-10-24/25): FE PASS, 7 PASS / 1 MANUAL (AC-23) / 0 FAIL. e2e 11/11, regresi BE 32/32, ED-1028 e2e 13/13 (F-2), unit hijau (4 pra-ada merah). Satu "Di luar item" baru, satu saran dokumentasi.
-- r1 addendum (2026-10-25): F-1 ditutup; ED-1028 scenario9 `:127,130,138` benar di dua keadaan (baris Result tidak ada / ada), AC-1/12/13/28 PASS=4 di keduanya, baris Result dipulihkan ke 0/0, verdict tetap PASS.
+- r1 (2026-10-24/25): FE PASS, 7 PASS / 1 MANUAL (AC-23) / 0 FAIL (AC-16..22). Build OK; unit Archive 529 tes (+ full suite: 4 pra-ada merah, sisanya timeout beban yang lulus sendiri); e2e 11/11 (galeri `…-20261024-234609`); regresi BE 32/32, ED-1028 4/4, ED-1250 2/2;
+  F-2: ED-1028 e2e `histRows` `td` -> `td:not(.p-0)` (13/13 hijau, merah tanpa edit). Temuan luar item: `DrawerCustomize` pageerror Simpan cepat, kolom dicentang ulang ke urutan akhir, C-9; saran dok FE butir 24 (sudah dikerjakan orkestrator).
+- r1 addendum F-1 (2026-10-25): ED-1028 `scenario9-display-setting.php` `:127,130,138` benar di dua keadaan (baris Result tidak ada / ada) dengan konstanta `Q28_DSRES`; AC-1/12/13/28 PASS=4 di keduanya; baris Result dipulihkan 0/0 saat itu; verdict tetap PASS.
+- r2 (2026-10-26): FE PASS, 9 PASS / 1 MANUAL / 0 FAIL: AC-16..22 ulang + AC-R1 (R-1, kode + unit test + bundle) + AC-R2 (R-2, browser). e2e final 14/14, ED-1028 e2e 13/13, unit 533 tes (scoped), full suite 4 pra-ada + 1 timeout beban, regresi BE 36/36, ED-1028 4/4, ED-1250 2/2.
+  Lari e2e pertama 3 GAGAL = kelemahan skrip QA (virtualisasi viewer, hover/transisi), diperbaiki dan diulang; tanpa defect produk. Baris developer 519/2585 byte-identik.

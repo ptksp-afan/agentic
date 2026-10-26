@@ -23,7 +23,10 @@ const LIGATURES = { 'ﬀ': 'ff', 'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬃ': 'ffi', 'ﬄ': 
 const norm = (s) => String(s).replace(/[ﬀ-ﬆ]/g, (c) => LIGATURES[c]).replace(/\s+/g, ' ');
 const pdfOf = (buf, name) => {
   const info = lastJson(fixture('pdf', save(name, buf)));
-  if (info.ok) info.text = norm(info.text);
+  if (info.ok) {
+    info.text = norm(info.text);
+    info.ptexts = (info.ptexts || []).map(norm);
+  }
   return info;
 };
 const xlsxOf = (buf, name) => {
@@ -249,7 +252,54 @@ function expectXlsxOf(info, key, lang = 'id', label = '') {
   expect(cells, `${label} tanpa dokumen sesi lain`).not.toContain(key === 'S1' ? f.names.g1 : f.names.dF1);
 }
 
+// ------------------------------------------------------------------------------------------------ revisi review 2026-10-26 (QA FE r2)
+const FOOTER_RE = /(?:Halaman|Page)\s+(\d+)\s+(?:dari|of)\s+(\d+)/g;
+
+/**
+ * R-3: footer report-footer-1 ("Dicetak oleh <user>" + "Halaman i dari N" / "Printed by" + "Page i of N") harus ada di SETIAP halaman PDF.
+ * Kembalikan { pages, withFooter, missing[], wrongNumber[], noUser[] }; lulus bila missing/wrongNumber/noUser kosong.
+ */
+function footerReport(info, user) {
+  const out = { pages: info.pages, withFooter: 0, missing: [], wrongNumber: [], noUser: [] };
+  (info.ptexts || []).forEach((t, i) => {
+    const all = [...t.matchAll(FOOTER_RE)];
+    if (!all.length) out.missing.push(i + 1);
+    else {
+      out.withFooter += 1;
+      if (!all.some((m) => Number(m[1]) === i + 1 && Number(m[2]) === info.pages)) out.wrongNumber.push(i + 1);
+    }
+    if (user && !new RegExp(`(?:Dicetak oleh|Printed by)\\s*:?\\s*${esc(user)}`).test(t)) out.noUser.push(i + 1);
+  });
+  if ((info.ptexts || []).length !== info.pages) out.missing.push(`ptexts=${(info.ptexts || []).length} != pages=${info.pages}`);
+  return out;
+}
+
+/** gambar zoom satu elemen ke galeri e2e (screenshots/<profil>/<nama>.png) dan daftarkan di app.screenshots */
+async function crop(app, page, locator, name, pad = 10) {
+  const box = await locator.boundingBox();
+  const rel = path.join('screenshots', 'default', `${name}.png`);
+  const abs = path.join(process.env.E2E_OUT_DIR, rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  const vp = page.viewportSize();
+  const x = Math.max(0, box.x - pad);
+  const y = Math.max(0, box.y - pad);
+  await page.screenshot({ path: abs, clip: { x, y, width: Math.min(box.width + 2 * pad, vp.width - x), height: Math.min(box.height + 2 * pad, vp.height - y) } });
+  app.screenshots.push(rel.replace(/\\/g, '/'));
+  return rel;
+}
+
+/** path svg (atribut d) ikon antd dari paket ikon FE (pembanding filled vs outlined dari sumbernya, bukan dari kode item) */
+const antIconPaths = (name) => {
+  const mod = require(path.join(config.get('FE_DIR'), 'node_modules', '@ant-design', 'icons-svg', 'lib', 'asn', `${name}.js`));
+  const icon = (mod.default || mod).icon;
+  return icon.children.map((c) => c.attrs.d);
+};
+
 module.exports = {
+  FOOTER_RE,
+  footerReport,
+  crop,
+  antIconPaths,
   fixture,
   lastJson,
   fx,

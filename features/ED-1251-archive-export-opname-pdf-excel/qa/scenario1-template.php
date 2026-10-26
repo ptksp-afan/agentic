@@ -170,7 +170,7 @@ return [
                 // --- paper-sizes
                 $pa = q251_sget($t, $s, 'paper-sizes');
                 $t->status($pa, 200, 'paper-sizes');
-                $t->eq($vals($pa), ['A4', 'A5', 'Letter', 'Legal', 'Folio', 'Continuous'], 'paper-sizes = ukuran PdfTemplateService::getPaperSize (Continuous ada; pratinjau Continuous-* = 422)');
+                $t->eq($vals($pa), ['A4', 'A5', 'Letter', 'Legal', 'Folio', 'Continuous'], 'paper-sizes = ukuran PdfTemplateService::getPaperSize (Continuous ada; review 2026-10-26 R-4: pratinjau/template tersimpan Continuous-P/-L didukung, 422 hanya di luar pola)');
                 $pa2 = q251_sget($t, $s, 'paper-sizes', ['search' => 'A4']);
                 $t->status($pa2, 200, 'paper-sizes search A4');
                 $t->eq($vals($pa2), ['A4'], 'paper-sizes search menyaring');

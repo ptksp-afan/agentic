@@ -196,7 +196,11 @@ return [
                 $cases = [
                     'language fr' => [['language' => 'fr'], 422, null],
                     'language bukan teks' => [['language' => ['en']], 422, null],
-                    'paper_size Continuous-L' => [['paper_size' => 'Continuous-L'], 422, null],
+                    // review 2026-10-26 R-4: Continuous-P/-L sah (200, ukuran Continuous; MediaBox dibuktikan AC-R4); bentuk lain tetap 422
+                    'paper_size Continuous-L (R-4: sah)' => [['paper_size' => 'Continuous-L'], 200, null],
+                    'paper_size Continuous-P (R-4: sah)' => [['paper_size' => 'Continuous-P'], 200, null],
+                    'paper_size Continuous tanpa orientasi' => [['paper_size' => 'Continuous'], 422, null],
+                    'paper_size continuous-p huruf kecil' => [['paper_size' => 'continuous-p'], 422, null],
                     'paper_size A4 tanpa orientasi' => [['paper_size' => 'A4'], 422, null],
                     'paper_size huruf kecil' => [['paper_size' => 'a4-l'], 422, null],
                     'paper_size array' => [['paper_size' => ['A4-L']], 422, null],
@@ -353,14 +357,24 @@ return [
                 $t->eq($f2['xp']['sumcols'], $sumCols, 'XLSX Ringkasan tidak berubah');
 
                 // --- kertas/ templat tersimpan di luar yang bisa dirender
+                // (review 2026-10-26 R-4: Continuous-L tersimpan KINI dicetak ukuran Continuous 276,86 x 210,82 mm = 784,8 x 597,6 pt, bukan A4-P;
+                //  kertas tersimpan di luar pola (contoh B5-P, Simpan tidak memvalidasi) tetap jatuh ke A4-P. Dulu: Continuous-L -> A4-P.)
                 $over = q251_save_body($tpl, $body['tables'], ['paper_size' => 'Continuous-L']);
                 unset($over['footer']['labels']);
                 $t->status($t->call($s, 'POST', 'api/v5/setting/pdf-templates/update', $over), 200, 'Simpan paper_size Continuous-L (tidak divalidasi saat Simpan)');
                 $rp = q251_file($t, $s, $id, 'pdf');
-                $t->status([$rp[0]], 200, 'GET pdf dengan kertas tersimpan Continuous-L = dirender A4-P (bukan 500)');
+                $t->status([$rp[0]], 200, 'GET pdf dengan kertas tersimpan Continuous-L (R-4: bukan 500)');
                 $m = q251_pdf($rp[1])['media'][0];
-                $t->true(abs($m[0] - 595.28) < 0.1 && abs($m[1] - 841.89) < 0.1, 'kertas Continuous-L tersimpan -> A4-P (' . json_encode($m) . ')');
+                $t->true(abs($m[0] - 784.8) < 0.2 && abs($m[1] - 597.6) < 0.2, 'kertas Continuous-L tersimpan -> ukuran Continuous-L 784,8 x 597,6 pt (' . json_encode($m) . ')');
                 $t->status([q251_file($t, $s, $id, 'xls')[0]], 200, 'GET xls dengan kertas tersimpan Continuous-L');
+                $over = q251_save_body($tpl, $body['tables'], ['paper_size' => 'B5-P']);
+                unset($over['footer']['labels']);
+                $t->status($t->call($s, 'POST', 'api/v5/setting/pdf-templates/update', $over), 200, 'Simpan paper_size B5-P (di luar pola, tidak divalidasi saat Simpan)');
+                $rp = q251_file($t, $s, $id, 'pdf');
+                $t->status([$rp[0]], 200, 'GET pdf dengan kertas tersimpan B5-P = dirender A4-P (bukan 500)');
+                $m = q251_pdf($rp[1])['media'][0];
+                $t->true(abs($m[0] - 595.28) < 0.1 && abs($m[1] - 841.89) < 0.1, 'kertas B5-P tersimpan (di luar pola) -> A4-P (' . json_encode($m) . ')');
+                $t->status([q251_file($t, $s, $id, 'xls')[0]], 200, 'GET xls dengan kertas tersimpan B5-P');
                 $over = q251_save_body($tpl, $body['tables'], ['paper_size' => 'A4-L']);
                 unset($over['footer']['labels']);
                 $t->status($t->call($s, 'POST', 'api/v5/setting/pdf-templates/update', $over), 200, 'Simpan paper_size A4-L');
