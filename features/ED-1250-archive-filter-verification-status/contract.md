@@ -38,7 +38,10 @@ Mode list:
 - Folder tanpa View tetap ada dengan `document_verified: null` dan `access.view: false`, seperti tanpa filter.
 - Server menyaring dengan satu kondisi di query list: baris dibuang hanya bila `type = FILE` (dokumen) dan statusnya tidak
   sama; baris lain (`type = FOLDER`, juga `type` lain/NULL bila ada) selalu tetap. Tanpa query tambahan. (impl. ED-1253)
-- `queries` (pemegang `Opname Document`) memuat, sesudah item `type`:
+- `queries` (pemegang `Opname Document`) memuat item di bawah. Urutan default (config + Updater, review 2026-10-26 R-1):
+  `current_queries` = `name`, `type`, `updatedAt`, `showRelatedTransaction`, **`verificationStatus` (terakhir)**;
+  `available_queries` = urutan sama + `updatedBy` paling akhir (tidak ada di current). Urutan di `queries` mengikuti
+  `current_queries` baris display setting tersimpan (pemegang boleh mengubahnya). Item:
 ```json
 {
   "title": { "en": "Verification Status", "id": "Status Verifikasi" },
@@ -64,15 +67,16 @@ tanpa key itu; tanpa key lain = list hirarki biasa); item `verificationStatus` t
 | 403 | `ARCHIVE407` | `id_archive` folder tanpa View atau di luar lokasi, mode hirarki (juga dengan filter) |
 | 404 | `ARCHIVE400` | `id_archive` tidak ada / nonaktif |
 
-## 2. GET / PUT `setting/display-columns/{moduleName}` (ubah, `documentArchive`)
+## 2. GET / PUT `setting/display-columns/{moduleName}` dan GET `setting/display-columns` (ubah, `documentArchive`)
 
-Route lama (`Routes/Setup/setting.php:61-65`, tanpa `permission_v5`); body & response tidak berubah. Peta
+Route lama (`Routes/Setup/setting.php:61-65`, tanpa `permission_v5`); bentuk body & response tidak berubah. Peta
 `ColumnDisplaySettingService::PERMISSION_FILTERS` entri `documentArchive` → `Opname Document` sekarang berisi `columns`
 `[documentVerified]` **dan** `queries` `[verificationStatus]`.
 
 | | Pemanggil tanpa `Opname Document` | Pemegang |
 |---|---|---|
 | GET | 200; item `data_index: "verificationStatus"` tidak ada di `current_queries` maupun `available_queries` (dan `documentVerified` tidak ada di kolom, seperti ED-1027) | seperti sekarang |
+| GET `setting/display-columns` (index; juga `result` respons PUT, yang memakai index yang sama) (review 2026-10-26 R-2) | 200; baris `module_name` `documentArchive` (dicocokkan seperti GET/PUT: tanpa peka huruf besar/kecil dan spasi akhir) tanpa `verificationStatus` di `current_queries`/`available_queries` dan tanpa `documentVerified` di `current_columns`/`available_columns`, peta sama dengan GET; urutan item lain dan field lain baris itu tetap; baris lain identik; baris entri seluruh modul (`documentArchiveOpnameHistory`, `documentArchiveOpnameResult`) tetap tidak ada; saringan item tidak membuang baris (`total` sama dengan sebelumnya). Hanya respons, baris tidak ditulis | seperti sekarang (semua baris, semua item) |
 | PUT (`current_columns`, `available_columns`, `current_queries`, `available_queries`) | 200; item `verificationStatus` kiriman pemanggil diabaikan, item tersimpan dikembalikan ke list yang tadinya memuatnya, disisipkan sesudah item yang mendahuluinya di baris tersimpan (tidak ada → indeks semula, paling jauh di akhir); list yang tidak dikirim tidak ditulis; aturan sama dengan kolom ED-1027 §4 | seperti sekarang (boleh menyembunyikan/menampilkan) |
 
 Entri **seluruh modul** = entri tanpa `columns` **dan** tanpa `queries` (mis. `documentArchiveOpnameHistory`): tetap 403 `GE0114`

@@ -1,110 +1,114 @@
 ---
 key: ED-1250
 scope: fe
-round: 1
+round: 3
 verdict: PASS
-counts: {pass: 11, fail: 0, manual: 1, not_verifiable: 0}
+counts: {pass: 12, fail: 0, manual: 1, not_verifiable: 0}
 be_server: fpm
 ---
 ## Ringkasan
 
-QA FE ronde 1 (long run epic ED-1022; Gate 1: K-1 a, K-2 b, K-3 gugur, K-4 a, K-5 a, DU-5 a, DU-6 a berlaku). 12 AC milik stage ini
-(AC-13..AC-24): **11 PASS, 1 MANUAL (AC-23, Gate 2), 0 FAIL**. Tidak ada respons 5xx di e2e mana pun, tidak ada entri allow-list. Kode aplikasi
-(9 berkas FE, 6 berkas BE) tidak diubah QA.
+Ronde 3 = cek ulang **D-1** (ronde 2: AC-25 bagian FE tidak bisa dibuka karena halaman Setup > Display Setting tidak punya route) sesudah orkestrator menambah satu baris di spec § "Catatan implementasi" (2026-10-26) dan
+menyelaraskan doc FE `027-...md` butir 23 + digest `_api.md` #30. Lalu regresi penuh ronde 2+. **13 AC milik stage (AC-13..AC-25): 12 PASS, 1 MANUAL (AC-23), 0 FAIL, 0 tidak bisa diverifikasi. Verdict PASS.**
 
-- Build staging: `scripts/fe-build.sh build` exit 0, "Compiled successfully" tanpa peringatan (`work/ed1250fe/build-r1.out`, `work/fe-build.log`). Sumber FE
-  (mtime 15:44) lebih tua dari build (16:56); peringatan harness "Build staging MUNGKIN USANG: 6 berkas belum di-commit" hanya karena pohon kotor.
-- e2e ED-1250 (berkas baru `qa/e2e/`): **16 OK / 0 GAGAL** (13 flow `[default]`, 1 flow `[user2]`, 2 route smoke) - galeri
-  `work/e2e/ED-1250-archive-filter-verification-status-20261024-184015/index.html`. e2e ED-1125: 18 OK; ED-1069: 5 OK (profil default, `--workers 1`).
-- Regresi BE: `run.php ED-1250` PASS=16 FAIL=0 SKIP=1 (ISO-1, satu DB); ED-1027 scenario1/2/9/10: 12 PASS + 1 usang (AC-22, lihat bawah); ED-1028 AC-28 PASS.
-- Teardown C-8 PASS (cds `documentArchive` id 2260 `updated_at` 2026-10-24 21:27:41 = awal, memuat `verificationStatus` current & available dan
-  `documentVerified`); tidak ada sisa `QA%`; tidak ada jurnal basi di `features/*/qa/**`.
-- Skrip permanen: `features/ED-1250-archive-filter-verification-status/qa/e2e/` (`ED-1250-filter-verifikasi.spec.js`, `fixture.php`, `fixtures.json`, `routes.json`).
-  Jalankan: `scripts/e2e/run.sh ED-1250 --profile default,user2 --workers 1`.
+- **Kode aplikasi identik dengan ronde 2** (dicek sendiri): FE HEAD `7ca714504`, `git status` FE hanya 2 dok (`027-...md` mtime 06:32, `_api.md` 06:32), `find src public package.json -newermt '2026-10-26 05:30'` kosong, build staging
+  `/tmp/ksp-react-v5-build` 05:44 UTC >= semua berkas src (harness: "Build staging ... >= commit FE 7ca714504"). BE HEAD `fba6a5883`; 3 berkas BE item (hash `2683dd94`, `ad1a73a5`, `0ccb0c77`) mtime 05:02-05:03, sebelum QA BE r2 (05:32); 3 berkas kotor
+  developer di `baseline/be.hashes` hash-nya SAMA; `features/ED-1251-*` tidak disentuh (berkas kotornya sudah ada di awal).
+- **D-1 ditutup, dengan satu catatan lingkup (lihat "Catatan lingkup AC-25")**: fakta orkestrator terbukti dari kode FE; bagian FE AC-25 dinilai pada layar display setting FE yang ada + respons index dari sesi browser; 2 test AC-25 dijalankan ulang, hijau
+  (holder dan non-holder); butir 23 dapat dijalankan manusia dan cocok dengan aplikasi (satu catatan redaksi, O-1, tidak memblokir).
+- e2e ED-1250 penuh: **18 OK / 0 GAGAL** pada run akhir `work/e2e/ED-1250-archive-filter-verification-status-20261026-070046/index.html` (14 flow `[default]`, 2 `[user2]`, 2 smoke); tanpa 5xx, tanpa galat konsol/halaman, tanpa entri allow-list.
+  Run penuh pertama (`...063725`) 17 OK / 1 GAGAL = flake infrastruktur (lihat P-1), test itu lulus sendiri (`...064913`) dan di run penuh kedua.
+- Regresi BE `run.php ED-1250`: **PASS=18 FAIL=0 SKIP=1** (SKIP = ISO-1, satu DB). Teardown C-8 PASS.
+- Dibawa dari ronde 2 (kode FE/BE identik, tidak diulang): build `fe-build.sh build` (exit 0), unit 5 suite / 341 PASS + ED-1150 14 PASS, e2e ED-1125 (18 OK) dan ED-1069 (5 OK), regresi BE ED-1027 (12 PASS + AC-22 usang) dan ED-1028 AC-28 PASS.
 
 ## Hasil per AC
 
 | AC | Cara cek | Hasil | Bukti |
 |---|---|---|---|
-| AC-13 | e2e `[default]` id + en + route smoke: respons `queries` memuat `verificationStatus` tepat sesudah `type`; urutan popover Nama, Tipe, **Status Verifikasi**, Tanggal Dimodifikasi, Tampilkan Transaksi Terkait; select kosong; 2 opsi (id Terverifikasi / Belum terverifikasi; en Verified / Unverified, label "Verification Status"); Cari tanpa memilih = 1 GET tanpa key, indikator mati; folder A, subfolder MIX, hasil cari terbuka tanpa error; Display Setting memuat entri sesudah Tipe (id & en; bahasa QA_USER diubah sementara lewat jurnal) | PASS | run `...184015`: "AC-13 (id)", "AC-13 (en)", smoke `[default]`; `screenshots/default/ac13-01..06` |
-| AC-14 | e2e: root + Unverified dan Verified: tepat 1 GET `search={"verificationStatus":"…"}` tanpa `id_archive`; breadcrumb "Arsip"; baris = respons; 15 folder root (2 halaman folder) sama dan berurutan dengan tanpa filter; `total` = folder + dokumen root berstatus itu menurut oracle tabel mentah (`fixture.php root-counts`); Verified: dokumen root = hanya QA50-RDV; halaman dokumen Unverified: semua ikon unverified; V/T semua folder dan ringkasan (respons + UI) sama dengan sebelum filter. Di folder A + Verified: `id_archive=A` tetap, search hanya `{"verificationStatus"}`, breadcrumb "Arsip > QA50-A" dan tombol "+" tetap; isi A = oracle DB (semua 5 subfolder + dokumen verified; AHO Handed Over hanya di Verified, ATK Taken dan ANL NULL di Unverified); V/T tangan EMPTY 0/0, ALLV 2/2, NOV 0/2, PRIV "-", MIX = oracle 1/4 | PASS | `...184015` "AC-14 root"; `ac14-01-root-*`, `ac14-01b-*`, `ac14-02/03-folder-A-*` |
-| AC-15 | e2e, Unverified aktif: buka A, buka MIX, breadcrumb A, breadcrumb "Arsip", layar akses ditolak (PRIV: 403 `ARCHIVE407`, request ke folder itu membawa key) lalu "Kembali ke Arsip": tiap request `search` persis `{"verificationStatus":"UNVERIFIED"}`, indikator menyala, popover menampilkan nilai, Nama kosong. Reset di A: tanpa `search`, `id_archive=A` tetap, select kosong. Kosongkan select + Cari: tanpa search, tetap di A. Scan QR (`QA50-AU1`): search hanya `{"query"}`, select kosong, AU1 ditemukan | PASS | `...184015` "AC-15"; `ac15-01..04` |
-| AC-16 | e2e: di A dengan Unverified, isi Nama `QA50-MIX` + Cari: search memuat `name` dan `verificationStatus`, `id_archive` null, breadcrumb "Arsip", hasil = MIX, MIX-SUB (folder cocok nama tetap) + MIX-U1, MIX-U2, MIX-SUB-U1 (MIX-V1 tidak ada); buka MIX dari hasil: `id_archive=MIX` + search hanya `verificationStatus`, select tetap, Nama kosong. Tipe + filter: kedua key, `id_archive` null, dokumen hasil semua unverified | PASS | `...184015` "AC-16"; `ac16-01..03` |
-| AC-17 | unit: `archive.function.test.js` (`getArchiveFilterRequest`, `getArchiveNavigationSearch`: `{verificationStatus}` dan `{verificationStatus, showRelatedTransaction}` tetap di folder, `{verificationStatus, type}` -> `idArchive: null`, `{}` -> `search: null`, navigasi = hanya `{verificationStatus}` atau null), `ArchiveTable/index.test.js`, `ArchivePage/index.test.js`. Kode: halaman dan picker sama-sama memanggil helper (`ArchivePage/index.js:231,240`, `ArchiveTable/index.js:75,83`); `grep onlyRelatedTrans src` kosong | PASS | `jest-archive.out`: archive.function PASS; `jest-rerun1.out`: ArchivePage + ArchiveTable 2 suite / 65 tes PASS |
-| AC-18 | e2e picker Pindahkan (⋯ MVD-U) dengan filter halaman Unverified aktif: picker dibuka dengan GET root **tanpa search**, select kosong, indikator mati, filter tepat sesudah Tipe (K-5 a). Root picker + Unverified: 1 GET tanpa `id_archive`, breadcrumb "Arsip", baris = respons, seluruh folder sama dengan tanpa filter. Buka C: key ikut, nilai tetap, isi = oracle (DEST kosong dan MVF tetap); breadcrumb "Arsip": key ikut; Reset: tanpa search, tetap di C; + Nama: kedua key, `id_archive` null; folder tanpa View (PRIV) diklik: 0 request; folder yang sedang dipindahkan (MVF) diklik: 0 request; DEST (kosong) dipilih dengan Verified aktif, Pindahkan: POST put-in 200 (`idArchives=[MVD-U]`, tujuan DEST), DB MVD-U di bawah DEST, refresh halaman membawa filter HALAMAN (bukan filter picker), tabel halaman = respons. Pilih Folder (pindah massal): kosong saat dibuka, root + Unverified, folder tetap, tujuan DEST tetap terpilih dan Pindahkan tetap aktif sesudah ganti filter, buka subfolder dan breadcrumb | PASS | `...184015` "AC-18 picker Pindahkan", "AC-18 Pilih Folder"; `ac18-01..10`; DB dipulihkan (`fixture.php restore`) |
-| AC-19 | e2e `[user2]` (QA_USER2 di preset `QA50-ROLE-E2E-NOOD`, List Archive tanpa Opname Document, bahasa EN; `has-od` false): respons `queries` root / folder A / hasil cari / picker Pindahkan / Pilih Folder tanpa `verificationStatus`; popover tanpa select dan label; Display Setting tanpa entri "Verification Status", simpan (Show Related Transaction dilepas) PUT 200; DB: `verificationStatus` tetap di current & available queries, `documentVerified` tetap; tanpa 5xx | PASS | `...184015` "[user2] AC-19" + smoke `[user2]`; `screenshots/user2/ac19-01..04` |
-| AC-20 | e2e: Displayed Filters: sembunyikan "Status Verifikasi" -> Simpan (PUT 200): DB keluar dari current_queries, tetap di available; popover halaman dan picker tanpa select; tampilkan lagi -> kembali di keduanya; `cds-restore` memulihkan baris persis, C-8 diperiksa | PASS | `...184015` "AC-20"; `ac20-01/02` |
-| AC-21 | e2e: Verified aktif, A -> NOV (tanpa subfolder, tanpa verified): `total` 0, `.ant-empty`, 0 baris, tanpa error/toast; EMPTY juga kosong; NOV dan EMPTY tetap tampil di A saat filter aktif, induk A tetap di root. Picker (Pilih Folder): A -> NOV + Verified = Empty "Tidak ada data", A tetap tampil | PASS | `...184015` "AC-21 halaman", "AC-18 Pilih Folder"; `ac21-01`, `ac21-02` |
-| AC-22 | e2e dengan filter aktif: kolom Dokumen Terverifikasi ada, ringkasan sama; modal All (GET verifications tanpa `verificationStatus`, angka = ringkasan); tautan V/T MIX -> modal folder = oracle 1/4 (tidak ikut filter); halaman 2 di B (13 baris, 2 halaman): request membawa key dan `page=2`, 3 baris; ganti filter -> `page=1`; Reload: 1 GET dengan key + folder yang sama; Pindahkan folder MVF dengan Verified aktif: POST put-in 200, SQL: MVF di bawah DEST dan **MVF-V serta MVF-U (tersembunyi filter) tetap di MVF aktif**, refresh berfilter; Letakkan -> Serahkan -> Terima D6 (Unverified aktif): tiap refresh membawa key + folder A, daftar = oracle, D6 dipulihkan. Regresi BE: ED-1027 scenario1 (AC-1, X-1), 2 (AC-2/3/4), 9 (AC-23, X-10, X-11), 10 (AC-24, X-12/13/14) PASS; ED-1028 AC-28 PASS (219 asersi); ED-1027 AC-22 FAIL **usang** (lihat Pengamatan P-1) | PASS | `...184015` 3 test "AC-22"; `ac22-01..07`; `be-reg-1027.out`, `be-reg-1028.out`, `be-reg-1250.out` |
-| AC-23 | Letak filter di popover dan gaya EQUAL: penilaian tampilan = manusia. Struktur ada (screenshot `ac13-01`) | MANUAL (Gate 2) | `027-feat-filter-verification-status.md` `## Daftar tes UI` butir 1 ("letak, lebar, dan gaya ... AC-13, AC-23") |
-| AC-24 | e2e ED-1125 (cari modal Pindahkan / Pilih Folder, scan di picker): 18/18; ED-1069 (validasi pindah): 5/5, profil default. unit `getArchiveListKey` + describe ED-1150 `ArchiveTable` PASS. e2e sendiri: penanda DOM pada tabel hilang saat filter berganti (halaman dan picker: `key` memuat `search` -> tabel mulai dari awal) dan **bertahan** saat Reload/refresh dengan parameter sama. e2e ED-1150 (`run-sam.sh`) **tidak dijalankan** (Tambahan Gate 1) | PASS | `work/e2e/ED-1125-archive-fe-cari-modal-pindah-20261024-181914`, `work/e2e/ED-1069-archive-validasi-pindah-rename-folder-20261024-182601`; `ac22`/`ac18` test di `...184015` |
+| AC-13 (rev R-1) | e2e id + en + smoke: popover persis `[Nama,Tipe,Tanggal Dimodifikasi,Tampilkan Transaksi Terkait,Status Verifikasi]` (en padanannya), select kosong, 2 opsi sesuai bahasa, Cari tanpa memilih = tanpa key; respons `queries` = `current_queries` DB (`verificationStatus` terakhir); folder/hasil cari/drawer Display Setting tanpa error | PASS | run akhir `...070046` "AC-13 (id)", "AC-13 (en)", smoke `[default]` |
+| AC-14 | e2e root + folder A (Unverified/Verified): 1 GET dengan key saja, tanpa `id_archive`, folder root tetap semua, `total` = oracle SQL, di folder A `id_archive` tetap | PASS | `...070046` "AC-14 root" |
+| AC-15 | e2e subfolder/breadcrumb/Kembali ke Arsip membawa key; Reset tetap di folder; scan QR hanya `query` | PASS | `...070046` "AC-15" |
+| AC-16 | e2e + Nama / + Tipe -> `id_archive` null, folder cocok tetap, dokumen hanya status itu; buka folder dari hasil -> hanya `verificationStatus` | PASS | `...070046` "AC-16" |
+| AC-17 | unit helper + kedua pemakai (`archive.function`, `ArchivePage`, `ArchiveTable`): **dibawa dari ronde 2** (kode identik) | PASS | r2 `work/ed1250fe2/jest-r2.out`: 5 suite / 341 tes PASS |
+| AC-18 | e2e picker Pindahkan + Pilih Folder (pindah massal): kosong saat dibuka, filter di root/folder/breadcrumb/Reset/+Nama, semua folder tetap, terpilih/tanpa View terkunci, Pindahkan sukses dengan filter aktif; "Status Verifikasi" terakhir di popover picker | PASS | `...070046` 2 test "AC-18"; picker Pindahkan juga sendiri `...064913` |
+| AC-19 | e2e `[user2]` (preset tanpa Opname Document, EN): `queries` root/folder/hasil cari/picker tanpa `verificationStatus`; popover tanpa select; Displayed Filters tanpa entri; simpan PUT 200; DB `verificationStatus` tetap terakhir, `documentVerified` tetap | PASS | `...070046` "[user2] AC-19" |
+| AC-20 | e2e pemegang: sembunyikan -> popover halaman & picker tanpa select, tampilkan -> kembali; `cds-restore` memulihkan persis | PASS | `...070046` "AC-20" |
+| AC-21 | e2e folder NOV + Verified -> `.ant-empty`, tanpa error, induk tetap (halaman dan picker) | PASS | `...070046` "AC-21 halaman", "AC-18 Pilih Folder" |
+| AC-22 (FE+BE) | e2e dengan filter aktif: kolom Document Verified, V/T + modal folder, ringkasan + modal All, halaman 2, Reload, Letakkan/Serahkan/Terima, Pindahkan folder (SQL). Regresi BE ED-1027/ED-1028: **dibawa dari ronde 2** | PASS | `...070046` 3 test "AC-22"; r2 `be-reg-1027.out`, `be-reg-1028.out` |
+| AC-23 | letak/gaya popover EQUAL = penilaian manusia; ada di Daftar tes UI butir 1 (sudah urutan R-1) | MANUAL (Gate 2) | `027-feat-filter-verification-status.md` `## Daftar tes UI` butir 1 |
+| AC-24 | e2e ED-1125 18 OK, ED-1069 5 OK, unit ED-1150 14 PASS: **dibawa dari ronde 2** (kode identik); e2e sendiri (penanda DOM hilang saat filter berganti, bertahan saat Reload) diulang | PASS | r2 `...ED-1125-...061125`, `...ED-1069-...061817`; `...070046` "AC-22"/"AC-18" |
+| AC-25 (R-2, FE) | **Diulang ronde ini.** 2 test e2e: `[default]` pemegang dan `[user2]` non-pemegang. (a) sumber FE (dibaca di dalam test): `routes.js` tanpa `DisplaySettingPage`, `paths.js` tanpa `displaySetting`; (b) `GET setting/display-columns?search=documentArchive` dari dalam sesi browser: pemegang 200, 3 baris, `documentArchive` = DB (queries R-1, kolom memuat `documentVerified`); non-pemegang 200, 1 baris, tanpa `verificationStatus`/`documentVerified` di `current_*`/`available_*`, item lain + urutan = DB tanpa kedua entri, modul seluruh-modul (`OpnameHistory`/`OpnameResult`) tidak ada, index tanpa search 100 baris dari total 362; (c) drawer Display Setting Archive (komponen `DisplaySettingDrawer`, `GET show documentArchive` 200): pemegang -> Filter `[Nama,Tipe,Tanggal Dimodifikasi,Tampilkan Transaksi Terkait,Status Verifikasi,Dimodifikasi Oleh]` + kolom memuat "Dokumen Terverifikasi"; non-pemegang (EN) -> filter `[Name,Type,Date Modified,Show Related Transaction,Modified By]`, kolom `[Name,Date Modified,Type,Salesman,Status,Modified By]`, tanpa kedua entri; tanpa 5xx, tanpa galat konsol | PASS (menurut lingkup Catatan implementasi 2026-10-26; lihat catatan lingkup) | `...063600` (2 test, 2 OK), `...070046` (idem); `screenshots/default/ac25-01-drawer-pemegang.png`, `screenshots/user2/ac25-02-drawer-non-pemegang.png`; sisi API = QA BE r2 AC-25 + `run.php ED-1250` AC-25 PASS (746 asersi) |
 
-Penambahan di luar AC (e2e "regresi"): Cari kosong di folder tanpa filter aktif tetap ke root (ED-1125 K-3 a); Show Related Transaction saja dan bersama
-Verification Status tetap di folder (preseden); hapus nilai Verification Status saat Related Transaction aktif tetap di folder - PASS (`...184015`).
+## Pemeriksaan D-1 (klaim orkestrator, dibuktikan dari kode FE sendiri)
+
+| Klaim | Bukti | Hasil |
+|---|---|---|
+| `DisplaySettingPage` tanpa route/path/menu | `grep -rn -i "displaySetting\|DisplaySettingPage" src/routes src/configuration` hanya `endpoints.js:2050-2055` (kunci endpoint); `routes.js`, `paths.js`, `permissions.js`, `menus.js` kosong; tidak ada `DisplaySettingPage` di luar `src/containers/DisplaySetting/` (selain re-export `index.js:5`) | benar |
+| Halaman itu memakai `paths.displaySetting` yang tidak ada | `DisplaySettingPage/index.js:21` `activeSetupSpaceMenu: paths.displaySetting` (undefined di `paths.js`) | benar |
+| Sejak commit awal | `git log -S"DisplaySettingPage" -- src` = hanya `c61af18d0` (Initial Setup, 2023-01-18) | benar |
+| Satu-satunya pemanggil FE index `GET setting/display-columns` | `getDisplaySettings` dipakai di `displaySetting.api.js:6` dan satu-satunya konsumen `DisplaySettingPage/index.js:44` (`useTable(fetch.getDisplaySettings)`); `DisplaySettingDrawer` memakai `getDisplaySetting`/`putDisplaySetting` (show/update), `Shortcut`/`Modal` hanya `postDisplaySetting`, `apiHook.js:670` `useDisplaySetting` = show | benar |
+| Drawer Archive = layar display setting FE yang ada | `ArchivePage/index.js:490,552` `ButtonDisplaySetting` (tautan "Pengaturan Tampilan"/"Display Setting"), `:661` `DisplaySettingDrawer` -> `GET`/`PUT setting/display-columns/documentArchive` | benar |
+
+Akibatnya R-2 (filter index) tidak punya efek yang terlihat di layar FE; efek nyata ada di API (lulus). Digest `_api.md` #30 sudah memuat penjelasan ini (`_api.md:1169`).
+
+### Daftar tes UI butir 23 (`027-feat-filter-verification-status.md`)
+Dapat dijalankan manusia: tombol ada di kanan baris breadcrumb (layar >= md; di layar kecil di atas kartu, `showInSmallScreen`), drawer terbuka dengan dua panel; urutan dan label yang ditulis butir 23 cocok dengan screenshot dan notes e2e
+(pemegang: "Status Verifikasi" terakhir sebelum "Dimodifikasi Oleh" di Filter, "Dokumen Terverifikasi" di Kolom; non-pemegang: keduanya tidak ada, daftar lain tetap). Prasyarat peran (pemegang / role tanpa Opname Document) = pembukaan Daftar tes UI dan butir 21.
+**O-1 (redaksi, tidak memblokir):** butir 20 dan 23 menyebut "ikon pengaturan di kanan breadcrumb", padahal kontrolnya tautan teks biru "Pengaturan Tampilan" / "Display Setting" tanpa ikon; butir 20 menyebut "tab Displayed Filters", padahal dua panel
+berdampingan ("Kolom yang Ditampilkan" / "Filter yang Ditampilkan"; EN "Displayed Columns" / "Displayed Filters"). Saran redaksi: "tautan 'Pengaturan Tampilan' di kanan breadcrumb" dan "panel Filter yang Ditampilkan". QA tidak mengubah dok.
+
+### Catatan lingkup AC-25
+Teks baris AC-25 di spec (R-2) tetap berbunyi "halaman Setup > Display Setting FE terbuka tanpa error". **Layar itu tidak ada** (terbukti di atas), jadi klausa harfiah itu tidak dapat dijalankan oleh siapa pun. Penilaian PASS saya bertumpu pada
+Catatan implementasi 2026-10-26 yang **ditulis orkestrator** (bukan keputusan developer): bagian FE AC-25 = layar display setting FE yang ada (drawer Archive) + respons index dari sesi browser. Bukti untuk lingkup itu lengkap dan hijau, tetapi
+penafsiran ulang ini sebaiknya dikonfirmasi developer di Gate 2 / batch review (butir 23 = bukti manusia; bila developer ingin halaman itu dipasang: route + menu Setup = item terpisah, di luar ED-1250).
 
 ## Defect
 
-Tidak ada.
+Tidak ada. D-1 (ronde 2) ditutup menurut catatan lingkup di atas; tidak ada defect baru, tidak ada respons 5xx.
 
 ## Pengamatan (bukan defect ED-1250)
 
-- **P-1 (usang, dicatat sesuai AC-22)**: ED-1027 `scenario9` AC-22 FAIL. Diff diurai dari laporan JSON (`work/qa-http/ED-1027-20261025013309.json`): satu-satunya
-  selisih antara pemegang Opname Document (field verifikasi dibuang) dan non-pemegang = list `result.queries`, pemegang punya entri `verificationStatus` di antara
-  `type` dan `updatedAt` (BR-10/AC-1, memang diminta); baris, kolom, ringkasan, urutan identik. Pembanding AC-8 ED-1250 menggantikannya (lulus). Sama dengan O-3 QA BE.
-- **P-2 (sudah ke batch review, dev)**: "Cari kosong" - dikonfirmasi di browser: tanpa filter aktif tetap ke root (ED-1125 K-3 a); dengan filter aktif hanya
-  `verificationStatus` / `showRelatedTransaction` tetap di folder (BR-12). Efek samping: Show Related Transaction saja + Cari kosong dulu = root, kini tetap di folder.
-- **P-3 (pra-ada)**: melepas kotak "Tampilkan Transaksi Terkait" lalu Cari mengirim `search={"showRelatedTransaction":false}` (`deleteEmptyRequest` tidak membuang false) -
-  indikator filter tetap menyala. Bukan bagian item ini.
-- **P-4 (tata letak)**: di layar desktop drawer Display Setting menampilkan "Kolom yang Ditampilkan" dan "Filter yang Ditampilkan" berdampingan (tab hanya di layar kecil);
-  e2e menangani keduanya. Spec menyebut "tab Displayed Filters"; isi sama.
-- **P-5 (data)**: root `api_sidomaju` kini 12 folder asli + ±3.533 dokumen root (hampir semua unverified; verified root asli 0). e2e memakai oracle SQL (`root-counts`)
-  untuk `total`, bukan menelusuri 355 halaman. Daftar tes UI butir 3 ("ke-12 folder root") tetap benar; "root + Terverifikasi" akan menampilkan 12 folder tanpa dokumen.
-- **P-6 (beban mesin)**: jest paralel gagal karena batas waktu saat beban 8-11 pada 4 core (php-fpm + `queue:work` Raptor) - lihat "Build dan unit test".
+- **P-1 (flake infrastruktur)**: run penuh pertama `...063725`: 17 OK / 1 GAGAL, test "AC-18 picker Pindahkan" gagal dengan `TimeoutError: page.screenshot: Timeout 15000ms exceeded` pada tangkapan layar ke-3 (`ac18-03`), bukan asersi, tanpa 5xx;
+  9 GET sebelumnya semua 200. Diulang sendiri `...064913` OK; run penuh kedua `...070046` 18/18 OK. (Ronde 2 juga mencatat satu flake di test yang sama, beda sebab.)
+- **P-2 (usang, dibawa dari r1/r2/QA BE r2)**: ED-1027 `scenario9` AC-22 FAIL usang (pembanding lama; `queries` pemegang 5 vs non-pemegang 4 entri sejak R-1); pembanding AC-8 ED-1250 menggantikannya (lulus). Tidak diulang ronde ini.
+- **P-3 (pra-ada, ED-1028 O-5)**: index display-columns diurutkan `updated_at desc` tanpa tie-breaker (301 baris kembar); e2e AC-25 mencari baris lewat `search=documentArchive`, bukan posisi.
+- **P-4 (data)**: root `api_sidomaju` berisi folder asli (termasuk `E2E-ARSIP-*` milik run lama); `total` dibandingkan dengan oracle SQL.
 
-## Build dan unit test
+## Build, unit, e2e fitur lain
 
-| Langkah | Hasil | Bukti |
+| Langkah | Ronde 3 | Bukti |
 |---|---|---|
-| `scripts/fe-build.sh build` | exit 0, tanpa peringatan | `work/ed1250fe/build-r1.out` |
-| `yarn test src/containers/Archive` (paralel, beban tinggi) | 17 suite: 8 PASS, 9 gagal batas waktu (24 tes) | `work/ed1250fe/jest-archive.out` |
-| ulang sendiri `--runInBand`: ArchivePage + ArchiveTable (suite ED-1250) | 2 suite, **65 / 65** PASS | `jest-rerun1.out` |
-| ulang sendiri 7 suite Archive lain yang gagal | 7 suite, **97 / 97** PASS | `jest-rerun2.out` |
-| full suite sekali (3 worker) | 85 suite: 62 PASS, 23 gagal (172 tes, batas waktu + 4 pra-ada) | `jest-full.out` |
-| ulang sendiri suite gagal lainnya (13 path = 21 suite) | 17 PASS; **4 tetap gagal = pra-ada**: BatchOut 1 tes, production.function 2 tes (`getRecipeTotals`), InterbankTransferForm 1 tes, CustomerPurchaseOrderView gagal dimuat; sama dengan catatan QA ED-1150, tidak mengimpor berkas Archive | `jest-rerun3.out`; `features/ED-1150-.../qa-fe.md:74` |
-
-Semua suite Archive (17) lulus bila dijalankan sendiri; kegagalan paralel = `Exceeded timeout of 5000 ms` / `findByText`, bukan perilaku.
+| `scripts/fe-build.sh build` | **tidak diulang**: kode FE identik (lihat Ringkasan); hasil r2 exit 0 "Compiled successfully." dipakai, build staging 05:44 UTC >= commit | r2 `work/ed1250fe2/build-r2.out` |
+| unit `archive.function`, `ArchivePage`, `ArchiveTable`, `ArchiveMoveModal`, `ArchiveBulkMoveModal` + ED-1150 | **dibawa dari r2**: 341 PASS + 14 PASS; suite penuh proyek tidak diulang (lihat catatan r2: 4 suite pra-ada non-Archive merah di r1) | r2 `jest-r2.out`, `jest-ed1150-r2.out` |
+| e2e ED-1125 / ED-1069 | **dibawa dari r2** (18 OK / 5 OK), berkas fitur lain tidak diubah | r2 `...ED-1125-...061125`, `...ED-1069-...061817` |
+| e2e ED-1250 | **diulang penuh**: 18 OK / 0 GAGAL | `...070046` |
 
 ## Galeri e2e & regresi BE
 
-- ED-1250: `work/e2e/ED-1250-archive-filter-verification-status-20261024-184015/` (index.html, report.json, screenshots; 16 OK).
-- ED-1125: `work/e2e/ED-1125-archive-fe-cari-modal-pindah-20261024-181914/` (18 OK). ED-1069: `work/e2e/ED-1069-archive-validasi-pindah-rename-folder-20261024-182601/` (5 OK).
-- Ronde awal (skrip e2e masih diperbaiki, bukan defect aplikasi): `...174327` 5 OK / 10 GAGAL, `...180134`, `...180439`, `...180856`, `...183545`.
-- BE (`work/ed1250fe/`): `be-reg-1250.out` PASS=16 SKIP=1 (laporan `work/qa-http/ED-1250-20261025013149.json`); `be-reg-1027.out` 12 PASS + 1 usang; `be-reg-1028.out` AC-28 PASS.
-  Tanpa 500 dari request sah; satu-satunya 500 pra-ada (key `search` ber-titik, Bug ED-1262) bukan bagian item ini.
+- ED-1250 akhir: `work/e2e/ED-1250-archive-filter-verification-status-20261026-070046/` (index.html, report.json, screenshots; 18 OK). Ronde ini juga: AC-25 saja `...063600` (2 OK), run penuh pertama `...063725` (17 OK / 1 flake), AC-18 picker sendiri `...064913` (1 OK).
+- BE (`work/ed1250fe3/`): `be-reg-1250.out` PASS=18 FAIL=0 SKIP=1 (C-0, AC-1..AC-12, ISO-1 SKIP, X-1..X-3, AC-25 746 asersi, C-8; `work/qa-http/ED-1250-20261026140033.json`); `c8.out` (`...141253.json`). Tanpa 500.
+  Output e2e: `e2e-ac25.out`, `e2e-full.out`, `e2e-ac18.out`, `e2e-full2.out`. ED-1027/ED-1028 tidak diulang (kode BE identik; hasil r2 dibawa).
+- Skrip permanen tidak diubah ronde ini. Jalankan: `scripts/e2e/run.sh ED-1250 --profile default,user2 --workers 1`; BE: `"$PHP_BIN" scripts/qa-http/run.php ED-1250`.
 
 ## Data uji, perubahan di luar baris sendiri, teardown
 
-- Dibuat dan dibuang (`fixture.php up/down`, jurnal `.fixture-journal.json`, prefiks `QA50-`): 60 baris `archives` (+ dokumen, lokasi nihil, izin nihil) dan preset
-  role `QA50-ROLE-E2E-NOOD` (+ `role_permissions`). Sapu sisa `QA50-` di awal tiap `up`. K-4 a: `is_verified`/`verified_at`/`verified_by` langsung, tanpa sesi opname,
-  tanpa tulis `archive_opname*`.
-- Diubah sementara dan dipulihkan persis: `user_roles` QA_USER2 (adi: role 5 -> preset -> role 5, dibandingkan JSON); `users.language` QA_USER (ID -> EN -> ID); baris cds
-  `documentArchive` (AC-19/AC-20, snapshot lalu hapus+masukkan id sama: id 2260, `updated_at` 21:27:41 sama dengan awal); dokumen/folder fixture dipulihkan (`restore`).
-  Dampak samping: penghitung auto-increment `roles`, `user_roles`, `column_display_settings` maju.
-- **Tidak ada baris di luar milik sendiri yang dihapus atau di-reset; tidak ada tabel dikosongkan.** ED-1125/ED-1069 memakai fixture `0QA125-` / `0QA69E-` milik mereka (dibuang sendiri).
-- Teardown C-8 (diperiksa lagi sesudah e2e terakhir): `run.php ED-1250 --only=C-8` PASS; cds memuat `verificationStatus` (current & available) dan `documentVerified`;
-  `QA%` roles/archives = 0; user QA sama dengan awal; token QA aktif 0 (runner dan harness: log-out dicabut); tidak ada `.fixture-journal.json` / `.fixture-ids.json` basi.
-  `updater_logs` 99 -> 99. Beda cds sebelum-vs-sesudah Updater = DU-5 a (diizinkan).
+- Dibuat dan dibuang per run e2e (`fixture.php up/down`, prefiks `QA50-`, jurnal sendiri): 60 baris `archives` (+ dokumen/lokasi/izin) dan preset `QA50-ROLE-E2E-NOOD`; setiap teardown fixture melapor "tanpa sisa, pemulihan persis".
+- Diubah sementara dan dipulihkan persis (oleh test/fixture): `user_roles` QA_USER2, `users.language` QA_USER, baris cds `documentArchive` (AC-19/AC-20 menyimpan lewat drawer; `cds-restore`), dokumen/folder fixture. **Tidak ada baris di luar milik sendiri yang dihapus atau di-reset; tidak ada tabel dikosongkan; Updater tidak dijalankan QA.**
+- **Teardown C-8 (diperiksa terakhir, sesudah semua e2e dan regresi BE):** `run.php ED-1250 --only=C-8` PASS (15 asersi: `archives`/`archive_documents`/`archive_permissions`/`roles`/`role_permissions` sisa QA50-/QA% = 0, cds memuat `verificationStatus` + `documentVerified` urutan R-1, keadaan di luar baris sendiri sama dengan awal run,
+  `updater_logs` 99 = awal, tanpa jurnal basi di `features/*/qa`); `fixture.php cds` = id 2586, `updated_at` 2026-10-26 12:04:16 (sama dengan awal ronde), `current_queries=[name,type,updatedAt,showRelatedTransaction,verificationStatus]`; token QA aktif 0
+  (runner "masih aktif: 0"; e2e: log-out default dan user2 `dicabut=ya`, 2/2 pada tiap run).
 
 ## Yang tidak bisa diverifikasi (dan kenapa)
 
-1. AC-23 (letak/gaya popover EQUAL): penilaian visual manusia, tercantum di Daftar tes UI butir 1 (MANUAL Gate 2).
-2. e2e ED-1150 (`run-sam.sh`, login `sam`) tidak dijalankan sesuai Tambahan Gate 1; regresi `listKey` dibuktikan unit + penanda DOM e2e sendiri.
-3. Tanpa kontrol negatif berbasis build lama pada e2e (build HEAD terpisah tidak dibuat: 5 menit + pohon kerja bersih); bukti tes bermakna untuk unit sudah dari dev
-   (8 dari 13 tes halaman/picker gagal dengan kode lama). Asersi e2e mencocokkan parameter request persis (mis. kode lama mengirim `idArchive: null` untuk `{verificationStatus}`).
-4. Desain `brief/` untuk filter ini tidak ada (sumber `jira.md`); struktur/alur dicek, tampilan tidak dinilai.
-5. Isolasi tenant: `QA_DBS` satu DB, bukan lingkup stage FE.
+1. AC-23 (letak/gaya popover EQUAL): penilaian visual manusia, MANUAL Gate 2 (butir 1 Daftar tes UI).
+2. Klausa harfiah AC-25 "halaman Setup > Display Setting terbuka": layar tidak ada (D-1); dinilai menurut Catatan implementasi (lihat catatan lingkup), konfirmasi developer disarankan.
+3. e2e ED-1150 (`run-sam.sh`, login `sam`) tidak dijalankan (Tambahan Gate 1); `listKey` dibuktikan unit (r2) + penanda DOM e2e sendiri.
+4. Desain `brief/` tidak ada untuk filter ini (sumber `jira.md`): struktur/alur dicek, tampilan tidak dinilai.
+5. Isolasi tenant: `QA_DBS` satu DB; bukan lingkup stage FE.
 
 ## Riwayat ronde
 
-- Ronde 1 (2026-10-24): 11 PASS / 1 MANUAL / 0 FAIL; e2e 16 OK, ED-1125 18 OK, ED-1069 5 OK; unit modul Archive hijau (sendiri), 4 suite pra-ada tetap merah; regresi BE hijau (1 skenario lama usang);
-  teardown C-8 PASS. Iterasi skrip e2e awal gagal karena kesalahan skrip (selektor label/breadcrumb, root 355 halaman, drawer dua panel, urutan key), bukan aplikasi.
+- Ronde 1 (2026-10-24): 11 PASS / 1 MANUAL / 0 FAIL (AC-13..AC-24); e2e ED-1250 16 OK, ED-1125 18 OK, ED-1069 5 OK; unit modul Archive hijau bila sendiri (4 suite pra-ada non-Archive merah); regresi BE hijau (ED-1027 AC-22 usang); teardown C-8 PASS.
+- Ronde 2 (2026-10-26, revisi review R-1/R-2): AC-13 diulang urutan R-1 (5 asersi e2e terbalik, kontrol spec r1 gagal seperti diharapkan), AC-25 baru: bukti pengganti lulus, halaman tidak ber-route = D-1 (FAIL); e2e ED-1250 18 OK, ED-1125 18, ED-1069 5; unit 341 PASS;
+  regresi BE ED-1250 PASS=18, ED-1027 12 PASS + 1 usang, ED-1028 AC-28 PASS; teardown C-8 PASS.
+- Ronde 3 (2026-10-26): D-1 dicek ulang (klaim kode FE terbukti, butir 23 dapat dijalankan, AC-25 e2e 2/2 OK ulang) -> PASS; kode identik r2; e2e ED-1250 penuh 18/18 (run pertama 17 + 1 flake screenshot); BE ED-1250 PASS=18/SKIP=1; C-8 PASS; sisanya dibawa dari r2.

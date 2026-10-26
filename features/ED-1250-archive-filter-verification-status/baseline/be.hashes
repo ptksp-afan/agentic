@@ -1,0 +1,3 @@
+Modules/V5/Http/Services/Setup/Setting/PdfTemplateService.php	f541af01aa8cde81747d6b2cd285c881ad076874
+Modules/V5/Resources/views/pdf-templates/layouts/headers/report-header-1.blade.php	79b704868e12cf549725c9dd18c145ceb597c3b0
+Modules/V5/Resources/views/pdf-templates/styles/headers/report-header-1.blade.php	056e19255f447bce0b08cf49165aa8b3577f913e

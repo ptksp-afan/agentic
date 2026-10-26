@@ -196,3 +196,28 @@ folder tidak pernah disaring filter ini (koreksi developer 2026-10-24).
   (tanpa `columns` dan tanpa `queries`). ED-1251 menambah entrinya di `PERMISSION_FILTERS` memakai bentuk yang sama.
 - 2026-10-24 v5-be-dev (ED-1252): opsi config memakai literal `'VERIFIED'`/`'UNVERIFIED'` (config tidak memuat kelas service; preseden
   `use` di `Config/displayColumn/*` hanya model/helper); konstanta `VerificationService::FILTER*` dipakai di service.
+- 2026-10-26 v5-be-dev (ED-1252, review R-1): kode Updater tetap (hapus baris + `getDisplaySetting`), hanya docblock; urutan baru datang dari
+  config. Di `api_sidomaju` efeknya dijalankan ulang in-process (`$updater->run()` dalam transaksi, tanpa `updater_logs`): cds
+  `documentArchive` id 2260 → 2586, jumlah baris tabel tetap 364.
+- 2026-10-26 v5-be-dev (ED-1254, review R-2): saringan index hanya di respons (baris tidak ditulis), dicocokkan per `module_name` seperti
+  `permissionFilter()`; `hasPermission` dipanggil sekali per permission per request, hanya bila baris berentri ada di halaman. Akibat
+  ikutan: `result` respons PUT (controller memanggil `index()`) untuk non-pemegang ikut tersaring. `contract.md` §1 dan §2 disesuaikan.
+- 2026-10-26 orkestrator (QA FE r2 D-1, dijawab dari kode FE dengan bukti, tanpa mengubah AC): halaman "Setup > Display Setting" yang disebut AC-25
+  **tidak di-route di FE** - `DisplaySettingPage` (`ksp-react` `src/containers/DisplaySetting/DisplaySettingPage`) tanpa entri di `src/routes/routes.js`,
+  `src/routes/paths.js` (`paths.displaySetting` tidak ada) dan `src/configuration/menus.js` sejak `c61af18d0`; itu satu-satunya pemanggil FE `GET setting/display-columns`
+  (index), jadi tidak ada layar FE yang bisa rusak oleh R-2. Bagian FE AC-25 dicek pada layar display setting FE yang ada: `DisplaySettingDrawer` Archive
+  (`GET`/`PUT setting/display-columns/documentArchive`) pemegang vs non-pemegang, tanpa error/5xx, ditambah respons index dari sesi browser; doc FE 027
+  butir 23 dan digest `_api.md` #30 diselaraskan. Ke batch review: bila developer ingin halaman itu dipasang (route + menu Setup), itu item terpisah.
+
+## Revisi review 2026-10-26 (developer, `/v5-epic review`; menimpa butir lama yang bertentangan)
+- **R-1 urutan default filter** (Updater + `Config/displayColumn/documentArchive.php`): `current_queries` = Name (`name`), Type (`type`), Date Modified
+  (`updatedAt`), Show Related Transaction (`showRelatedTransaction`), **Verification Status (`verificationStatus`) terakhir**. `available_queries` = urutan
+  yang sama + Modified By (`updatedBy`) paling akhir, tidak aktif default (tidak ada di current). AC-1 direvisi: `queries` memuat `verificationStatus` di
+  indeks terakhir current (sesudah `showRelatedTransaction`), bukan "tepat sesudah `type`". Updater ED-1250 belum dirilis (commit lokal): ubah Updater yang
+  sama; di `api_sidomaju` jalankan ulang hasilnya (DU-5 a tetap berlaku).
+- **R-2 daftar display setting tersaring** (O-2, keputusan b): `GET setting/display-columns` (index) untuk pemanggil tanpa `Opname Document` tidak lagi
+  memuat entri `verificationStatus` (queries) maupun `documentVerified` (kolom ED-1027) di `current_*`/`available_*` baris `documentArchive`, memakai peta
+  yang sama dengan `show`/`update` (BR-10). Pemegang: tidak berubah. AC-25 baru: index non-pemegang tanpa kedua entri, pemegang dengan keduanya, modul lain
+  identik; halaman Setup > Display Setting FE terbuka tanpa error.
+- Dikonfirmasi tanpa perubahan: Updater reset `documentArchive` per tenant (DU-5 a); Cari kosong saat filter aktif hanya Verification Status / Show Related
+  Transaction tetap di folder.

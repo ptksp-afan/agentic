@@ -6,8 +6,9 @@
  * struktur folder tidak berubah (tetap di folder / root); nilai tetap aktif saat buka folder, breadcrumb, "Back to Archive"; Reset
  * mengosongkan dan tetap di folder; scan QR mengosongkan semua filter; picker dibuka dengan filter kosong (K-5 a) dan berperilaku sama (K-2 b).
  *
- *   AC-13  : popover memuat select (id "Status Verifikasi" / en "Verification Status") tepat sesudah Type, 2 opsi, kosong; Cari tanpa memilih
- *            = request tanpa key; Display Setting Displayed Filters memuat entri                                  (id + en)
+ *   AC-13  : (rev R-1, review 2026-10-26) popover memuat select (id "Status Verifikasi" / en "Verification Status") PALING AKHIR, sesudah
+ *            Show Related Transaction (urutan default: Name, Type, Date Modified, Show Related Transaction, Verification Status), 2 opsi,
+ *            kosong; Cari tanpa memilih = request tanpa key; Display Setting Displayed Filters memuat entri dalam urutan itu  (id + en)
  *   AC-14  : root pilih Unverified -> 1 GET search={"verificationStatus":"UNVERIFIED"} tanpa id_archive; semua folder tetap; V/T & ringkasan sama;
  *            di folder pilih Verified -> id_archive tetap
  *   AC-15  : buka subfolder / breadcrumb / Back to Archive membawa key; Reset tetap di folder; scan QR -> hanya query
@@ -20,6 +21,9 @@
  *   AC-22  : regresi dengan filter aktif: kolom Document Verified, tautan V/T + modal folder, ringkasan + modal All, halaman 2, refresh
  *            (Reload, Letakkan / Serahkan / Terima), Pindahkan folder fixture memindahkan seluruh isinya (SQL)
  *   AC-24  : (sebagian) tabel picker/halaman di-mount ulang saat filter berganti (listKey memuat search), tidak saat refresh yang sama
+ *   AC-25  : (R-2, review 2026-10-26) bagian FE: layar yang memakai `GET setting/display-columns` (index) dan baris documentArchive - lihat
+ *            test AC-25 (halaman Setup > Display Setting TIDAK punya route di FE; yang diperiksa: ketiadaan route, respons index di sesi
+ *            browser pemegang / non-pemegang, drawer Display Setting Archive = komponen yang sama dengan halaman itu)
  *
  * Data: fixtures.json -> fixture.php (berawalan "QA50-", is_verified langsung, tanpa sesi opname). Profil [default] = QA_USER (role 3,
  * Opname Document, bahasa ID); [user2] = QA_USER2 di preset QA50-ROLE-E2E-NOOD (tanpa Opname Document, bahasa EN). Jalankan:
@@ -44,6 +48,10 @@ const OPT = {
   en: { VERIFIED: 'Verified', UNVERIFIED: 'Unverified' },
 };
 const COL = { id: 'Dokumen Terverifikasi', en: 'Document Verified' };
+/** urutan default review 2026-10-26 R-1 (Updater + Config documentArchive): Verification Status TERAKHIR di current_queries */
+const R1_QUERIES = ['name', 'type', 'updatedAt', 'showRelatedTransaction', 'verificationStatus'];
+const REL_RE = /^(Tampilkan Transaksi Terkait|Show Related Transaction)$/;
+const TYPE_RE = /^(Tipe|Type)$/;
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const trimAll = (arr) => arr.map((t) => t.replace(/\s+/g, ' ').trim());
 const fmt = (n) => Number(n).toLocaleString('en-US');
@@ -199,6 +207,8 @@ async function findOnPages(page, scope, rows, name, maxPages = 6) {
   for (let n = 1; n <= maxPages; n += 1) {
     if ((await rowIn(rows, name).count()) > 0 && (await rowIn(rows, name).isVisible())) return n;
     const next = scope.locator(`li.ant-pagination-item-${n + 1}`).first();
+    // r2: pager bisa belum dirender ulang tepat sesudah klik breadcrumb / ganti filter (flake sekali di run penuh r2); beri waktu sebelum menyerah
+    await next.waitFor({ state: 'attached', timeout: 4000 }).catch(() => null);
     if ((await next.count()) === 0) break;
     await gotoPage(page, scope, n + 1);
     await page.waitForTimeout(500);
@@ -428,13 +438,76 @@ const scan = async (page, code) => {
 };
 
 // ====================================================================================================================
+
+// ------------------------------------------------------------------------------------------------------------ AC-25 (R-2)
+const DISPLAY_ROW = 'documentArchive';
+const HIDDEN_FOR_NON_HOLDER = { queries: [FILTER], columns: ['documentVerified'] };
+/** data_index bisa string atau larik bertingkat (mis. ["document","relatedEmployeeName"]); fixture.php cds menyatukannya dengan titik */
+const diQ = (arr) => (arr || []).map((q) => (Array.isArray(q.data_index) ? q.data_index.join('.') : q.data_index));
+
+/** GET setting/display-columns (index) dari DALAM sesi browser (token localStorage dipakai, tidak dikembalikan / dicetak); respons snake_case mentah. */
+async function fetchDisplayIndex(page, base, qs) {
+  return page.evaluate(
+    async ({ base: b, qs: q }) => {
+      const bearer = JSON.parse(window.localStorage.getItem('bearer') || 'null');
+      const r = await fetch(`${b}/setting/display-columns?${q}`, {
+        headers: { Authorization: `Bearer ${bearer && bearer.accessToken}`, Accept: 'application/json' },
+      });
+      const text = await r.text();
+      let body = null;
+      try {
+        body = JSON.parse(text);
+      } catch (e) {
+        body = null;
+      }
+      return { status: r.status, body };
+    },
+    { base, qs },
+  );
+}
+const norm = (v) => String(v || '').trim().toLowerCase();
+const indexRowsOf = (resp) => (resp.body && resp.body.result && resp.body.result.data) || [];
+const columnsTableOf = (drawer) => drawer.locator('.ant-table').filter({ has: drawer.page().locator('th', { hasText: /Nama Kolom|Column Name/ }) }).first();
+
+/** buka drawer Display Setting Archive (komponen DisplaySettingDrawer yang sama dengan halaman Setup > Display Setting) dan baca dua tabelnya */
+async function readDisplayDrawer(app, page, monitor) {
+  const show = page.waitForResponse((r) => r.request().method() === 'GET' && /\/setting\/display-columns\/documentArchive(\?|$)/i.test(r.url()), { timeout: 30000 });
+  await page.locator('.archive-page button', { hasText: /Pengaturan Tampilan|Display Setting/ }).first().click();
+  const sr = await show;
+  const drawer = page.locator('.ant-drawer-open').last();
+  await drawer.waitFor({ state: 'visible', timeout: 15000 });
+  await drawer.locator('.ant-skeleton').first().waitFor({ state: 'detached', timeout: 15000 }).catch(() => null);
+  await app.settle();
+  const ftable = await filtersTable(page, drawer);
+  const filters = trimAll(await ftable.locator('tr.ant-table-row').allInnerTexts());
+  const ctab = drawer.locator('.ant-tabs-tab', { hasText: /Kolom yang Ditampilkan|Displayed Columns/ }).first();
+  if (await ctab.isVisible().catch(() => false)) {
+    await ctab.click();
+    await page.waitForTimeout(500);
+  }
+  const columns = trimAll(await columnsTableOf(drawer).locator('tr.ant-table-row').allInnerTexts());
+  monitor.note(`drawer Display Setting Archive: show ${sr.status()}; Displayed Columns=${JSON.stringify(columns)}; Displayed Filters=${JSON.stringify(filters)}`);
+  return { drawer, showStatus: sr.status(), filters, columns };
+}
+
+/** Bukti ketiadaan layar Setup > Display Setting di FE: sumber route + sidebar Setup (tidak membuat test gagal; dicatat di laporan sebagai D-1) */
+function displayPageRouted(monitor) {
+  const fe = config.get('FE_DIR');
+  const routesSrc = fs.readFileSync(path.join(fe, 'src/routes/routes.js'), 'utf8');
+  const pathsSrc = fs.readFileSync(path.join(fe, 'src/routes/paths.js'), 'utf8');
+  const inRoutes = /DisplaySettingPage|containers\/DisplaySetting/.test(routesSrc);
+  const inPaths = /displaySetting\s*:/.test(pathsSrc);
+  monitor.note(`sumber FE: routes.js memuat DisplaySettingPage=${inRoutes}; paths.js memuat displaySetting=${inPaths}`);
+  return inRoutes && inPaths;
+}
+
 test.describe('ED-1250 filter Verification Status (e2e)', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
   });
 
   // ---------------------------------------------------------------------------------------------- AC-13 (id)
-  test('[default] ED-1250 AC-13 (id): popover memuat "Status Verifikasi" sesudah Tipe, 2 opsi, kosong; Cari tanpa memilih = tanpa key; folder / hasil cari / Display Setting tanpa error', async ({ app, page, monitor }) => {
+  test('[default] ED-1250 AC-13 (id): popover memuat "Status Verifikasi" PALING AKHIR (sesudah Tampilkan Transaksi Terkait, R-1), 2 opsi, kosong; Cari tanpa memilih = tanpa key; folder / hasil cari / Display Setting tanpa error', async ({ app, page, monitor }) => {
     test.setTimeout(240000);
     const calls = trace(page, monitor);
     const od = fxJson('has-od');
@@ -444,16 +517,26 @@ test.describe('ED-1250 filter Verification Status (e2e)', () => {
     const first = await openArchive(app, page);
     const queries = first.body.result.queries.map((q) => q.data_index);
     monitor.note(`queries root: ${JSON.stringify(queries)}`);
-    expect(queries.indexOf(FILTER), 'respons: verificationStatus tepat sesudah type').toBe(queries.indexOf('type') + 1);
-    expect(queries.indexOf('type'), 'respons: type ada').toBeGreaterThanOrEqual(0);
+    const cdsNow = fxJson('cds');
+    expect(queries, 'respons: urutan queries = current_queries baris cds (DB)').toEqual(cdsNow.current_queries);
+    expect(queries, 'respons: urutan default R-1 (name, type, updatedAt, showRelatedTransaction, verificationStatus)').toEqual(R1_QUERIES);
+    expect(queries.indexOf(FILTER), 'respons: verificationStatus di indeks terakhir').toBe(queries.length - 1);
+    expect(queries.indexOf(FILTER), 'respons: verificationStatus tepat sesudah showRelatedTransaction').toBe(queries.indexOf('showRelatedTransaction') + 1);
+    expect(queries.indexOf('type'), 'respons: type ada, TIDAK lagi langsung diikuti verificationStatus').toBeGreaterThanOrEqual(0);
+    expect(queries[queries.indexOf('type') + 1], 'respons: sesudah type bukan verificationStatus').not.toBe(FILTER);
 
     const bar = pageBar(page);
     const overlay = await openPopover(page, bar);
     const labels = await popoverLabels(overlay);
     monitor.note(`label popover: ${JSON.stringify(labels)}`);
-    const iType = labels.findIndex((l) => /^(Tipe|Type)$/.test(l));
+    const iType = labels.findIndex((l) => TYPE_RE.test(l));
+    const iRel = labels.findIndex((l) => REL_RE.test(l));
     expect(iType, 'popover memuat Tipe').toBeGreaterThanOrEqual(0);
-    expect(labels[iType + 1], 'tepat sesudah Tipe: "Status Verifikasi" (id)').toBe(LBL.id);
+    expect(iRel, 'popover memuat Tampilkan Transaksi Terkait').toBeGreaterThanOrEqual(0);
+    expect(labels, 'urutan popover (id) = R-1: Nama, Tipe, Tanggal Dimodifikasi, Tampilkan Transaksi Terkait, Status Verifikasi').toEqual(['Nama', 'Tipe', 'Tanggal Dimodifikasi', 'Tampilkan Transaksi Terkait', LBL.id]);
+    expect(labels[labels.length - 1], 'paling akhir: "Status Verifikasi" (id)').toBe(LBL.id);
+    expect(labels[iRel + 1], 'tepat sesudah Tampilkan Transaksi Terkait: "Status Verifikasi" (id)').toBe(LBL.id);
+    expect(labels[iType + 1], 'sesudah Tipe bukan lagi "Status Verifikasi"').not.toBe(LBL.id);
     const sel = verifSelect(page, overlay);
     await expect(sel, 'select ada').toHaveCount(1);
     expect(await selectedLabel(sel), 'kosong default').toBe('');
@@ -514,7 +597,9 @@ test.describe('ED-1250 filter Verification Status (e2e)', () => {
     const names = trimAll(await ftable.locator('tr.ant-table-row').allInnerTexts());
     monitor.note(`Displayed Filters (id): ${JSON.stringify(names)}`);
     expect(names, 'Displayed Filters memuat "Status Verifikasi"').toContain(LBL.id);
-    expect(names.indexOf(LBL.id), 'urutan: sesudah Tipe').toBe(names.findIndex((n) => /^(Tipe|Type)$/.test(n)) + 1);
+    expect(names.indexOf(LBL.id), 'urutan Displayed Filters: tepat sesudah Tampilkan Transaksi Terkait (R-1)').toBe(names.findIndex((n) => REL_RE.test(n)) + 1);
+    expect(names.slice(0, 5), 'Displayed Filters (id) 5 teratas = urutan default R-1').toEqual(['Nama', 'Tipe', 'Tanggal Dimodifikasi', 'Tampilkan Transaksi Terkait', LBL.id]);
+    expect(names[5], 'Displayed Filters: Dimodifikasi Oleh paling akhir, tidak aktif default (tidak ada di current)').toMatch(/^Dimodifikasi Oleh/);
     await app.screenshot('ac13-04-display-setting-displayed-filters');
     await drawer.locator('.ant-drawer-close').click();
     await expect(page.locator('.ant-drawer-open'), 'drawer menutup').toHaveCount(0, { timeout: 10000 });
@@ -534,8 +619,13 @@ test.describe('ED-1250 filter Verification Status (e2e)', () => {
       const overlay = await openPopover(page, bar);
       const labels = await popoverLabels(overlay);
       monitor.note(`label popover (en): ${JSON.stringify(labels)}`);
-      const iType = labels.findIndex((l) => /^(Tipe|Type)$/.test(l));
-      expect(labels[iType + 1], 'tepat sesudah Type: "Verification Status" (en)').toBe(LBL.en);
+      const iType = labels.findIndex((l) => TYPE_RE.test(l));
+      const iRel = labels.findIndex((l) => REL_RE.test(l));
+      expect(iRel, 'popover memuat Show Related Transaction').toBeGreaterThanOrEqual(0);
+      expect(labels, 'urutan popover (en) = R-1').toEqual(['Name', 'Type', 'Date Modified', 'Show Related Transaction', LBL.en]);
+      expect(labels[labels.length - 1], 'paling akhir: "Verification Status" (en)').toBe(LBL.en);
+      expect(labels[iRel + 1], 'tepat sesudah Show Related Transaction: "Verification Status" (en)').toBe(LBL.en);
+      expect(labels[iType + 1], 'sesudah Type bukan lagi "Verification Status"').not.toBe(LBL.en);
       const sel = verifSelect(page, overlay);
       expect(await selectedLabel(sel), 'kosong default').toBe('');
       await sel.locator('.ant-select-selector').click();
@@ -555,6 +645,8 @@ test.describe('ED-1250 filter Verification Status (e2e)', () => {
       const names = trimAll(await ftable.locator('tr.ant-table-row').allInnerTexts());
       monitor.note(`Displayed Filters (en): ${JSON.stringify(names)}`);
       expect(names, 'Displayed Filters memuat "Verification Status"').toContain(LBL.en);
+      expect(names.slice(0, 5), 'Displayed Filters (en) 5 teratas = urutan default R-1').toEqual(['Name', 'Type', 'Date Modified', 'Show Related Transaction', LBL.en]);
+      expect(names.indexOf(LBL.en), 'urutan Displayed Filters (en): tepat sesudah Show Related Transaction').toBe(names.findIndex((n) => REL_RE.test(n)) + 1);
       await app.screenshot('ac13-06-display-setting-en');
       await drawer.locator('.ant-drawer-close').click();
       noServerError(monitor);
@@ -1012,7 +1104,9 @@ test.describe('ED-1250 filter Verification Status (e2e)', () => {
       const ov0 = await openPopover(page, bar);
       expect(await hasFilterField(page, ov0), 'popover picker memuat filter Status Verifikasi').toBe(true);
       const labels = await popoverLabels(ov0);
-      expect(labels[labels.findIndex((l) => /^(Tipe|Type)$/.test(l)) + 1], 'picker: tepat sesudah Tipe').toBe(LBL.id);
+      expect(labels[labels.findIndex((l) => REL_RE.test(l)) + 1], 'picker: tepat sesudah Tampilkan Transaksi Terkait (R-1)').toBe(LBL.id);
+      expect(labels[labels.length - 1], 'picker: Status Verifikasi paling akhir (R-1)').toBe(LBL.id);
+      expect(labels[labels.findIndex((l) => TYPE_RE.test(l)) + 1], 'picker: sesudah Tipe bukan lagi Status Verifikasi').not.toBe(LBL.id);
       await closePopover(page, bar);
       await app.screenshot('ac18-01-picker-dibuka-kosong');
 
@@ -1557,6 +1651,47 @@ test.describe('ED-1250 filter Verification Status (e2e)', () => {
     expect(after.current_columns, 'C-8: current_columns memuat documentVerified').toContain('documentVerified');
   });
 
+
+  // ---------------------------------------------------------------------------------------------- AC-25 (R-2) [default] pemegang
+  test('[default] ED-1250 AC-25 (R-2) pemegang Opname Document: index display-columns memuat verificationStatus + documentVerified (urutan R-1); drawer baris documentArchive memuat keduanya; tanpa 5xx', async ({ app, page, monitor }) => {
+    test.setTimeout(240000);
+    trace(page, monitor);
+    const od = fxJson('has-od');
+    expect(od.QA_USER, 'prasyarat: QA_USER pemegang Opname Document').toBe(true);
+    const routed = displayPageRouted(monitor);
+    monitor.note(`halaman Setup > Display Setting punya route di FE: ${routed}`);
+
+    const first = await openArchive(app, page);
+    const base = first.url.split('/document-archive/')[0];
+    const cds = fxJson('cds');
+    const idx = await fetchDisplayIndex(page, base, `search=${DISPLAY_ROW}&pagination=100&page=1`);
+    expect(idx.status, 'GET setting/display-columns (index) pemegang: 200').toBe(200);
+    const rows = indexRowsOf(idx);
+    const row = rows.find((r) => norm(r.module_name) === norm(DISPLAY_ROW));
+    expect(row, 'baris documentArchive ada di index (pemegang)').toBeTruthy();
+    expect(diQ(row.current_queries), 'index pemegang: current_queries = DB, urutan R-1 (verificationStatus terakhir)').toEqual(cds.current_queries);
+    expect(diQ(row.current_queries), 'index pemegang: current_queries urutan default R-1').toEqual(R1_QUERIES);
+    expect(diQ(row.available_queries), 'index pemegang: available_queries = DB (R-1 + updatedBy terakhir)').toEqual(cds.available_queries);
+    expect(diQ(row.current_columns), 'index pemegang: current_columns = DB (memuat documentVerified)').toEqual(cds.current_columns);
+    expect(diQ(row.available_columns), 'index pemegang: available_columns = DB (memuat documentVerified)').toEqual(cds.available_columns);
+    expect(diQ(row.current_columns), 'documentVerified di current_columns').toContain('documentVerified');
+    expect(diQ(row.available_columns), 'documentVerified di available_columns').toContain('documentVerified');
+    monitor.note(`index pemegang (search=documentArchive): ${rows.length} baris: ${JSON.stringify(rows.map((r) => r.module_name))}`);
+
+    // drawer: komponen yang sama dengan DisplaySettingPage; GET show baris documentArchive
+    const d = await readDisplayDrawer(app, page, monitor);
+    expect(d.showStatus, 'GET show documentArchive 200').toBe(200);
+    expect(d.filters, 'drawer pemegang: Displayed Filters memuat "Status Verifikasi"').toContain(LBL.id);
+    expect(d.columns, 'drawer pemegang: Displayed Columns memuat "Dokumen Terverifikasi"').toContain(COL.id);
+    expect(d.filters.slice(0, 5), 'drawer pemegang: urutan filter default R-1').toEqual(['Nama', 'Tipe', 'Tanggal Dimodifikasi', 'Tampilkan Transaksi Terkait', LBL.id]);
+    await app.screenshot('ac25-01-drawer-pemegang');
+    await d.drawer.locator('.ant-drawer-close').click();
+    await expect(page.locator('.ant-drawer-open'), 'drawer menutup').toHaveCount(0, { timeout: 10000 });
+
+    noServerError(monitor);
+    monitor.check();
+  });
+
   // ---------------------------------------------------------------------------------------------- AC-19 [user2]
   test('[user2] ED-1250 AC-19 tanpa Opname Document: Archive (root, folder, cari) dan picker Pindahkan / Pilih Folder tanpa filter Verification Status; Display Setting tanpa entri, simpan sukses; tanpa 5xx', async ({ app, page, monitor }) => {
     test.setTimeout(420000);
@@ -1642,6 +1777,7 @@ test.describe('ED-1250 filter Verification Status (e2e)', () => {
       monitor.note(`cds sesudah simpan [user2]: current_queries=${JSON.stringify(cds.current_queries)}`);
       expect(cds.current_queries, 'DB: perubahan user2 tersimpan (Show Related Transaction keluar)').not.toContain('showRelatedTransaction');
       expect(cds.current_queries, 'DB: verificationStatus tetap di current_queries (dipertahankan)').toContain(FILTER);
+      expect(cds.current_queries[cds.current_queries.length - 1], 'DB: verificationStatus tetap terakhir di current_queries sesudah simpan non-pemegang (R-1)').toBe(FILTER);
       expect(cds.available_queries, 'DB: verificationStatus tetap di available_queries').toContain(FILTER);
       expect(cds.current_columns, 'DB: documentVerified tetap di current_columns').toContain('documentVerified');
       await noErrorToast(page, '[user2] simpan Display Setting');
@@ -1650,5 +1786,58 @@ test.describe('ED-1250 filter Verification Status (e2e)', () => {
     } finally {
       monitor.note(`cds-restore: ${fx('cds-restore')}`);
     }
+  });
+  // ---------------------------------------------------------------------------------------------- AC-25 (R-2) [user2] non-pemegang
+  test('[user2] ED-1250 AC-25 (R-2) tanpa Opname Document: index display-columns baris documentArchive tanpa verificationStatus dan documentVerified (item lain + urutan tetap), modul seluruh-modul tidak ada; drawer tanpa keduanya; tanpa 5xx', async ({ app, page, monitor }) => {
+    test.setTimeout(240000);
+    trace(page, monitor);
+    const od = fxJson('has-od');
+    expect(od.QA_USER2, 'prasyarat: QA_USER2 (preset) tanpa Opname Document').toBe(false);
+    displayPageRouted(monitor);
+
+    const first = await openArchive(app, page);
+    const base = first.url.split('/document-archive/')[0];
+    const cds = fxJson('cds');
+    const without = (arr, drop) => arr.filter((x) => !drop.includes(x));
+    const idx = await fetchDisplayIndex(page, base, `search=${DISPLAY_ROW}&pagination=100&page=1`);
+    expect(idx.status, 'GET setting/display-columns (index) non-pemegang: 200 (bukan 403/500)').toBe(200);
+    const rows = indexRowsOf(idx);
+    const names = rows.map((r) => r.module_name);
+    monitor.note(`index non-pemegang (search=documentArchive): ${rows.length} baris: ${JSON.stringify(names)}`);
+    const row = rows.find((r) => norm(r.module_name) === norm(DISPLAY_ROW));
+    expect(row, 'baris documentArchive tetap ada di index (saringan item tidak membuang baris)').toBeTruthy();
+    expect(diQ(row.current_queries), 'index non-pemegang: current_queries tanpa verificationStatus').not.toContain(FILTER);
+    expect(diQ(row.available_queries), 'index non-pemegang: available_queries tanpa verificationStatus').not.toContain(FILTER);
+    expect(diQ(row.current_columns), 'index non-pemegang: current_columns tanpa documentVerified').not.toContain('documentVerified');
+    expect(diQ(row.available_columns), 'index non-pemegang: available_columns tanpa documentVerified').not.toContain('documentVerified');
+    // item lain + urutannya = DB tanpa kedua entri
+    expect(diQ(row.current_queries), 'current_queries = DB tanpa verificationStatus (urutan item lain tetap)').toEqual(without(cds.current_queries, HIDDEN_FOR_NON_HOLDER.queries));
+    expect(diQ(row.available_queries), 'available_queries = DB tanpa verificationStatus').toEqual(without(cds.available_queries, HIDDEN_FOR_NON_HOLDER.queries));
+    expect(diQ(row.current_columns), 'current_columns = DB tanpa documentVerified').toEqual(without(cds.current_columns, HIDDEN_FOR_NON_HOLDER.columns));
+    expect(diQ(row.available_columns), 'available_columns = DB tanpa documentVerified').toEqual(without(cds.available_columns, HIDDEN_FOR_NON_HOLDER.columns));
+    // modul seluruh-modul (ED-1251) tidak ikut index non-pemegang
+    expect(names.filter((n) => /^documentArchiveOpname(History|Result)$/i.test(String(n).trim())), 'modul seluruh-modul (OpnameHistory / OpnameResult) tidak ada di index non-pemegang').toEqual([]);
+    expect(JSON.stringify(row), 'seluruh baris documentArchive tanpa teks "verificationStatus" / "documentVerified"').not.toMatch(/verificationStatus|documentVerified/);
+
+    // seluruh index halaman 1 (tanpa search) juga tanpa kedua entri di baris documentArchive bila terlihat, dan tanpa 5xx
+    const all = await fetchDisplayIndex(page, base, 'pagination=100&page=1');
+    expect(all.status, 'index tanpa search: 200').toBe(200);
+    const allRows = indexRowsOf(all);
+    monitor.note(`index non-pemegang tanpa search: ${allRows.length} baris halaman 1 dari total ${all.body && all.body.result && all.body.result.total}`);
+    expect(JSON.stringify(allRows.filter((r) => norm(r.module_name) === norm(DISPLAY_ROW))), 'index tanpa search: baris documentArchive tanpa kedua entri').not.toMatch(/verificationStatus|documentVerified/);
+
+    // drawer (EN): komponen yang sama dengan DisplaySettingPage
+    const d = await readDisplayDrawer(app, page, monitor);
+    expect(d.showStatus, 'GET show documentArchive 200').toBe(200);
+    expect(d.filters.filter((n) => n === LBL.en || n === LBL.id).length, 'drawer non-pemegang: Displayed Filters tanpa "Verification Status"').toBe(0);
+    expect(d.columns.filter((n) => n === COL.en || n === COL.id).length, 'drawer non-pemegang: Displayed Columns tanpa "Document Verified"').toBe(0);
+    expect(d.filters.length, 'drawer non-pemegang: filter lain tetap ada').toBeGreaterThan(0);
+    expect(d.columns.length, 'drawer non-pemegang: kolom lain tetap ada').toBeGreaterThan(0);
+    await app.screenshot('ac25-02-drawer-non-pemegang');
+    await d.drawer.locator('.ant-drawer-close').click();
+    await expect(page.locator('.ant-drawer-open'), 'drawer menutup').toHaveCount(0, { timeout: 10000 });
+
+    noServerError(monitor);
+    monitor.check();
   });
 });

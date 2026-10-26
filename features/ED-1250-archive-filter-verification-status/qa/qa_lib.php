@@ -26,6 +26,10 @@ if (!function_exists('q50_w')) {
     define('Q50_OD', 'Opname Document');
     define('Q50_FILTER', 'verificationStatus');
     define('Q50_RANDOM_ID', '999999999999999999999999999999');
+    // Urutan default filter Archive sesudah review 2026-10-26 R-1 (spec Revisi review, BR-11 baru): current = Name, Type, Date Modified,
+    // Show Related Transaction, Verification Status (terakhir); available = urutan sama + Modified By paling akhir.
+    define('Q50_R1_CURRENT', ['name', 'type', 'updatedAt', 'showRelatedTransaction', 'verificationStatus']);
+    define('Q50_R1_AVAILABLE', ['name', 'type', 'updatedAt', 'showRelatedTransaction', 'verificationStatus', 'updatedBy']);
 
     function q50_dbname($t)
     {
@@ -958,5 +962,84 @@ if (!function_exists('q50_w')) {
         }
 
         return json_encode($got) === json_encode($exp);
+    }
+
+    // ------------------------------------------------------------------ R-1 / R-2 (review 2026-10-26)
+
+    /**
+     * Oracle aturan sisip kontrak §2 (PUT non-pemegang): item tersaring ($hidden) kiriman dibuang, item tersaring dari baris tersimpan
+     * disisipkan sesudah item yang mendahuluinya di baris tersimpan; pendahulu tidak ada di kiriman -> indeks semula, paling jauh di akhir.
+     * Semua argumen = urutan data_index (string).
+     */
+    function q50_restore_expect(array $stored, array $sent, array $hidden)
+    {
+        $result = array_values(array_filter($sent, function ($k) use ($hidden) {
+            return !in_array($k, $hidden, true);
+        }));
+        $stored = array_values($stored);
+        foreach ($stored as $i => $k) {
+            if (!in_array($k, $hidden, true)) {
+                continue;
+            }
+            $pos = min($i, count($result));
+            $prev = $i > 0 ? $stored[$i - 1] : null;
+            if ($prev !== null) {
+                $at = array_search($prev, $result, true);
+                if ($at !== false) {
+                    $pos = $at + 1;
+                }
+            }
+            array_splice($result, $pos, 0, [$k]);
+        }
+
+        return $result;
+    }
+
+    /** Baris $module di respons index display-columns (atau respons PUT): result.data[]; null bila tidak ada di halaman ini. */
+    function q50_resp_row(array $resp, $module = 'documentArchive')
+    {
+        foreach ($resp['result']['data'] ?? [] as $row) {
+            if (($row['module_name'] ?? null) === $module) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    /** Urutan data_index suatu list baris respons (list bisa array atau string JSON). */
+    function q50_row_seq(array $row, $list)
+    {
+        $v = $row[$list] ?? null;
+        if (is_string($v)) {
+            $v = json_decode($v, true);
+        }
+
+        return q50_seq((array) $v);
+    }
+
+    /**
+     * Semua baris index display-columns (semua halaman, urutan respons). Mengembalikan [rows, total, last_page, halaman_terbaca].
+     * $extra = query tambahan (mis. ['search' => 'documentArchive']).
+     */
+    function q50_index_all($t, $s, $pagination = 200, array $extra = [])
+    {
+        $rows = [];
+        $page = 1;
+        $total = null;
+        $last = 1;
+        do {
+            $q = http_build_query($extra + ['pagination' => $pagination, 'page' => $page]);
+            $r = $t->call($s, 'GET', rtrim(Q50_DS, '/') . '?' . $q);
+            $t->status($r, 200, 'index display-columns hal. ' . $page . ' pagination ' . $pagination);
+            foreach ($r[1]['result']['data'] ?? [] as $row) {
+                $rows[] = $row;
+            }
+            $total = $r[1]['result']['total'] ?? $total;
+            $last = (int) ($r[1]['result']['last_page'] ?? 1);
+            $page++;
+        } while ($page <= $last && $page < 200);
+
+        return [$rows, $total, $last, $page - 1];
     }
 }

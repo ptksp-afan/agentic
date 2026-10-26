@@ -1,7 +1,7 @@
 <?php
 /**
  * ED-1250 - teardown (spec §6a, C-8): dijalankan TERAKHIR (berkas terurut paling akhir), hanya membaca.
- *   C-8  setelah run: tidak ada sisa QA50- (archives, archive_documents, archive_permissions, role preset, role_permissions), baris cds
+ *   C-8  setelah run (ronde 2: + urutan R-1 current/available queries): tidak ada sisa QA50- (archives, archive_documents, archive_permissions, role preset, role_permissions), baris cds
  *        documentArchive wajib memuat verificationStatus (current & available) dan documentVerified, user QA (user_roles, bahasa, lokasi
  *        karyawan) sama dengan keadaan awal run, keadaan di luar baris sendiri sama persis (CRC), tidak ada jurnal basi di features/*\/qa.
  *        (Token QA aktif dicek sesudah run, bukan di dalam run: sesi runner masih hidup.) Beda updater_logs / cds sebelum-vs-sesudah Updater = diizinkan (DU-5 a), hanya dicatat.
@@ -37,6 +37,8 @@ return [
             $ac = q50_seq(json_decode($row[0]['available_columns'], true));
             $t->true(in_array('verificationStatus', $cq, true) && in_array('verificationStatus', $aq, true), 'cds: verificationStatus di current & available queries (C-8)');
             $t->true(in_array('documentVerified', $cc, true) && in_array('documentVerified', $ac, true), 'cds: documentVerified di current & available columns (C-8)');
+            $t->eq($cq, Q50_R1_CURRENT, 'cds (C-8, R-1): current_queries urutan R-1 (name, type, updatedAt, showRelatedTransaction, verificationStatus terakhir)');
+            $t->eq($aq, Q50_R1_AVAILABLE, 'cds (C-8, R-1): available_queries urutan R-1 + updatedBy terakhir (tidak di current)');
             if ($init !== null) {
                 $t->eq(json_encode($row), json_encode($init['cds']), 'cds documentArchive sama persis dengan keadaan awal run (= sesudah Updater: id, isi, created_at, updated_at)');
             }
