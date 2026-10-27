@@ -1,0 +1,23 @@
+{
+  "feature": "ED-1293",
+  "routes": [
+    {
+      "name": "Archive A (QA_USER, pemegang Opname Document) - list + popover filter terbuka tanpa error",
+      "path": "/archives",
+      "profiles": [
+        "default"
+      ],
+      "waitFor": ".archive-page .ant-table",
+      "ref": "AC-9"
+    },
+    {
+      "name": "Archive B (QA_USER2 di preset tanpa Opname Document) - list terbuka tanpa error",
+      "path": "/archives",
+      "profiles": [
+        "user2"
+      ],
+      "waitFor": ".archive-page .ant-table",
+      "ref": "AC-9"
+    }
+  ]
+}

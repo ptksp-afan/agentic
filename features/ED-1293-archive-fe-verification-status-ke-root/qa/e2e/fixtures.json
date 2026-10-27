@@ -1,0 +1,11 @@
+{
+  "fixtures": [
+    {
+      "name": "verification-status-ke-root-data",
+      "reason": "ED-1293 (salinan fixture ED-1250, jurnal sendiri di folder ini): AC-1..AC-10 butuh pohon folder/dokumen uji berawalan QA50- (folder kosong, semua verified, campuran, tanpa verified, Izin On tanpa View, 2 halaman, tujuan pindah, dokumen Letakkan/Serahkan/Terima) dengan is_verified di-set langsung, dibuat langsung di DB. QA_USER2 dipasang di preset QA50-ROLE-E2E-NOOD sebelum login dan dipulihkan persis (user_roles dari jurnal, preset dibuang) di teardown. Display setting Archive (baris global modul documentArchive) disnapshot di `up` dan dipulihkan persis oleh spec (cds-restore) dan teardown (C-8). Bahasa QA_USER (en) diubah sementara lewat jurnal dan dipulihkan. Teardown membuang HANYA baris berawalan QA50- / tercatat di jurnal; tidak ada tabel dikosongkan atau di-reset. Jalankan dengan --workers 1; e2e ED-1250 lama tidak bersamaan.",
+      "setup": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" up",
+      "teardown": "\"$PHP_BIN\" \"$FEATURE_DIR/qa/e2e/fixture.php\" down",
+      "timeout_s": 240
+    }
+  ]
+}
