@@ -92,6 +92,7 @@ Rewrite `## Ringkasan` (counts per result, blocked items with their questions, n
 `PushNotification` if available. Point the developer to: answering blockers in Jira (reply to
 `[AI-BLOCKER]`, move the card to To Do) and `/v5-epic review <EPIC>`. Answered blockers and items added
 to the epic later are picked up by the next `/v5-epic <EPIC>` (new items get BA + Gate 1 first).
+Then commit the epic files (§ Epic files commit).
 
 ## Review (`/v5-epic review <EPIC>`; developer present)
 1. Items with label `jira.longRun.labels.review` in the epic, with their `run.md` / `qa-be.md` / `qa-fe.md` frontmatter.
@@ -103,6 +104,14 @@ to the epic later are picked up by the next `/v5-epic <EPIC>` (new items get BA 
      `phase: done`, delete leftover `park/<KEY>` branches.
    - Minta perbaikan → notes into `run.md`, `phase: be` or `fe` (where the fix belongs), remove the label, comment; the next run
      resumes it with a fix commit on top.
+5. Commit the item folders touched by the review (`run.md`, spec notes) and the epic files (§ Epic files commit).
+
+## Epic files commit (end of a run, end of a review)
+Item commits cover only `features/<KEY>-*`; the epic's own files are committed here. One local agentic commit,
+explicit paths, never `git add -A`, never push: `epics/<EPIC>.md`, `epics/<EPIC>-*.md` and
+`epics/<EPIC>-brief/README.md` (brief `src/`/`render/` stay ignored). First check the staged files hold no
+secrets (no `config/secrets.env` values, tokens or passwords). Message: `[DOC] <EPIC> - log epic, Gate 1 dan
+review (<what this run/review did, short>)`. Nothing staged → no commit.
 
 ## Epic log - `epics/<EPIC>.md`
 
