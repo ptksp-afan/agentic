@@ -3,7 +3,7 @@ key: ED-1251
 epic: ED-1022
 title: Archive - export PDF & Excel hasil opname (drawer Opname History & Opname Result)
 slug: archive-export-opname-pdf-excel
-phase: commit
+phase: done
 qa_round: 2
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -41,10 +41,10 @@ Perubahan developer di 3 berkas BE (spec R-5) sudah ikut commit perbaikan BE e5c
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
 |---|---|---|---|
-| ED-1258 | [BE] Archive - display setting & template PDF hasil opname (config display + pdfTemplate, registrasi, PERMISSION_FILTERS, route select template laporan) | BE | In Progress |
-| ED-1259 | [BE] Archive - export PDF (template + pratinjau Customize) & Excel satu sesi opname, sumber kolom bersama | BE | In Progress |
-| ED-1260 | [FE] Archive - tombol Print & Excel di Opname History dan Opname Result (DrawerPdf + Customize seperti PO Report) | FE | In Progress |
-| ED-1261 | [QA] Skenario export PDF & Excel hasil opname (isi berkas, template/Customize, akses, display setting, skala, e2e, F-1/F-2) | QA | In Progress |
+| ED-1258 | [BE] Archive - display setting & template PDF hasil opname (config display + pdfTemplate, registrasi, PERMISSION_FILTERS, route select template laporan) | BE | Done |
+| ED-1259 | [BE] Archive - export PDF (template + pratinjau Customize) & Excel satu sesi opname, sumber kolom bersama | BE | Done |
+| ED-1260 | [FE] Archive - tombol Print & Excel di Opname History dan Opname Result (DrawerPdf + Customize seperti PO Report) | FE | Done |
+| ED-1261 | [QA] Skenario export PDF & Excel hasil opname (isi berkas, template/Customize, akses, display setting, skala, e2e, F-1/F-2) | QA | Done |
 
 ## Keputusan developer
 - Gate 1 2026-10-24: `epics/ED-1022-gate1.md` §9 dan §9b; ringkas di spec § Tambahan Gate 1.
@@ -77,3 +77,4 @@ Perubahan developer di 3 berkas BE (spec R-5) sudah ikut commit perbaikan BE e5c
 - 2026-10-26 12:45 resume (long run, runner baru): preflight OK; tidak ada proses jest/e2e sisa, tidak ada jurnal fixture e2e (.fixture-ids/.journal-*) dari qa-fe r2 yang dihentikan; info($paper) sudah tidak ada. qa-fe r2 diulang dari awal (qa_round 2 tahap fe)
 - 2026-10-26 13:27 qa-fe r2 (review fix): PASS 9/0/1 (AC-16..22, AC-R1, AC-R2; AC-23 MANUAL Gate 2). AC-R1 tidak terjangkau di app (Display Setting tanpa route) -> dibuktikan kode + bundle staging + 3 unit test; AC-R2 di browser desktop + 375 px. Build OK; unit Archive+DisplaySetting 533/533; full suite 4 gagal pra-ada (= r1) + 1 timeout beban (lulus sendiri). e2e 14/14 (footer tiap halaman A4-P/L, Continuous-P/L, 247 baris), galeri work/e2e/ED-1251-archive-export-opname-pdf-excel-20261026-132126/; regresi BE qa/ 36/36, ED-1028 4/4, ED-1250 2/2, e2e ED-1028 13/13 (folder ED-1028/ED-1250 tidak diubah). Data: 0QA251/QA251BULKFE dihapus, QA*-ROLE-* 0, template 519 + cds 2585 developer byte-identik. Skrip QA r2 lama (dihentikan) diambil alih + diperbaiki. Tanpa penolakan classifier
 - 2026-10-26 13:29 commit (long run, lokal, perbaikan review): BE e5cd8eadff (6 berkas: OpnameExportService, PdfReportService, report-template-6 + R-5 milik developer PdfTemplateService, layouts/headers/report-header-1, styles/headers/report-header-1; info($paper) sudah dihapus), FE 004018d12 (8 berkas); Jira ED-1251 label ai-review + komentar siap review; subtask tetap In Progress
+- 2026-10-27 02:28 review 2026-10-27: disetujui developer -> Jira Done (Story + 4 subtask), label ai-review dilepas, komentar serah terima; perbaikan developer (margin-header/margin-footer @page A4/A5, getHeaderPadding dihapus) di-commit be 8d996000d atas permintaan developer, dicek footer 3/3 dan 11/11 pada dua sesi contoh

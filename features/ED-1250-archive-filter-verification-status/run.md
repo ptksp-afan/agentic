@@ -3,7 +3,7 @@ key: ED-1250
 epic: ED-1022
 title: Archive - filter Verification Status (Verified / Unverified)
 slug: archive-filter-verification-status
-phase: commit
+phase: done
 qa_round: 3
 be_branch: v5-opname-archive
 fe_branch: next-canvasing-opname-archive
@@ -35,12 +35,12 @@ Developer meminta perbaikan; daftar dan keputusan di spec § "Revisi review 2026
 ## Subtask
 | Kunci | Judul | Layer | Status Jira |
 |---|---|---|---|
-| ED-1252 | [BE] Updater - filter Verification Status di display setting Archive | BE | In Progress |
-| ED-1253 | [BE] List Archive - filter Verification Status (hanya dokumen, struktur folder tetap) | BE | In Progress |
-| ED-1254 | [BE] Display setting - filter Verification Status hanya untuk Opname Document | BE | In Progress |
-| ED-1255 | [FE] Archive - filter Verification Status di list (tetap di folder, tetap aktif saat navigasi) | FE | In Progress |
-| ED-1256 | [FE] Archive - filter Verification Status di picker Pindahkan / Pilih Folder | FE | In Progress |
-| ED-1257 | [QA] Skenario filter Verification Status | QA | In Progress |
+| ED-1252 | [BE] Updater - filter Verification Status di display setting Archive | BE | Done |
+| ED-1253 | [BE] List Archive - filter Verification Status (hanya dokumen, struktur folder tetap) | BE | Done |
+| ED-1254 | [BE] Display setting - filter Verification Status hanya untuk Opname Document | BE | Done |
+| ED-1255 | [FE] Archive - filter Verification Status di list (tetap di folder, tetap aktif saat navigasi) | FE | Done |
+| ED-1256 | [FE] Archive - filter Verification Status di picker Pindahkan / Pilih Folder | FE | Done |
+| ED-1257 | [QA] Skenario filter Verification Status | QA | Done |
 
 ## Keputusan developer
 - Gate 1 2026-10-24: `epics/ED-1022-gate1.md` §9 dan §9b; ringkas di spec § Tambahan Gate 1.
@@ -78,3 +78,4 @@ Developer meminta perbaikan; daftar dan keputusan di spec § "Revisi review 2026
 - 2026-10-26 07:15 qa-fe r3: PASS 12 / 0 FAIL / 1 MANUAL (AC-23); D-1 ditutup (klaim route dicek QA dari kode; AC-25 FE pada drawer + index sesi browser; butir 23 bisa dijalankan); kode identik r2 (hasil build/unit/ED-1125/ED-1069/ED-1027/ED-1028 r2 dibawa); e2e ED-1250 18/18 (run pertama 17/1 = flake screenshot timeout AC-18, lulus ulang); BE run.php ED-1250 18 PASS/1 SKIP; teardown C-8 PASS; O-1 redaksi doc 027 butir 20/23 ('ikon pengaturan' -> tautan "Pengaturan Tampilan") diperbaiki orkestrator
 - 2026-10-26 07:15 commit (long run, lokal, fix di atas commit item): BE 6e27d627b (3 berkas, kelas NEW; 3 berkas developer PRE tidak di-stage), FE 1bf24cfa8 (2 dok); publish FE tidak dijalankan (tanpa perubahan kode FE)
 - 2026-10-26 07:16 jira: ED-1250 label ai-review + komentar siap review (3 butir konfirmasi: D-1, Updater jalan ulang, O-6); subtask tetap In Progress; commit workspace menyusul
+- 2026-10-27 02:28 review 2026-10-27: disetujui developer -> Jira Done (Story + 6 subtask), label ai-review dilepas, komentar serah terima

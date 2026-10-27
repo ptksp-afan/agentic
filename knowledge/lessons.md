@@ -15,6 +15,7 @@ berlaku umum untuk fitur v5 mana pun. Tiap baris: aturan → kejadian asalnya.
 | Bug v3 yang ditemukan → *Keputusan untuk developer* ("port apa adanya atau perbaiki?"), jangan diputuskan diam-diam | F13/F02: beberapa bug lama jadi tiket terpisah atas pilihan developer |
 | Status HTTP tiap penolakan bisnis ditulis di AC (400/404/422 + kode pesan) | F13: "lampiran tidak ditemukan" dulu 500 |
 | Usulan desain yang "lebih aman tapi besar" diberi opsi minimal juga | F13: signed URL ditolak developer ("terlalu jauh"); revisi dengan perubahan minimal disetujui |
+| Klaim "library/komponen tidak mendukung X" dibuktikan dengan percobaan nyata (render, request) sebelum jadi aturan 422/fallback | ED-1251: kertas Continuous dianggap tidak dikenal mPDF → 422; developer membuktikan jalan, ukuran sudah ada di `PdfTemplateService` |
 
 ## Dev BE (`v5-be-dev`)
 
@@ -24,6 +25,8 @@ berlaku umum untuk fitur v5 mana pun. Tiap baris: aturan → kejadian asalnya.
 | Re-run Updater **in-process** (bootstrap Laravel), jangan lewat `/api/check-server` (menulis ulang `.env`/supervisor) | re-baseline 2026-10-04 |
 | `validate()` membalas 302 tanpa header `Accept: application/json`; smoke call selalu kirim header itu | F13 (`v5-conventions`) |
 | Kontrak berubah → perbarui `contract.md` + catat di spec. FE dibangun dari kontrak; drift diam-diam merusak tanpa error | F01-F02 |
+| PDF template mPDF (`Resources/views/pdf-templates`): jarak header/footer berulang diatur CSS `@page` `margin-header` / `margin-footer` (+ `margin-bottom` untuk ruang footer) di style kertas `styles/papers/<kertas>.blade.php`, bukan padding header lewat PHP (`getHeaderPadding` sudah dihapus). Letter/Legal/Folio memakai style A4; A1-A3 dan B1-B4 belum punya `margin-header`/`margin-footer` | ED-1251 review 2026-10-27: perbaikan developer di A4/A5, footer jadi tampil di semua halaman |
+| `<htmlpagefooter>` / `<htmlpageheader>` bernama dideklarasikan **sebelum** konten: konten yang dipecah `<html-separator/>` (satu `WriteHTML` per potongan) hanya mendapat footer pada halaman sesudah deklarasinya dibaca. Bukti = footer di **tiap halaman** dari isi PDF, dengan sesi kecil dan besar | ED-1251 R-3: footer di `report-template-6` sesudah `$content` → sesi 401 baris tanpa footer, sesi 97 baris normal |
 
 ## Dev FE (skill FE mode otomatis)
 
